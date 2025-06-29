@@ -1,0 +1,48 @@
+# URL for the pkgdown site
+url: https://thomaswieman.com/bayesm.HART 
+
+template:
+  bootstrap: 5
+
+home:
+  title: Bayesian Multinomial Logit Models with HART Priors
+  description: Implements the Metropolis-withing-Gibbs sampler for the Bayesian hierarchical multinomial logit model with HART priors. 
+  sidebar:
+    structure:
+    - links
+    - license
+    - citation
+    - authors
+    - dev
+
+navbar:
+  structure:
+    left:
+    - getstarted
+    - reference
+    - articles
+    - news
+    right:
+    - search
+    - github
+
+reference:
+- title: MCMC Samplers
+  contents:
+  - rhierMnlRwMixture
+- title: Marginal Effects
+  contents:
+  - marginal_effects
+  - summary.marginal_effects
+  - plot.summary.marginal_effects
+- title: Utility Functions
+  contents:
+  - sim_hier_mnl
+  - simple_sim_hier_mnl
+  - analyze_inv_wishart_prior
+
+articles:
+- title: Key Features
+  navbar: ~
+  contents:
+  - getstarted

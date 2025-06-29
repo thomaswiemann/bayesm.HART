@@ -1,0 +1,28 @@
+Package: bayesm.HART
+Title: Bayesian Multinomial Logit Models with HART Priors
+Version: 0.0.0.9000
+Authors@R: 
+    person("Thomas", "Wiemann", , "wiemann@uchicago.edu", role = c("aut", "cre"))
+Description: Implements the Metropolis-withing-Gibbs sampler for the Bayesian 
+  hierarchical multinomial logit model with HART priors developed in Wiemann 
+  (2025). Originally a fork of the bayesm and BART R packages.
+License: GPL (>= 3)
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+Suggests: 
+    ddml,
+    dplyr,
+    ggplot2,
+    knitr,
+    rmarkdown,
+    testthat (>= 3.0.0),
+    tidyr
+Config/testthat/edition: 3
+LinkingTo: 
+    Rcpp,
+    RcppArmadillo
+Imports: 
+    Rcpp,
+    bayesm
+VignetteBuilder: knitr
