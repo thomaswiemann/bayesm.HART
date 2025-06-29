@@ -24,5 +24,6 @@ LinkingTo:
     RcppArmadillo
 Imports: 
     Rcpp,
-    bayesm
+    bayesm,
+    rlang
 VignetteBuilder: knitr
