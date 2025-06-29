@@ -12,8 +12,6 @@ Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
 Suggests: 
     ddml,
-    dplyr,
-    ggplot2,
     knitr,
     rmarkdown,
     testthat (>= 3.0.0),
@@ -25,5 +23,8 @@ LinkingTo:
 Imports: 
     Rcpp,
     bayesm,
-    rlang
+    rlang,
+    dplyr,
+    ggplot2,
+    vctrs
 VignetteBuilder: knitr
