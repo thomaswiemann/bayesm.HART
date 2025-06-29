@@ -39,7 +39,6 @@ reference:
   contents:
   - sim_hier_mnl
   - simple_sim_hier_mnl
-  - analyze_inv_wishart_prior
 
 articles:
 - title: Key Features

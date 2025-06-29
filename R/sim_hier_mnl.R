@@ -67,14 +67,13 @@
 #' # Simple linear example
 #' sim_data_linear <- sim_hier_mnl(nlgt = 50, nT = 5, p = 3, nz = 2, nXa = 1, nXd = 0,
 #'                                beta_func_type = "linear", seed = 123)
-#' str(sim_data_linear)
+#' plot(sim_data_linear$Z[,1], sim_data_linear$true_values$betabar_true[,1]) # Visualize linear
 #'
 #' # Step function example
 #' sim_data_step <- sim_hier_mnl(nlgt = 50, nT = 5, p = 3, nz = 2, nXa = 1, nXd = 0,
 #'                               beta_func_type = "step",
 #'                               beta_func_args = list(Z_index = 1),
 #'                               seed = 456)
-#' str(sim_data_step$true_values$true_params) # Check args used
 #' plot(sim_data_step$Z[,1], sim_data_step$true_values$betabar_true[,1]) # Visualize step
 #'
 sim_hier_mnl <- function(
