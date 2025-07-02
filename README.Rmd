@@ -18,7 +18,7 @@ knitr::opts_chunk$set(
 
  The HART logit model flexibly leverages potentially many observed consumer characteristics and thus generalizes existing hierarchical models that exclusively model the representative consumer as a linear function of a select few characteristics. HART's combination of a flexible nonparametric prior within the hierarchical model provides a coherent framework for (Bayes-) optimal managerial decisions that adapt to the firm's familiarity with the consumer: first, HART flexibly leverages observed characteristics for granular predictions about new consumers; second, their individual-level preference estimates adapt optimally as a consumer's choices accumulate.
 
-See the corresponding working paper [Personalization with HART](https://thomaswiemann.com/assets/pdfs/wiemann_jmp.pdf) for further discussion and details.
+See the corresponding working paper [Personalization with HART](https://thomaswiemann.com/assets/pdfs/jmp_wiemann.pdf) for further discussion and details.
 
 The `bayesm.HART` package builds on the excellent ([and highly popular](https://cranlogs.r-pkg.org/downloads/total/last-month/bayesm,BART)) `bayesm` and `BART` packages. The syntax for estimating the HART logit model mirrors the syntax of the `bayesm` package. Researchers with existing `bayesm` code will only need to adapt the `Prior` argument to get started--see the code snippet below.
 
@@ -141,4 +141,4 @@ Rossi, Peter (2023). bayesm: Bayesian Inference for Marketing/Micro-Econometrics
 
 Sparapani, Rodney, Charles Spanbauer, and Robert McCulloch (2021). “Nonparametric Machine Learning and Efficient Computation with Bayesian Additive Regression Trees: The BART R Package.” Journal of Statistical Software 97, pp. 1–66.
 
-Wiemann, Thomas (2025). "[Personalization with HART](https://thomaswiemann.com/assets/pdfs/wiemann_jmp.pdf)." Working paper.
+Wiemann, Thomas (2025). "[Personalization with HART](https://thomaswiemann.com/assets/pdfs/jmp_wiemann.pdf)." Working paper.

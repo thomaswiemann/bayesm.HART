@@ -331,6 +331,6 @@ Allenby, Greg M. and James L. Ginter (1995). “Using Extremes to Design Product
 
 Rossi, Peter E., Greg M. Allenby, and Robert McCulloch (2009). Bayesian Statistics and Marketing. Reprint. Wiley Series in Probability and Statistics. Chichester: Wiley.
 
-Wiemann, Thomas (2025). "[Personalization with HART](https://thomaswiemann.com/assets/pdfs/wiemann_jmp.pdf)." Working paper.
+Wiemann, Thomas (2025). "[Personalization with HART](https://thomaswiemann.com/assets/pdfs/jmp_wiemann.pdf)." Working paper.
 
     

@@ -18,7 +18,7 @@ consumers; second, their individual-level preference estimates adapt
 optimally as a consumer’s choices accumulate.
 
 See the corresponding working paper [Personalization with
-HART](https://thomaswiemann.com/assets/pdfs/wiemann_jmp.pdf) for further
+HART](https://thomaswiemann.com/assets/pdfs/jmp_wiemann.pdf) for further
 discussion and details.
 
 The `bayesm.HART` package builds on the excellent ([and highly
@@ -187,5 +187,5 @@ Additive Regression Trees: The BART R Package.” Journal of Statistical
 Software 97, pp. 1–66.
 
 Wiemann, Thomas (2025). “[Personalization with
-HART](https://thomaswiemann.com/assets/pdfs/wiemann_jmp.pdf).” Working
+HART](https://thomaswiemann.com/assets/pdfs/jmp_wiemann.pdf).” Working
 paper.
