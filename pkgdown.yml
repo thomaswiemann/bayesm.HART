@@ -2,8 +2,8 @@ pandoc: 3.1.11
 pkgdown: 2.1.3
 pkgdown_sha: ~
 articles:
-  getstarted: getstarted.html
-last_built: 2025-06-29T20:32Z
+  bayesm-HART: bayesm-HART.html
+last_built: 2025-07-02T22:47Z
 urls:
   reference: https://thomaswieman.com/bayesm.HART/reference
   article: https://thomaswieman.com/bayesm.HART/articles

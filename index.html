@@ -40,11 +40,12 @@
 
     <div id="navbar" class="collapse navbar-collapse ms-3">
       <ul class="navbar-nav me-auto">
+<li class="nav-item"><a class="nav-link" href="articles/bayesm-HART.html">Get started</a></li>
 <li class="nav-item"><a class="nav-link" href="reference/index.html">Reference</a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
   <ul class="dropdown-menu" aria-labelledby="dropdown-articles">
-<li><a class="dropdown-item" href="articles/getstarted.html">Get Started</a></li>
+<li><a class="dropdown-item" href="articles/bayesm-HART.html">Get Started</a></li>
   </ul>
 </li>
       </ul>
@@ -62,9 +63,10 @@
   <main id="main" class="col-md-9"><div class="section level1">
 <div class="page-header"><h1 id="bayesmhart">bayesm.HART<a class="anchor" aria-label="anchor" href="#bayesmhart"></a>
 </h1></div>
-<p><code>bayesm.HART</code> implements a Metropolis-within-Gibbs sampler for the Hierarchical Additive Regression Trees (HART) logit model proposed in Wiemann (2025).</p>
-<p>HART generalizes conventional hierarchical models by defining the representative consumer as a flexible function of potentially many characteristics. Drawing on the Bayesian Additive Regression Trees (BART) of Chipman, George, and McCulloch (2010), HART specifies this function as a sum-of-trees factor model. HART’s combination of a flexible nonparametric prior within the hierarchical model provides a coherent framework for (Bayes-) optimal managerial decisions that adapt to the firm’s familiarity with the consumer: first, HART flexibly leverages observed characteristics for granular predictions about new consumers; second, as a consumer’s choices accumulate, their individual-level preferences adaptively deviate from this representative unit.</p>
+<p><code>bayesm.HART</code> implements the MCMC sampling routine for the Hierarchical Additive Regression Trees (HART) logit model proposed in Wiemann (2025).</p>
+<p>The HART logit model flexibly leverages potentially many observed consumer characteristics and thus generalizes existing hierarchical models that exclusively model the representative consumer as a linear function of a select few characteristics. HART’s combination of a flexible nonparametric prior within the hierarchical model provides a coherent framework for (Bayes-) optimal managerial decisions that adapt to the firm’s familiarity with the consumer: first, HART flexibly leverages observed characteristics for granular predictions about new consumers; second, their individual-level preference estimates adapt optimally as a consumer’s choices accumulate.</p>
 <p>See the corresponding working paper <a href="https://thomaswiemann.com/assets/pdfs/wiemann_jmp.pdf" class="external-link">Personalization with HART</a> for further discussion and details.</p>
+<p>The <code>bayesm.HART</code> package builds on the excellent (<a href="https://cranlogs.r-pkg.org/downloads/total/last-month/bayesm,BART" class="external-link">and highly popular</a>) <code>bayesm</code> and <code>BART</code> packages. The syntax for estimating the HART logit model mirrors the syntax of the <code>bayesm</code> package. Researchers with existing <code>bayesm</code> code will only need to adapt the <code>Prior</code> argument to get started–see the code snippet below.</p>
 <div class="section level2">
 <h2 id="installation">Installation<a class="anchor" aria-label="anchor" href="#installation"></a>
 </h2>
@@ -78,12 +80,13 @@
 <div class="section level2">
 <h2 id="example">Example<a class="anchor" aria-label="anchor" href="#example"></a>
 </h2>
-<p>The following example applies the HART logit model to the canonical conjoint dataset of Allenby and Ginter (1995) on credit card design, which is included in the <code>bayesm</code> package. The first code block loads the data and formats it into the list structure required by <code>rhierMnlRwMixture</code>. It then fits the HART logit model using a Metropolis-within-Gibbs sampler. We specify a sum-of-trees prior with 50 trees for the representative consumer and run the MCMC algorithm for 2,000 iterations, keeping every second draw.</p>
+<p>The following example applies the HART logit model to the canonical conjoint dataset of Allenby and Ginter (1995) on credit card design. The first code block loads the data and formats it into the list structure required by <code>rhierMnlRwMixture</code>. It also specifies the MCMC hyperparameters. The syntax for this codeblock is identical for the <code>bayesm</code> and <code>bayesm.HART</code> packages.</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va">bayesm.HART</span><span class="op">)</span></span>
+<code class="sourceCode R"><span><span class="co"># Load bayesm.HART for the sampler; load bayesm for the bank data</span></span>
+<span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va">bayesm.HART</span><span class="op">)</span></span>
 <span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va">bayesm</span><span class="op">)</span></span>
 <span></span>
-<span><span class="co"># Load and prepare data from the 'bank' dataset</span></span>
+<span><span class="co"># Load and prepare data from the 'bank' dataset (same as bayesm)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/utils/data.html" class="external-link">data</a></span><span class="op">(</span><span class="va">bank</span><span class="op">)</span></span>
 <span><span class="va">choiceAtt</span> <span class="op">&lt;-</span> <span class="va">bank</span><span class="op">$</span><span class="va">choiceAtt</span></span>
 <span><span class="va">hh</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/levels.html" class="external-link">levels</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor</a></span><span class="op">(</span><span class="va">choiceAtt</span><span class="op">$</span><span class="va">id</span><span class="op">)</span><span class="op">)</span></span>
@@ -97,108 +100,33 @@
 <span>    <span class="va">X</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">X</span><span class="op">)</span>, by <span class="op">=</span> <span class="fl">2</span><span class="op">)</span>, <span class="op">]</span> <span class="op">=</span> <span class="va">X_temp</span></span>
 <span>    <span class="va">lgtdata</span><span class="op">[[</span><span class="va">i</span><span class="op">]</span><span class="op">]</span> <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>y<span class="op">=</span><span class="va">y</span>, X<span class="op">=</span><span class="va">X</span><span class="op">)</span></span>
 <span><span class="op">}</span></span>
-<span><span class="va">Z</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">as.matrix</a></span><span class="op">(</span><span class="va">bank</span><span class="op">$</span><span class="va">demo</span><span class="op">[</span>, <span class="op">-</span><span class="fl">1</span><span class="op">]</span><span class="op">)</span></span>
-<span><span class="va">Z</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/t.html" class="external-link">t</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/t.html" class="external-link">t</a></span><span class="op">(</span><span class="va">Z</span><span class="op">)</span> <span class="op">-</span> <span class="fu"><a href="https://rdrr.io/r/base/colSums.html" class="external-link">colMeans</a></span><span class="op">(</span><span class="va">Z</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="va">Z</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">as.matrix</a></span><span class="op">(</span><span class="va">bank</span><span class="op">$</span><span class="va">demo</span><span class="op">[</span>, <span class="op">-</span><span class="fl">1</span><span class="op">]</span><span class="op">)</span> <span class="co"># omit id</span></span>
+<span><span class="va">Z</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/t.html" class="external-link">t</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/t.html" class="external-link">t</a></span><span class="op">(</span><span class="va">Z</span><span class="op">)</span> <span class="op">-</span> <span class="fu"><a href="https://rdrr.io/r/base/colSums.html" class="external-link">colMeans</a></span><span class="op">(</span><span class="va">Z</span><span class="op">)</span><span class="op">)</span> <span class="co"># de-mean covariates as required by bayesm</span></span>
+<span></span>
+<span><span class="co"># Final data object (same as bayesm)</span></span>
 <span><span class="va">Data</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>lgtdata <span class="op">=</span> <span class="va">lgtdata</span>, Z <span class="op">=</span> <span class="va">Z</span>, p <span class="op">=</span> <span class="fl">2</span><span class="op">)</span></span>
 <span></span>
-<span><span class="co"># Set MCMC parameters and suppress sampler output</span></span>
-<span><span class="va">Mcmc</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>R <span class="op">=</span> <span class="fl">2000</span>, keep <span class="op">=</span> <span class="fl">2</span>, nprint <span class="op">=</span> <span class="fl">500</span><span class="op">)</span></span>
-<span></span>
-<span><span class="co"># Fit the HART logit model</span></span>
+<span><span class="co"># MCMC hyperparameters (same as bayesm)</span></span>
+<span><span class="va">Mcmc</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>R <span class="op">=</span> <span class="fl">2000</span>, keep <span class="op">=</span> <span class="fl">2</span>, nprint <span class="op">=</span> <span class="fl">500</span><span class="op">)</span></span></code></pre></div>
+<p>To fit the HART logit model using a Metropolis-within-Gibbs sampler, call the <code>rhierMnlRwMixture</code> routine. The key difference between conventional calls to linear hierarchical specifications based on <code>bayesm</code> is the use of the additional <code>Prior</code> argument <code>bart</code>. For simplicity, the code below specifies a HART model with only 50 trees, leaving all other hyperparameters at their defaults. See also <code><a href="reference/rhierMnlRwMixture.html">?rhierMnlRwMixture</a></code> for details.</p>
+<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># Fit the HART logit model</span></span>
 <span><span class="va">out</span> <span class="op">&lt;-</span> <span class="fu">bayesm.HART</span><span class="fu">::</span><span class="fu"><a href="reference/rhierMnlRwMixture.html">rhierMnlRwMixture</a></span><span class="op">(</span></span>
 <span>    Data <span class="op">=</span> <span class="va">Data</span>, Mcmc <span class="op">=</span> <span class="va">Mcmc</span>, </span>
-<span>    Prior <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>ncomp <span class="op">=</span> <span class="fl">1</span>, bart <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>num_trees <span class="op">=</span> <span class="fl">50</span><span class="op">)</span><span class="op">)</span></span>
+<span>    Prior <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
+<span>      ncomp <span class="op">=</span> <span class="fl">1</span>, </span>
+<span>      bart <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>num_trees <span class="op">=</span> <span class="fl">50</span><span class="op">)</span> <span class="co"># new HART prior parameters</span></span>
+<span>      <span class="op">)</span>,</span>
+<span>    r_verbose <span class="op">=</span> <span class="cn">F</span> <span class="co"># suppress R print output (optional)</span></span>
 <span><span class="op">)</span></span>
-<span><span class="co">#&gt; Table of Y values pooled over all units</span></span>
-<span><span class="co">#&gt; ypooled</span></span>
-<span><span class="co">#&gt;    1    2 </span></span>
-<span><span class="co">#&gt; 6473 8326 </span></span>
-<span><span class="co">#&gt;  </span></span>
-<span><span class="co">#&gt; Starting MCMC Inference for Hierarchical Logit:</span></span>
-<span><span class="co">#&gt;    Normal Mixture with 1 components for first stage prior</span></span>
-<span><span class="co">#&gt;    2  alternatives;  14  variables in X</span></span>
-<span><span class="co">#&gt;    for  946  cross-sectional units</span></span>
-<span><span class="co">#&gt;  </span></span>
-<span><span class="co">#&gt; Prior Parms: </span></span>
-<span><span class="co">#&gt; nu = 17</span></span>
-<span><span class="co">#&gt; V </span></span>
-<span><span class="co">#&gt;       [,1] [,2] [,3] [,4] [,5] [,6] [,7] [,8] [,9] [,10] [,11] [,12] [,13]</span></span>
-<span><span class="co">#&gt;  [1,]   17    0    0    0    0    0    0    0    0     0     0     0     0</span></span>
-<span><span class="co">#&gt;  [2,]    0   17    0    0    0    0    0    0    0     0     0     0     0</span></span>
-<span><span class="co">#&gt;  [3,]    0    0   17    0    0    0    0    0    0     0     0     0     0</span></span>
-<span><span class="co">#&gt;  [4,]    0    0    0   17    0    0    0    0    0     0     0     0     0</span></span>
-<span><span class="co">#&gt;  [5,]    0    0    0    0   17    0    0    0    0     0     0     0     0</span></span>
-<span><span class="co">#&gt;  [6,]    0    0    0    0    0   17    0    0    0     0     0     0     0</span></span>
-<span><span class="co">#&gt;  [7,]    0    0    0    0    0    0   17    0    0     0     0     0     0</span></span>
-<span><span class="co">#&gt;  [8,]    0    0    0    0    0    0    0   17    0     0     0     0     0</span></span>
-<span><span class="co">#&gt;  [9,]    0    0    0    0    0    0    0    0   17     0     0     0     0</span></span>
-<span><span class="co">#&gt; [10,]    0    0    0    0    0    0    0    0    0    17     0     0     0</span></span>
-<span><span class="co">#&gt; [11,]    0    0    0    0    0    0    0    0    0     0    17     0     0</span></span>
-<span><span class="co">#&gt; [12,]    0    0    0    0    0    0    0    0    0     0     0    17     0</span></span>
-<span><span class="co">#&gt; [13,]    0    0    0    0    0    0    0    0    0     0     0     0    17</span></span>
-<span><span class="co">#&gt; [14,]    0    0    0    0    0    0    0    0    0     0     0     0     0</span></span>
-<span><span class="co">#&gt;       [,14]</span></span>
-<span><span class="co">#&gt;  [1,]     0</span></span>
-<span><span class="co">#&gt;  [2,]     0</span></span>
-<span><span class="co">#&gt;  [3,]     0</span></span>
-<span><span class="co">#&gt;  [4,]     0</span></span>
-<span><span class="co">#&gt;  [5,]     0</span></span>
-<span><span class="co">#&gt;  [6,]     0</span></span>
-<span><span class="co">#&gt;  [7,]     0</span></span>
-<span><span class="co">#&gt;  [8,]     0</span></span>
-<span><span class="co">#&gt;  [9,]     0</span></span>
-<span><span class="co">#&gt; [10,]     0</span></span>
-<span><span class="co">#&gt; [11,]     0</span></span>
-<span><span class="co">#&gt; [12,]     0</span></span>
-<span><span class="co">#&gt; [13,]     0</span></span>
-<span><span class="co">#&gt; [14,]    17</span></span>
-<span><span class="co">#&gt; mubar </span></span>
-<span><span class="co">#&gt;      [,1] [,2] [,3] [,4] [,5] [,6] [,7] [,8] [,9] [,10] [,11] [,12] [,13] [,14]</span></span>
-<span><span class="co">#&gt; [1,]    0    0    0    0    0    0    0    0    0     0     0     0     0     0</span></span>
-<span><span class="co">#&gt; Amu </span></span>
-<span><span class="co">#&gt;      [,1]</span></span>
-<span><span class="co">#&gt; [1,] 0.01</span></span>
-<span><span class="co">#&gt; a </span></span>
-<span><span class="co">#&gt; [1] 5</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; BART prior parameters:</span></span>
-<span><span class="co">#&gt; num_trees = 50</span></span>
-<span><span class="co">#&gt; power = 2</span></span>
-<span><span class="co">#&gt; base = 0.95</span></span>
-<span><span class="co">#&gt; tau = 0.141421</span></span>
-<span><span class="co">#&gt; numcut = 100</span></span>
-<span><span class="co">#&gt; sparse = 0</span></span>
-<span><span class="co">#&gt;  </span></span>
-<span><span class="co">#&gt; MCMC Parms: </span></span>
-<span><span class="co">#&gt; s= 0.636  w=  0.1  R=  2000  keep=  2  nprint=  500</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; initializing Metropolis candidate densities for  946  units ...</span></span>
-<span><span class="co">#&gt;   completed unit # 50</span></span>
-<span><span class="co">#&gt;   completed unit # 100</span></span>
-<span><span class="co">#&gt;   completed unit # 150</span></span>
-<span><span class="co">#&gt;   completed unit # 200</span></span>
-<span><span class="co">#&gt;   completed unit # 250</span></span>
-<span><span class="co">#&gt;   completed unit # 300</span></span>
-<span><span class="co">#&gt;   completed unit # 350</span></span>
-<span><span class="co">#&gt;   completed unit # 400</span></span>
-<span><span class="co">#&gt;   completed unit # 450</span></span>
-<span><span class="co">#&gt;   completed unit # 500</span></span>
-<span><span class="co">#&gt;   completed unit # 550</span></span>
-<span><span class="co">#&gt;   completed unit # 600</span></span>
-<span><span class="co">#&gt;   completed unit # 650</span></span>
-<span><span class="co">#&gt;   completed unit # 700</span></span>
-<span><span class="co">#&gt;   completed unit # 750</span></span>
-<span><span class="co">#&gt;   completed unit # 800</span></span>
-<span><span class="co">#&gt;   completed unit # 850</span></span>
-<span><span class="co">#&gt;   completed unit # 900</span></span>
 <span><span class="co">#&gt;  MCMC Iteration (est time to end - min) </span></span>
 <span><span class="co">#&gt;  500 (0.9)</span></span>
-<span><span class="co">#&gt;  1000 (0.6)</span></span>
+<span><span class="co">#&gt;  1000 (0.7)</span></span>
 <span><span class="co">#&gt;  1500 (0.3)</span></span>
 <span><span class="co">#&gt;  2000 (0.0)</span></span>
-<span><span class="co">#&gt;  Total Time Elapsed: 1.22</span></span></code></pre></div>
-<p>With the MCMC draws from the fitted model, we can compute posterior estimates for any quantity of interest. A key object is the representative consumer, which represents the expected part-worths for a consumer with characteristics. The following code computes the posterior mean and standard deviation of these expected part-worths for three credit card attributes.</p>
-<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<span><span class="co">#&gt;  Total Time Elapsed: 1.32</span></span></code></pre></div>
+<p>With the MCMC draws from the fitted model, we can characterize the posterior estimates for any quantity of interest. A key object is the <em>representative respondent</em>, which represents the expected part-worths for a respondent conditional on their characteristics. The following code computes the posterior mean and standard deviation of these expected part-worths for three credit card attributes.</p>
+<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">DeltaZ_hat</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict</a></span><span class="op">(</span><span class="va">out</span>, newdata <span class="op">=</span> <span class="va">Data</span>, type <span class="op">=</span> <span class="st">"DeltaZ+mu"</span>, </span>
 <span>                      burn <span class="op">=</span> <span class="fl">250</span>, r_verbose<span class="op">=</span><span class="cn">F</span><span class="op">)</span></span>
 <span></span>
@@ -224,19 +152,19 @@
 <span><span class="co"># Print the data frame to the console</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">results_df</span>, digits <span class="op">=</span> <span class="fl">3</span><span class="op">)</span></span>
 <span><span class="co">#&gt;                Interest Low Fixed Annual Fee Low Bank Out-of-State</span></span>
-<span><span class="co">#&gt; Posterior Mean              5.154           4.43             -3.44</span></span>
-<span><span class="co">#&gt; Posterior SD                0.959           1.01              1.03</span></span></code></pre></div>
+<span><span class="co">#&gt; Posterior Mean               5.06          4.099            -3.187</span></span>
+<span><span class="co">#&gt; Posterior SD                 1.04          0.961             0.948</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="learn-more-about-bayesmhart">Learn More about <code>bayesm.HART</code>
 <a class="anchor" aria-label="anchor" href="#learn-more-about-bayesmhart"></a>
 </h2>
-<p>Check out our articles to learn more:</p>
+<p>Curious and want to learn more? Have a look at the <code>bayesm.HART</code> vignettes:</p>
 <ul>
 <li>
 <code>vignette("bayesm.HART")</code> provides a more detailed introduction</li>
 <li>
-<code>vignette("marginal-effects")</code> discusses how to compute and plot marginal effects.</li>
+<code>vignette("marginal-effects")</code> discusses how to compute and plot marginal effects</li>
 </ul>
 </div>
 <div class="section level2">
@@ -253,19 +181,18 @@
 <div class="section level2">
 <h2 id="references">References<a class="anchor" aria-label="anchor" href="#references"></a>
 </h2>
-<p>Allenby, Greg M. and James L. Ginter (1995). “Using Extremes to Design Products and Segment Markets.” <em>Journal of Marketing Research</em> 32.4, pp. 392–403.</p>
+<p>Allenby, Greg M. and James L. Ginter (1995). “Using Extremes to Design Products and Segment Markets.” Journal of Marketing Research 32.4, pp. 392–403.</p>
 <p>Chipman, Hugh A., Edward I. George, and Robert E. McCulloch (2010). “BART: Bayesian Additive Regression Trees.” Annals of Applied Statistics 4.1.</p>
 <p>Rossi, Peter E., Greg M. Allenby, and Robert McCulloch (2009). Bayesian Statistics and Marketing. Reprint. Wiley Series in Probability and Statistics. Chichester: Wiley.</p>
 <p>Rossi, Peter (2023). bayesm: Bayesian Inference for Marketing/Micro-Econometrics. Comprehensive R Archive Network.</p>
 <p>Sparapani, Rodney, Charles Spanbauer, and Robert McCulloch (2021). “Nonparametric Machine Learning and Efficient Computation with Bayesian Additive Regression Trees: The BART R Package.” Journal of Statistical Software 97, pp. 1–66.</p>
-<p>Wiemann, Thomas (2025). “Personalization with HART.” Working paper.</p>
+<p>Wiemann, Thomas (2025). “<a href="https://thomaswiemann.com/assets/pdfs/wiemann_jmp.pdf" class="external-link">Personalization with HART</a>.” Working paper.</p>
 </div>
 </div>
   </main><aside class="col-md-3"><div class="license">
 <h2 data-toc-skip>License</h2>
 <ul class="list-unstyled">
-<li><a href="LICENSE.html">Full license</a></li>
-<li><small>GPL (&gt;= 3)</small></li>
+<li>GPL (&gt;= 3)</li>
 </ul>
 </div>
 
