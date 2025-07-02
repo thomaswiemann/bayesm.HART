@@ -108,7 +108,7 @@
 <span></span>
 <span><span class="co"># MCMC hyperparameters (same as bayesm)</span></span>
 <span><span class="va">Mcmc</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>R <span class="op">=</span> <span class="fl">2000</span>, keep <span class="op">=</span> <span class="fl">2</span>, nprint <span class="op">=</span> <span class="fl">500</span><span class="op">)</span></span></code></pre></div>
-<p>To fit the HART logit model using a Metropolis-within-Gibbs sampler, call the <code>rhierMnlRwMixture</code> routine. The key difference between conventional calls to linear hierarchical specifications based on <code>bayesm</code> is the use of the additional <code>Prior</code> argument <code>bart</code>. For simplicity, the code below specifies a HART model with only 50 trees, leaving all other hyperparameters at their defaults. See also <code><a href="reference/rhierMnlRwMixture.html">?rhierMnlRwMixture</a></code> for details.</p>
+<p>To fit the HART logit model using a Metropolis-within-Gibbs sampler, call the <code>rhierMnlRwMixture</code> routine. The key difference between conventional calls to linear hierarchical specifications based on <code>bayesm</code> is the use of the additional <code>Prior</code> argument <code>bart</code>. For simplicity, the code below specifies a HART model with only 50 trees per factor, leaving all other hyperparameters at their defaults. See also <code><a href="reference/rhierMnlRwMixture.html">?rhierMnlRwMixture</a></code> for details.</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Fit the HART logit model</span></span>
 <span><span class="va">out</span> <span class="op">&lt;-</span> <span class="fu">bayesm.HART</span><span class="fu">::</span><span class="fu"><a href="reference/rhierMnlRwMixture.html">rhierMnlRwMixture</a></span><span class="op">(</span></span>
@@ -121,7 +121,7 @@
 <span><span class="op">)</span></span>
 <span><span class="co">#&gt;  MCMC Iteration (est time to end - min) </span></span>
 <span><span class="co">#&gt;  500 (0.9)</span></span>
-<span><span class="co">#&gt;  1000 (0.7)</span></span>
+<span><span class="co">#&gt;  1000 (0.6)</span></span>
 <span><span class="co">#&gt;  1500 (0.3)</span></span>
 <span><span class="co">#&gt;  2000 (0.0)</span></span>
 <span><span class="co">#&gt;  Total Time Elapsed: 1.32</span></span></code></pre></div>
@@ -152,8 +152,8 @@
 <span><span class="co"># Print the data frame to the console</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">results_df</span>, digits <span class="op">=</span> <span class="fl">3</span><span class="op">)</span></span>
 <span><span class="co">#&gt;                Interest Low Fixed Annual Fee Low Bank Out-of-State</span></span>
-<span><span class="co">#&gt; Posterior Mean               5.06          4.099            -3.187</span></span>
-<span><span class="co">#&gt; Posterior SD                 1.04          0.961             0.948</span></span></code></pre></div>
+<span><span class="co">#&gt; Posterior Mean               5.08           4.33            -3.411</span></span>
+<span><span class="co">#&gt; Posterior SD                 0.96           0.99             0.993</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="learn-more-about-bayesmhart">Learn More about <code>bayesm.HART</code>
@@ -162,9 +162,8 @@
 <p>Curious and want to learn more? Have a look at the <code>bayesm.HART</code> vignettes:</p>
 <ul>
 <li>
-<code>vignette("bayesm.HART")</code> provides a more detailed introduction</li>
-<li>
-<code>vignette("marginal-effects")</code> discusses how to compute and plot marginal effects</li>
+<a href="https://thomaswiemann.com/bayesm.HART/articles/bayesm-HART.html" class="external-link"><code>vignette("bayesm-HART")</code></a> provides a more detailed introduction</li>
+<li>… more here come soon!</li>
 </ul>
 </div>
 <div class="section level2">
