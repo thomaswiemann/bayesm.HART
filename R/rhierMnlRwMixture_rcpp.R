@@ -1,9 +1,12 @@
 #' Bayesian Multinomial Logit Model with HART Prior
 #' @description
-#' `rhierMnlRwMixture` implements a MCMC algorithm for a Bayesian multinomial 
-#' logit model with a Hierarchical Additive Regression Trees (HART) prior. The model 
-#' allows for flexible modeling of the representative consumer and captures 
-#' unobserved preference heterogeneity.
+#' `rhierMnlRwMixture` implements an MCMC algorithm for a Bayesian multinomial 
+#' logit model with a Hierarchical Additive Regression Trees (HART) prior. HART 
+#' is a hierarchical nonparametric prior that allows for flexible modeling of the 
+#' representative consumer as a function of potentially many observed characteristics.
+#' 
+#' @note Currently, the mixture component is not implemented. Please use 
+#' `ncomp = 1` in the Prior specification.
 #'
 #' @param Data A list containing:
 #'   - `p`: Number of choice alternatives (integer).
@@ -11,18 +14,18 @@
 #'     - `y`: `n_i x 1` vector of multinomial outcomes (1 to `p`).
 #'     - `X`: `(n_i * p) x nvar` matrix of alternative-specific attributes.
 #'   - `Z` (optional): `nlgt x nz` matrix of observed characteristics for each unit.
-#'     **Should NOT contain an intercept** and is typically centered.
+#'     Should NOT contain an intercept and should be centered.
 #' @param Prior A list containing prior parameters:
 #'   - `ncomp`: Number of mixture components (required).
 #'   - `a` (optional): `ncomp x 1` vector of Dirichlet prior parameters for mixture weights `pvec` (default: `rep(5, ncomp)`).
-#'   - `deltabar` (optional): `nz * nvar x 1` prior mean for `vec(Delta)` (default: 0). Ignored if BART is used.
-#'   - `Ad` (optional): Prior precision matrix for `vec(Delta)` (default: `0.01 * I`). Ignored if BART is used.
-#'   - `mubar` (optional): `nvar x 1` prior mean for component means (default: 0 if unrestricted, 2 if restricted).
-#'   - `Amu` (optional): Prior precision for component means (default: 0.01 if unrestricted, 0.1 if restricted).
+#'   - `deltabar` (optional): `nz * nvar x 1` prior mean for `vec(Delta)` (default: 0). Ignored if HART is used.
+#'   - `Ad` (optional): Prior precision matrix for `vec(Delta)` (default: `0.01 * I`). Ignored if HART is used.
+#'   - `mubar` (optional): `nvar x 1` prior mean vector for mixture component means (default: 0 if unrestricted, 2 if restricted).
+#'   - `Amu` (optional): Prior precision for mixture component means (default: 0.01 if unrestricted, 0.1 if restricted).
 #'   - `nu` (optional): Degrees of freedom for IW prior on component `Sigma` (default: `nvar+3` if unrestricted, `nvar+15` if restricted).
 #'   - `V` (optional): Location matrix for IW prior on component `Sigma` (default: `nu * I` or scaled based on restriction).
-#'   - `SignRes` (optional): `nvar x 1` vector of sign restrictions (0=none, 1=pos, -1=neg). Default: `rep(0, nvar)`.
-#'   - `bart` (optional): List of parameters for the HART prior. If specified, this models the representative consumer \eqn{\Delta(Z)} as a sum-of-trees. See Details.
+#'   - `SignRes` (optional): `nvar x 1` vector of sign restrictions. Must contain values of 0, -1, or 1. The value 0 means no restriction, -1 ensures the coefficient is negative, and 1 ensures the coefficient is positive. For example, `SignRes = c(0,1,-1)` means the first coefficient is unconstrained, the second will be positive, and the third will be negative. Default: `rep(0, nvar)`.
+#'   - `bart` (optional): List of parameters for the HART prior. If specified, this models the representative consumer \eqn{\Delta(Z)} as a scaled sum-of-trees factor model. See Details.
 #' @param Mcmc A list containing MCMC parameters:
 #'   - `R`: Number of MCMC iterations (required).
 #'   - `keep` (optional): Thinning parameter (default: 1).
@@ -31,87 +34,76 @@
 #'   - `w` (optional): Fractional likelihood weighting parameter (default: 0.1).
 #' @param r_verbose Logical. Print startup messages? Default TRUE.
 #'
-#' @return A list containing:
-#'   - `Deltadraw`: If `Z` provided and `bart=NULL`, `(R/keep) x (nz * nvar)` matrix of `vec(Delta)` draws.
-#'   - `betadraw`: `nlgt x nvar x (R/keep)` array of unit-level `beta_i` draws.
-#'   - `nmix`: List containing mixture draws (`probdraw`, `zdraw`, `compdraw`). See Details.
-#'   - `loglike`: `(R/keep) x 1` vector of log-likelihood values at kept draws.
-#'   - `SignRes`: `nvar x 1` vector of sign restrictions used.
-#'   - `bart_trees`: If BART used, list containing tree structures.
-#'
 #' @details
-#' ## Model and Priors
+#' ## Model Specification
 #' \eqn{y_i \sim MNL(X_i, \beta_i)} for unit \(i = 1, \ldots, nlgt\).
 #' The unit-level coefficients (part-worths) \eqn{\beta_i} are modeled as:
 #' \deqn{\beta_i = \Delta(Z_i) + u_i}
 #' where \eqn{\Delta(Z_i)} is the *representative consumer* component, which depends on observed characteristics \eqn{Z_i}, and \eqn{u_i} is the unobserved heterogeneity component.
-#'   - If `Z` is provided and `Prior$bart` is `NULL`: \eqn{\Delta(Z_i) = Z_i \Delta} (linear model).
-#'   - If `Z` is provided and `Prior$bart` is a list: \eqn{\Delta(Z_i)} is modeled with a HART prior (sum-of-trees).
+#'
+#' The representative consumer component is specified as:
+#'   - If `Z` is provided and `Prior$bart` is `NULL`: \eqn{\Delta(Z_i) = Z_i \Delta} where \eqn{\Delta} is an `nz x nvar` matrix (linear hierarchical model).
+#'   - If `Z` is provided and `Prior$bart` is a list: \eqn{\Delta(Z_i)} is modeled with a HART prior (scaled sum-of-trees factor model).
 #'   - If `Z` is `NULL`: \eqn{\Delta(Z_i) = 0}.
 #'
-#' The unobserved heterogeneity component \(u_i\) follows a mixture of normals:
-#' \deqn{u_i \sim \sum_{j=1}^{ncomp} p_j N(\mu_j, \Sigma_j)}
+#' With `ncomp = 1` (currently required), the unobserved heterogeneity component follows:
+#' \deqn{u_i \sim N(\mu_1, \Sigma_1)}
 #'
-#' **Priors:**
-#' - For mixture weights: \eqn{pvec \sim Dirichlet(a)}
-#' - For the linear model: \eqn{\delta = vec(\Delta) \sim N(deltabar, A_d^{-1})}
-#' - For the HART model: A sum-of-trees prior is placed on each dimension of a standardized \eqn{\Delta(Z_i)}. See BART details below.
-#' - For mixture component means: \eqn{\mu_j \sim N(mubar, \Sigma_j \otimes Amu^{-1})} (Note: Scaled by Sigma_j)
-#' - For mixture component covariance: \eqn{\Sigma_j \sim IW(\nu, V)}
+#' ## Prior Specifications
+#' - **Mixture weights**: \eqn{pvec \sim Dirichlet(a)}
+#' - **Linear model**: \eqn{\delta = vec(\Delta) \sim N(deltabar, A_d^{-1})}
+#' - **Mixture component means**: \eqn{\mu_j \sim N(mubar, \Sigma_j \otimes Amu^{-1})} (covariance scaled by \eqn{\Sigma_j})
+#' - **Mixture component covariance**: \eqn{\Sigma_j \sim IW(\nu, V)}
+#' - **HART model**: A sum-of-trees prior is placed on each factor of the scaled sum-of-trees model (see HART details below).
 #'
-#' ## Argument Details
-#' **Data List:**
-#'   - `p`: Number of alternatives.
-#'   - `lgtdata`: List of `nlgt` lists. `lgtdata[[i]] = list(y, X)`.
-#'   - `Z`: `nlgt x nz` matrix (optional). Centered, no intercept.
+#' ## HART Prior Details
+#' If `Prior$bart` is a list, it specifies a HART prior for the representative consumer \eqn{\Delta(Z)}. 
+#' This replaces the conventional linear hierarchical specification. The HART prior models the representative 
+#' consumer using a scaled vector of `nvar` sum-of-trees models.
 #'
-#' **Prior List:**
-#'   - `ncomp`: Number of mixture components.
-#'   - See `@param` descriptions for defaults.
-#'
-#' **Mcmc List:**
-#'   - `R`: Number of draws.
-#'   - See `@param` descriptions for defaults.
-#'
-#' **HART Prior (`Prior$bart`):** 
-#' If `Prior$bart` is a list, it specifies a HART prior for the representative consumer, \eqn{\Delta(Z)}. 
-#' This replaces the conventional linear specification \eqn{Z \Delta}. The HART prior models each dimension of 
-#' the (standardized) representative consumer as a sum-of-trees.
-#' Relevant parameters (defaults used if not specified in `Prior$bart`):
-#'   - `num_trees`: Number of trees in each sum-of-trees model (default: 200).
-#'   - `power`, `base`: Parameters for the tree structure prior. The probability of a node at depth `q` splitting is \eqn{\alpha(1+q)^{-\beta}}, where `base`=`\alpha` and `power`=`\beta`. Defaults are `base=0.95`, `power=2`, which favors shallow trees.
-#'   - `tau`: The standard deviation for the normal prior on terminal leaf coefficients, \eqn{\lambda_{dhg} \sim N(0, \tau^2)}. The default value is `1/sqrt(num_trees)`, which regularizes the model by shrinking individual tree contributions to be small.
+#' **HART Parameters** (defaults used if not specified in `Prior$bart`):
+#'   - `num_trees`: Number of trees H in each sum-of-trees model (default: 200).
+#'   - `power`, `base`: Parameters for the tree structure prior. The probability of a node at depth `q` splitting is \eqn{\alpha(1+q)^{-\beta}}, where `base`=\eqn{\alpha} and `power`=\eqn{\beta}. Defaults are `base=0.95`, `power=2`, which strongly favors shallow trees.
+#'   - `tau`: Parameter controlling the prior variance of terminal leaf coefficients. The default is \eqn{\tau = 1/\sqrt{H}} where \eqn{\lambda_{dhg} \sim N(0, \tau^2)} for terminal leaf coefficients.
 #'   - `numcut`: Number of grid points for proposing splitting rules for continuous variables (default: 100).
-#'   - `sparse`: If `TRUE`, use the Dirichlet HART prior to induce sparsity. See next section. (default: `FALSE`).
-#'   - `burn`: Number of internal burn-in iterations for the BART-sampler within each MCMC iteration (default: 100).
+#'   - `sparse`: If `TRUE`, use the Dirichlet HART prior to induce sparsity in variable selection (default: `FALSE`).
 #'
-#' ## Dirichlet HART (`sparse = TRUE`)
-#' The Dirichlet HART model augments the HART prior to induce sparsity in variable selection, following Linero (2018). The selection probabilities for splitting variables are given a `Dirichlet(zeta/K, ..., zeta/K)` prior, where `K` is the number of characteristics. The concentration parameter `zeta` is given a `Beta(a,b)` hyperprior on `zeta/(zeta+rho)`.
-#'   - `a`, `b`: Shape parameters for the Beta hyperprior. The default (`a=0.5, b=1`) induces sparsity.
-#'   - `rho`: A parameter that influences the number of selected variables. Default is the number of characteristics.
-#'   - `theta`, `omega`: Additional parameters for the sparsity-inducing prior (defaults: 0.0, 1.0).
-#'   - `aug`: Logical. For internal use, not relevant for the logit model.
+#' **Dirichlet HART** (`sparse = TRUE`): The Dirichlet HART model augments the HART prior to induce sparsity in variable selection, following Linero (2018). Instead of uniform probability for selecting splitting variables, the selection probabilities \eqn{\tau = (\tau^{(1)}, \ldots, \tau^{(K)})} are given a sparse Dirichlet prior: \eqn{(\tau^{(1)}, \ldots, \tau^{(K)}) \sim Dirichlet(\theta/K, \ldots, \theta/K)}, where K is the number of characteristics. The concentration parameter \eqn{\theta} is given a hierarchical prior: \eqn{\theta/(\theta+\rho) \sim Beta(a,b)}.
+#'   - `a`, `b`: Shape parameters for the Beta hyperprior. The default (`a=0.5, b=1`) induces sparsity where few variables have high selection probabilities.
+#'   - `rho`: Parameter influencing sparsity. Default is the number of characteristics K. Reducing rho below K encourages greater sparsity.
+#'   - `theta`: When used, sets Dirichlet concentration parameter without additional hyper-prior (default: 0.0).
+#'   - `burn`: Number of internal burn-in iterations for the Dirichlet HART sampler before variable selection is allowed (default: 100).
 #'
 #' ## Sign Restrictions
 #' If `SignRes[k]` is non-zero, the k-th coefficient \eqn{\beta_{ik}} is modeled as
-#' \deqn{\beta_{ik} = SignRes[k] \cdot exp(\beta^*_{ik}).}
+#' \deqn{\beta_{ik} = SignRes[k] \cdot \exp(\beta^*_{ik}).}
 #' The `betadraw` output contains the draws for \eqn{\beta_{ik}} (with the restriction applied).
 #' The `nmix` output contains draws for the *unrestricted* mixture components.
+#' 
+#' **Note:** Care should be taken when selecting priors on any sign restricted coefficients.
 #'
-#' ## `nmix` Details
-#' `nmix` is a list: `list(probdraw, zdraw, compdraw)`
-#'   - `probdraw`: `(R/keep) x ncomp` matrix of mixture component probabilities.
-#'   - `zdraw`: `(R/keep) x nlgt` matrix of component *assignments* for each unit (i.e., which `j` for \eqn{u_i}).
-#'   - `compdraw`: `(R/keep)` list of `ncomp` lists. `compdraw[[r]][[j]] = list(mu, rooti)` contains the draw of \eqn{\mu_j} and \eqn{\Sigma_j^{-1/2}} for component `j` at kept draw `r`.
+#' @return A list containing:
+#'   - `Deltadraw`: If `Z` provided and `bart=NULL`, `(R/keep) x (nz * nvar)` matrix of `vec(Delta)` draws.
+#'   - `betadraw`: `nlgt x nvar x (R/keep)` array of unit-level `beta_i` draws.
+#'   - `nmix`: List containing mixture draws with components:
+#'     - `probdraw`: `(R/keep) x ncomp` matrix of mixture component probabilities.
+#'     - `zdraw`: `(R/keep) x nlgt` matrix of component assignments for each unit.
+#'     - `compdraw`: `(R/keep)` list of `ncomp` lists. `compdraw[[r]][[j]] = list(mu, rooti)` contains the draw of \eqn{\mu_j} and \eqn{\Sigma_j^{-1/2}} for component `j` at kept draw `r`.
+#'   - `loglike`: `(R/keep) x 1` vector of log-likelihood values at kept draws.
+#'   - `SignRes`: `nvar x 1` vector of sign restrictions used.
+#'   - `bart_trees`: If HART used, list containing tree structures and related parameters.
 #'
 #' @references
+#' Chipman, Hugh A., Edward I. George, and Robert E. McCulloch (2010). "BART: Bayesian Additive Regression Trees." Annals of Applied Statistics 4.1.
+#' 
+#' Linero, Antonio R. (2018). "Bayesian regression trees for high-dimensional prediction and variable selection." Journal of the American Statistical Association 113.522, pp. 626-636.
+#' 
 #' Rossi, Peter E., Greg M. Allenby, and Robert McCulloch (2009). Bayesian Statistics and Marketing. Reprint. Wiley Series in Probability and Statistics. Chichester: Wiley.
 #' 
 #' Rossi, Peter (2023). bayesm: Bayesian Inference for Marketing/Micro-Econometrics. Comprehensive R Archive Network.
 #' 
 #' Wiemann, Thomas (2025). "Personalization with HART." Working paper.
 #'
-#' @seealso `rmnlIndepMetrop`
 #' @seealso [predict.rhierMnlRwMixture()]
 #'
 #' @author Peter Rossi (original bayesm code), Thomas Wiemann (HART modifications).
@@ -137,57 +129,7 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
   #                        switched to Nelder-Mead to find constrained pooled optimum
   #                         BFGS sometimes has trouble with reparameterized model 
   #   6/20 by Peter Rossi: fixed check on size of betapooled to correct indexing
-  #
-  # purpose: run hierarchical mnl logit model with mixture of normals 
-  #   using RW and cov(RW inc) = (hess_i + Vbeta^-1)^-1
-  #   uses normal approximation to pooled likelihood
-  #
-  # Arguments:
-  #   Data contains a list of (p,lgtdata, and possibly Z)
-  #      p is number of choice alternatives
-  #      lgtdata is a list of lists (one list per unit)
-  #          lgtdata[[i]]=list(y,X)
-  #             y is a vector indicating alternative chosen
-  #               integers 1:p indicate alternative
-  #             X is a length(y)*p x nvar matrix of values of
-  #               X vars including intercepts
-  #             Z is an length(lgtdata) x nz matrix of values of variables
-  #               note: Z should NOT contain an intercept
-  #   Prior contains a list of (deltabar,Ad,mubar,Amu,nu,V,ncomp,SignRes) 
-  #      ncomp is the number of components in normal mixture
-  #           if elements of Prior (other than ncomp) do not exist, defaults are used
-  #      SignRes is a vector of sign restrictions
-  #   Mcmc contains a list of (s,c,R,keep,nprint)
-  #
-  # Output:  as list containing
-  #   Deltadraw R/keep  x nz*nvar matrix of draws of Delta, first row is initial value
-  #   betadraw is nlgt x nvar x R/keep array of draws of betas
-  #   probdraw is R/keep x ncomp matrix of draws of probs of mixture components
-  #   compdraw is a list of list of lists (length R/keep)
-  #      compdraw[[rep]] is the repth draw of components for mixtures
-  #   loglike  log-likelikelhood at each kept draw
-  #
-  # Priors:
-  #    beta_i = D %*% z[i,] + u_i
-  #       u_i ~ N(mu_ind[i],Sigma_ind[i])
-  #       ind[i] ~multinomial(p)
-  #       p ~ dirichlet (a)
-  #       D is a k x nz array
-  #          delta= vec(D) ~ N(deltabar,A_d^-1)
-  #    mu_j ~ N(mubar,A_mu^-1(x)Sigma_j)
-  #    Sigma_j ~ IW(nu,V^-1)
-  #    ncomp is number of components
-  #
-  # MCMC parameters
-  #   s is the scaling parameter for the RW inc covariance matrix; s^2 Var is inc cov
-  #      matrix
-  #   w is parameter for weighting function in fractional likelihood
-  #      w is the weight on the normalized pooled likelihood 
-  #   R is number of draws
-  #   keep is thinning parameter, keep every keepth draw
-  #   nprint - print estimated time remaining on every nprint'th draw
-  #
-  #  check arguments
+  #   6/25 by Thomas Wiemann: added HART prior + roxygen2 docs
   #
   if(missing(Data)) {pandterm("Requires Data argument -- list of p,lgtdata, and (possibly) Z")}
   if(is.null(Data$p)) {pandterm("Requires Data element p (# choice alternatives)") }
@@ -355,7 +297,7 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
     print(a)
     if(drawdelta) {
       if (useBART) {
-        cat("\nBART prior parameters:\n")
+        cat("\nHART prior parameters:\n")
         cat(sprintf("num_trees = %d\n", bart_params$num_trees))
         cat(sprintf("power = %g\n", bart_params$power))
         cat(sprintf("base = %g\n", bart_params$base))

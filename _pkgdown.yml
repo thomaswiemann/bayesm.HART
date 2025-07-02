@@ -18,7 +18,7 @@ home:
 navbar:
   structure:
     left:
-    - getstarted
+    - intro
     - reference
     - articles
     - news
@@ -44,4 +44,4 @@ articles:
 - title: Key Features
   navbar: ~
   contents:
-  - getstarted
+  - bayesm-HART

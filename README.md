@@ -3,13 +3,30 @@
 
 # bayesm.HART
 
-`bayesm.HART` implements a Metropolis-within-Gibbs sampler for the
-Hierarchical Additive Regression Trees (HART) logit model proposed in
-Wiemann (2025).
+`bayesm.HART` implements the MCMC sampling routine for the Hierarchical
+Additive Regression Trees (HART) logit model proposed in Wiemann (2025).
 
-HART generalizes conventional hierarchical models by defining the representative consumer as a flexible function of potentially many characteristics. Drawing on the Bayesian Additive Regression Trees (BART) of Chipman, George, and McCulloch (2010), HART specifies this function as a sum-of-trees factor model. HART's combination of a flexible nonparametric prior within the hierarchical model provides a coherent framework for (Bayes-) optimal managerial decisions that adapt to the firm's familiarity with the consumer: first, HART flexibly leverages observed characteristics for granular predictions about new consumers; second, as a consumer's choices accumulate, their individual-level preferences adaptively deviate from this representative unit.
+The HART logit model flexibly leverages potentially many observed
+consumer characteristics and thus generalizes existing hierarchical
+models that exclusively model the representative consumer as a linear
+function of a select few characteristics. HART’s combination of a
+flexible nonparametric prior within the hierarchical model provides a
+coherent framework for (Bayes-) optimal managerial decisions that adapt
+to the firm’s familiarity with the consumer: first, HART flexibly
+leverages observed characteristics for granular predictions about new
+consumers; second, their individual-level preference estimates adapt
+optimally as a consumer’s choices accumulate.
 
-See the corresponding working paper [Personalization with HART](https://thomaswiemann.com/assets/pdfs/wiemann_jmp.pdf) for further discussion and details.
+See the corresponding working paper [Personalization with
+HART](https://thomaswiemann.com/assets/pdfs/wiemann_jmp.pdf) for further
+discussion and details.
+
+The `bayesm.HART` package builds on the excellent ([and highly
+popular](https://cranlogs.r-pkg.org/downloads/total/last-month/bayesm,BART))
+`bayesm` and `BART` packages. The syntax for estimating the HART logit
+model mirrors the syntax of the `bayesm` package. Researchers with
+existing `bayesm` code will only need to adapt the `Prior` argument to
+get started–see the code snippet below.
 
 ## Installation
 
@@ -26,19 +43,18 @@ devtools::install_github("thomaswiemann/bayesm.HART", dependencies = TRUE)
 ## Example
 
 The following example applies the HART logit model to the canonical
-conjoint dataset of Allenby and Ginter (1995) on credit card design,
-which is included in the `bayesm` package. The first code block loads
-the data and formats it into the list structure required by
-`rhierMnlRwMixture`. It then fits the HART logit model using a
-Metropolis-within-Gibbs sampler. We specify a sum-of-trees prior with 50
-trees for the representative consumer and run the MCMC algorithm for
-2,000 iterations, keeping every second draw.
+conjoint dataset of Allenby and Ginter (1995) on credit card design. The
+first code block loads the data and formats it into the list structure
+required by `rhierMnlRwMixture`. It also specifies the MCMC
+hyperparameters. The syntax for this codeblock is identical for the
+`bayesm` and `bayesm.HART` packages.
 
 ``` r
+# Load bayesm.HART for the sampler; load bayesm for the bank data
 library(bayesm.HART)
 library(bayesm)
 
-# Load and prepare data from the 'bank' dataset
+# Load and prepare data from the 'bank' dataset (same as bayesm)
 data(bank)
 choiceAtt <- bank$choiceAtt
 hh <- levels(factor(choiceAtt$id))
@@ -52,112 +68,46 @@ for (i in 1:nhh) {
     X[seq(1, nrow(X), by = 2), ] = X_temp
     lgtdata[[i]] = list(y=y, X=X)
 }
-Z <- as.matrix(bank$demo[, -1])
-Z <- t(t(Z) - colMeans(Z))
+Z <- as.matrix(bank$demo[, -1]) # omit id
+Z <- t(t(Z) - colMeans(Z)) # de-mean covariates as required by bayesm
+
+# Final data object (same as bayesm)
 Data <- list(lgtdata = lgtdata, Z = Z, p = 2)
 
-# Set MCMC parameters and suppress sampler output
+# MCMC hyperparameters (same as bayesm)
 Mcmc <- list(R = 2000, keep = 2, nprint = 500)
+```
 
+To fit the HART logit model using a Metropolis-within-Gibbs sampler,
+call the `rhierMnlRwMixture` routine. The key difference between
+conventional calls to linear hierarchical specifications based on
+`bayesm` is the use of the additional `Prior` argument `bart`. For
+simplicity, the code below specifies a HART model with only 50 trees,
+leaving all other hyperparameters at their defaults. See also
+`?rhierMnlRwMixture` for details.
+
+``` r
 # Fit the HART logit model
 out <- bayesm.HART::rhierMnlRwMixture(
     Data = Data, Mcmc = Mcmc, 
-    Prior = list(ncomp = 1, bart = list(num_trees = 50))
+    Prior = list(
+      ncomp = 1, 
+      bart = list(num_trees = 50) # new HART prior parameters
+      ),
+    r_verbose = F # suppress R print output (optional)
 )
-#> Table of Y values pooled over all units
-#> ypooled
-#>    1    2 
-#> 6473 8326 
-#>  
-#> Starting MCMC Inference for Hierarchical Logit:
-#>    Normal Mixture with 1 components for first stage prior
-#>    2  alternatives;  14  variables in X
-#>    for  946  cross-sectional units
-#>  
-#> Prior Parms: 
-#> nu = 17
-#> V 
-#>       [,1] [,2] [,3] [,4] [,5] [,6] [,7] [,8] [,9] [,10] [,11] [,12] [,13]
-#>  [1,]   17    0    0    0    0    0    0    0    0     0     0     0     0
-#>  [2,]    0   17    0    0    0    0    0    0    0     0     0     0     0
-#>  [3,]    0    0   17    0    0    0    0    0    0     0     0     0     0
-#>  [4,]    0    0    0   17    0    0    0    0    0     0     0     0     0
-#>  [5,]    0    0    0    0   17    0    0    0    0     0     0     0     0
-#>  [6,]    0    0    0    0    0   17    0    0    0     0     0     0     0
-#>  [7,]    0    0    0    0    0    0   17    0    0     0     0     0     0
-#>  [8,]    0    0    0    0    0    0    0   17    0     0     0     0     0
-#>  [9,]    0    0    0    0    0    0    0    0   17     0     0     0     0
-#> [10,]    0    0    0    0    0    0    0    0    0    17     0     0     0
-#> [11,]    0    0    0    0    0    0    0    0    0     0    17     0     0
-#> [12,]    0    0    0    0    0    0    0    0    0     0     0    17     0
-#> [13,]    0    0    0    0    0    0    0    0    0     0     0     0    17
-#> [14,]    0    0    0    0    0    0    0    0    0     0     0     0     0
-#>       [,14]
-#>  [1,]     0
-#>  [2,]     0
-#>  [3,]     0
-#>  [4,]     0
-#>  [5,]     0
-#>  [6,]     0
-#>  [7,]     0
-#>  [8,]     0
-#>  [9,]     0
-#> [10,]     0
-#> [11,]     0
-#> [12,]     0
-#> [13,]     0
-#> [14,]    17
-#> mubar 
-#>      [,1] [,2] [,3] [,4] [,5] [,6] [,7] [,8] [,9] [,10] [,11] [,12] [,13] [,14]
-#> [1,]    0    0    0    0    0    0    0    0    0     0     0     0     0     0
-#> Amu 
-#>      [,1]
-#> [1,] 0.01
-#> a 
-#> [1] 5
-#> 
-#> BART prior parameters:
-#> num_trees = 50
-#> power = 2
-#> base = 0.95
-#> tau = 0.141421
-#> numcut = 100
-#> sparse = 0
-#>  
-#> MCMC Parms: 
-#> s= 0.636  w=  0.1  R=  2000  keep=  2  nprint=  500
-#> 
-#> initializing Metropolis candidate densities for  946  units ...
-#>   completed unit # 50
-#>   completed unit # 100
-#>   completed unit # 150
-#>   completed unit # 200
-#>   completed unit # 250
-#>   completed unit # 300
-#>   completed unit # 350
-#>   completed unit # 400
-#>   completed unit # 450
-#>   completed unit # 500
-#>   completed unit # 550
-#>   completed unit # 600
-#>   completed unit # 650
-#>   completed unit # 700
-#>   completed unit # 750
-#>   completed unit # 800
-#>   completed unit # 850
-#>   completed unit # 900
 #>  MCMC Iteration (est time to end - min) 
 #>  500 (0.9)
-#>  1000 (0.6)
+#>  1000 (0.7)
 #>  1500 (0.3)
 #>  2000 (0.0)
-#>  Total Time Elapsed: 1.22
+#>  Total Time Elapsed: 1.32
 ```
 
-With the MCMC draws from the fitted model, we can compute posterior
-estimates for any quantity of interest. A key object is the
-representative consumer, which represents the expected
-part-worths for a consumer with characteristics. The following
+With the MCMC draws from the fitted model, we can characterize the
+posterior estimates for any quantity of interest. A key object is the
+*representative respondent*, which represents the expected part-worths
+for a respondent conditional on their characteristics. The following
 code computes the posterior mean and standard deviation of these
 expected part-worths for three credit card attributes.
 
@@ -187,17 +137,18 @@ colnames(results_df) <- c("Interest Low Fixed", "Annual Fee Low", "Bank Out-of-S
 # Print the data frame to the console
 print(results_df, digits = 3)
 #>                Interest Low Fixed Annual Fee Low Bank Out-of-State
-#> Posterior Mean              5.154           4.43             -3.44
-#> Posterior SD                0.959           1.01              1.03
+#> Posterior Mean               5.06          4.099            -3.187
+#> Posterior SD                 1.04          0.961             0.948
 ```
 
 ## Learn More about `bayesm.HART`
 
-Check out our articles to learn more:
+Curious and want to learn more? Have a look at the `bayesm.HART`
+vignettes:
 
 - `vignette("bayesm.HART")` provides a more detailed introduction
 - `vignette("marginal-effects")` discusses how to compute and plot
-  marginal effects.
+  marginal effects
 
 ## Acknowledgements
 
@@ -216,7 +167,7 @@ contributions of their respective authors:
 ## References
 
 Allenby, Greg M. and James L. Ginter (1995). “Using Extremes to Design
-Products and Segment Markets.” *Journal of Marketing Research* 32.4,
+Products and Segment Markets.” Journal of Marketing Research 32.4,
 pp. 392–403.
 
 Chipman, Hugh A., Edward I. George, and Robert E. McCulloch (2010).
@@ -235,4 +186,6 @@ Sparapani, Rodney, Charles Spanbauer, and Robert McCulloch (2021).
 Additive Regression Trees: The BART R Package.” Journal of Statistical
 Software 97, pp. 1–66.
 
-Wiemann, Thomas (2025). “Personalization with HART.” Working paper.
+Wiemann, Thomas (2025). “[Personalization with
+HART](https://thomaswiemann.com/assets/pdfs/wiemann_jmp.pdf).” Working
+paper.
