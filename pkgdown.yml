@@ -3,7 +3,7 @@ pkgdown: 2.1.3
 pkgdown_sha: ~
 articles:
   bayesm-HART: bayesm-HART.html
-last_built: 2025-07-02T23:17Z
+last_built: 2025-07-02T23:20Z
 urls:
   reference: https://thomaswieman.com/bayesm.HART/reference
   article: https://thomaswieman.com/bayesm.HART/articles
