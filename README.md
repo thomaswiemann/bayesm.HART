@@ -82,8 +82,8 @@ To fit the HART logit model using a Metropolis-within-Gibbs sampler,
 call the `rhierMnlRwMixture` routine. The key difference between
 conventional calls to linear hierarchical specifications based on
 `bayesm` is the use of the additional `Prior` argument `bart`. For
-simplicity, the code below specifies a HART model with only 50 trees,
-leaving all other hyperparameters at their defaults. See also
+simplicity, the code below specifies a HART model with only 50 trees per
+factor, leaving all other hyperparameters at their defaults. See also
 `?rhierMnlRwMixture` for details.
 
 ``` r
@@ -98,7 +98,7 @@ out <- bayesm.HART::rhierMnlRwMixture(
 )
 #>  MCMC Iteration (est time to end - min) 
 #>  500 (0.9)
-#>  1000 (0.7)
+#>  1000 (0.6)
 #>  1500 (0.3)
 #>  2000 (0.0)
 #>  Total Time Elapsed: 1.32
@@ -137,8 +137,8 @@ colnames(results_df) <- c("Interest Low Fixed", "Annual Fee Low", "Bank Out-of-S
 # Print the data frame to the console
 print(results_df, digits = 3)
 #>                Interest Low Fixed Annual Fee Low Bank Out-of-State
-#> Posterior Mean               5.06          4.099            -3.187
-#> Posterior SD                 1.04          0.961             0.948
+#> Posterior Mean               5.08           4.33            -3.411
+#> Posterior SD                 0.96           0.99             0.993
 ```
 
 ## Learn More about `bayesm.HART`
@@ -146,9 +146,9 @@ print(results_df, digits = 3)
 Curious and want to learn more? Have a look at the `bayesm.HART`
 vignettes:
 
-- `vignette("bayesm.HART")` provides a more detailed introduction
-- `vignette("marginal-effects")` discusses how to compute and plot
-  marginal effects
+- [`vignette("bayesm-HART")`](https://thomaswiemann.com/bayesm.HART/articles/bayesm-HART.html)
+  provides a more detailed introduction
+- … more here come soon!
 
 ## Acknowledgements
 

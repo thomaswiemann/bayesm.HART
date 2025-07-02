@@ -115,8 +115,8 @@ print(results_df, digits = 3)
 
 Curious and want to learn more? Have a look at the `bayesm.HART` vignettes:
 
-- `vignette("bayesm-HART")` provides a more detailed introduction 
-- `vignette("marginal-effects")` discusses how to compute and plot marginal effects
+- [`vignette("bayesm-HART")`](https://thomaswiemann.com/bayesm.HART/articles/bayesm-HART.html) provides a more detailed introduction 
+- ... more here come soon!
 
 ## Acknowledgements
 
