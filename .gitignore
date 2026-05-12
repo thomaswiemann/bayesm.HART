@@ -18,3 +18,12 @@ docs/
 /data-raw
 /tex_draft
 /vignettes/cache
+*.rds
+
+# AI stuff
+discussions/
+papers/
+notes/
+.old-src/
+GEMINI.md
+AGENTS.md

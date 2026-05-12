@@ -89,6 +89,37 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// rhierLinearMixture_rcpp_loop
+List rhierLinearMixture_rcpp_loop(List const& regdata, mat const& Z, vec const& deltabar, mat const& Ad, mat const& mubar, mat const& Amu, double nu, mat const& V, double nu_e, vec const& ssq, int R, int keep, int nprint, bool drawdelta, mat olddelta, vec const& a, vec oldprob, vec ind, vec tau, bool useBART, List const& bart_params);
+RcppExport SEXP _bayesm_HART_rhierLinearMixture_rcpp_loop(SEXP regdataSEXP, SEXP ZSEXP, SEXP deltabarSEXP, SEXP AdSEXP, SEXP mubarSEXP, SEXP AmuSEXP, SEXP nuSEXP, SEXP VSEXP, SEXP nu_eSEXP, SEXP ssqSEXP, SEXP RSEXP, SEXP keepSEXP, SEXP nprintSEXP, SEXP drawdeltaSEXP, SEXP olddeltaSEXP, SEXP aSEXP, SEXP oldprobSEXP, SEXP indSEXP, SEXP tauSEXP, SEXP useBARTSEXP, SEXP bart_paramsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< List const& >::type regdata(regdataSEXP);
+    Rcpp::traits::input_parameter< mat const& >::type Z(ZSEXP);
+    Rcpp::traits::input_parameter< vec const& >::type deltabar(deltabarSEXP);
+    Rcpp::traits::input_parameter< mat const& >::type Ad(AdSEXP);
+    Rcpp::traits::input_parameter< mat const& >::type mubar(mubarSEXP);
+    Rcpp::traits::input_parameter< mat const& >::type Amu(AmuSEXP);
+    Rcpp::traits::input_parameter< double >::type nu(nuSEXP);
+    Rcpp::traits::input_parameter< mat const& >::type V(VSEXP);
+    Rcpp::traits::input_parameter< double >::type nu_e(nu_eSEXP);
+    Rcpp::traits::input_parameter< vec const& >::type ssq(ssqSEXP);
+    Rcpp::traits::input_parameter< int >::type R(RSEXP);
+    Rcpp::traits::input_parameter< int >::type keep(keepSEXP);
+    Rcpp::traits::input_parameter< int >::type nprint(nprintSEXP);
+    Rcpp::traits::input_parameter< bool >::type drawdelta(drawdeltaSEXP);
+    Rcpp::traits::input_parameter< mat >::type olddelta(olddeltaSEXP);
+    Rcpp::traits::input_parameter< vec const& >::type a(aSEXP);
+    Rcpp::traits::input_parameter< vec >::type oldprob(oldprobSEXP);
+    Rcpp::traits::input_parameter< vec >::type ind(indSEXP);
+    Rcpp::traits::input_parameter< vec >::type tau(tauSEXP);
+    Rcpp::traits::input_parameter< bool >::type useBART(useBARTSEXP);
+    Rcpp::traits::input_parameter< List const& >::type bart_params(bart_paramsSEXP);
+    rcpp_result_gen = Rcpp::wrap(rhierLinearMixture_rcpp_loop(regdata, Z, deltabar, Ad, mubar, Amu, nu, V, nu_e, ssq, R, keep, nprint, drawdelta, olddelta, a, oldprob, ind, tau, useBART, bart_params));
+    return rcpp_result_gen;
+END_RCPP
+}
 // llmnl_con
 double llmnl_con(vec const& betastar, vec const& y, mat const& X, vec const& SignRes);
 RcppExport SEXP _bayesm_HART_llmnl_con(SEXP betastarSEXP, SEXP ySEXP, SEXP XSEXP, SEXP SignResSEXP) {
@@ -131,6 +162,42 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< bool >::type useBART(useBARTSEXP);
     Rcpp::traits::input_parameter< List const& >::type bart_params(bart_paramsSEXP);
     rcpp_result_gen = Rcpp::wrap(rhierMnlRwMixture_rcpp_loop(lgtdata, Z, deltabar, Ad, mubar, Amu, nu, V, s, R, keep, nprint, drawdelta, olddelta, a, oldprob, oldbetas, ind, SignRes, useBART, bart_params));
+    return rcpp_result_gen;
+END_RCPP
+}
+// rhierNegbinRw_rcpp_loop
+List rhierNegbinRw_rcpp_loop(List const& regdata, List const& hessdata, mat const& Z, mat Beta, vec const& deltabar, mat const& Ad, mat const& mubar, mat const& Amu, double nu, mat const& V, double a, double b, int R, int keep, double sbeta, double alphacroot, int nprint, bool drawdelta, mat olddelta, vec const& a_mix, vec oldprob, vec ind, double alpha, bool fixalpha, bool useBART, List const& bart_params);
+RcppExport SEXP _bayesm_HART_rhierNegbinRw_rcpp_loop(SEXP regdataSEXP, SEXP hessdataSEXP, SEXP ZSEXP, SEXP BetaSEXP, SEXP deltabarSEXP, SEXP AdSEXP, SEXP mubarSEXP, SEXP AmuSEXP, SEXP nuSEXP, SEXP VSEXP, SEXP aSEXP, SEXP bSEXP, SEXP RSEXP, SEXP keepSEXP, SEXP sbetaSEXP, SEXP alphacrootSEXP, SEXP nprintSEXP, SEXP drawdeltaSEXP, SEXP olddeltaSEXP, SEXP a_mixSEXP, SEXP oldprobSEXP, SEXP indSEXP, SEXP alphaSEXP, SEXP fixalphaSEXP, SEXP useBARTSEXP, SEXP bart_paramsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< List const& >::type regdata(regdataSEXP);
+    Rcpp::traits::input_parameter< List const& >::type hessdata(hessdataSEXP);
+    Rcpp::traits::input_parameter< mat const& >::type Z(ZSEXP);
+    Rcpp::traits::input_parameter< mat >::type Beta(BetaSEXP);
+    Rcpp::traits::input_parameter< vec const& >::type deltabar(deltabarSEXP);
+    Rcpp::traits::input_parameter< mat const& >::type Ad(AdSEXP);
+    Rcpp::traits::input_parameter< mat const& >::type mubar(mubarSEXP);
+    Rcpp::traits::input_parameter< mat const& >::type Amu(AmuSEXP);
+    Rcpp::traits::input_parameter< double >::type nu(nuSEXP);
+    Rcpp::traits::input_parameter< mat const& >::type V(VSEXP);
+    Rcpp::traits::input_parameter< double >::type a(aSEXP);
+    Rcpp::traits::input_parameter< double >::type b(bSEXP);
+    Rcpp::traits::input_parameter< int >::type R(RSEXP);
+    Rcpp::traits::input_parameter< int >::type keep(keepSEXP);
+    Rcpp::traits::input_parameter< double >::type sbeta(sbetaSEXP);
+    Rcpp::traits::input_parameter< double >::type alphacroot(alphacrootSEXP);
+    Rcpp::traits::input_parameter< int >::type nprint(nprintSEXP);
+    Rcpp::traits::input_parameter< bool >::type drawdelta(drawdeltaSEXP);
+    Rcpp::traits::input_parameter< mat >::type olddelta(olddeltaSEXP);
+    Rcpp::traits::input_parameter< vec const& >::type a_mix(a_mixSEXP);
+    Rcpp::traits::input_parameter< vec >::type oldprob(oldprobSEXP);
+    Rcpp::traits::input_parameter< vec >::type ind(indSEXP);
+    Rcpp::traits::input_parameter< double >::type alpha(alphaSEXP);
+    Rcpp::traits::input_parameter< bool >::type fixalpha(fixalphaSEXP);
+    Rcpp::traits::input_parameter< bool >::type useBART(useBARTSEXP);
+    Rcpp::traits::input_parameter< List const& >::type bart_params(bart_paramsSEXP);
+    rcpp_result_gen = Rcpp::wrap(rhierNegbinRw_rcpp_loop(regdata, hessdata, Z, Beta, deltabar, Ad, mubar, Amu, nu, V, a, b, R, keep, sbeta, alphacroot, nprint, drawdelta, olddelta, a_mix, oldprob, ind, alpha, fixalpha, useBART, bart_params));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -208,7 +275,7 @@ BEGIN_RCPP
 END_RCPP
 }
 
-RcppExport SEXP cpwbart(void *, void *, void *, void *);
+RcppExport SEXP cpwbart(SEXP, SEXP, SEXP, SEXP);
 
 static const R_CallMethodDef CallEntries[] = {
     {"_bayesm_HART_breg", (DL_FUNC) &_bayesm_HART_breg, 4},
@@ -217,8 +284,10 @@ static const R_CallMethodDef CallEntries[] = {
     {"_bayesm_HART_lndIWishart", (DL_FUNC) &_bayesm_HART_lndIWishart, 3},
     {"_bayesm_HART_lndMvn", (DL_FUNC) &_bayesm_HART_lndMvn, 3},
     {"_bayesm_HART_rdirichlet", (DL_FUNC) &_bayesm_HART_rdirichlet, 1},
+    {"_bayesm_HART_rhierLinearMixture_rcpp_loop", (DL_FUNC) &_bayesm_HART_rhierLinearMixture_rcpp_loop, 21},
     {"_bayesm_HART_llmnl_con", (DL_FUNC) &_bayesm_HART_llmnl_con, 4},
     {"_bayesm_HART_rhierMnlRwMixture_rcpp_loop", (DL_FUNC) &_bayesm_HART_rhierMnlRwMixture_rcpp_loop, 21},
+    {"_bayesm_HART_rhierNegbinRw_rcpp_loop", (DL_FUNC) &_bayesm_HART_rhierNegbinRw_rcpp_loop, 26},
     {"_bayesm_HART_rmixGibbs", (DL_FUNC) &_bayesm_HART_rmixGibbs, 8},
     {"_bayesm_HART_rmixture", (DL_FUNC) &_bayesm_HART_rmixture, 3},
     {"_bayesm_HART_rmultireg", (DL_FUNC) &_bayesm_HART_rmultireg, 6},

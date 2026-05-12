@@ -70,7 +70,7 @@ We apply two demand models to the conjoint data: the HART logit model proposed b
 
 The code snippet below specifies the MCMC hyperparameters. To speed up the code runtime, a short MCMC chain with only 5000 iterations is considered. Longer chains should be run in practice. We then sample from the posterior distribution of both models by calling `rhierMnlRwMixture`. The only difference in syntax is the additional prior argument `bart`. For simplicity, the code below specifies a HART model with only 20 trees per factor, leaving all other hyperparameters at their defaults. See also `?rhierMnlRwMixture` for details. 
 
-```{r fit-models, echo=FALSE,results='hide'}
+```{r fit-models}
 # MCMC parameters
 R <- 5000
 burn <- 250

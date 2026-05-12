@@ -73,6 +73,11 @@ unireg runiregG(vec const& y, mat const& X, mat const& XpX, vec const& Xpy, doub
 //Used in rhierMnlDP and rhierMnlRwMixture
 mnlMetropOnceOut mnlMetropOnce(vec const& y, mat const& X, vec const& oldbeta, double oldll,double s, mat const& incroot, vec const& betabar, mat const& rootpi);
 
+//Used in rnegbinRW and rhierNegbinRw
+double llnegbin(vec const& y, vec const& lambda, double alpha, bool constant);
+double lpostbeta(double alpha, vec const& beta, mat const& X, vec const& y, vec const& betabar, mat const& rootA);
+double lpostalpha(double alpha, vec const& beta, mat const& X, vec const& y, double a, double b);
+
 //FUNCTION TIMING (contained in functionTiming.cpp)---------------------------------------------------------------
 void startMcmcTimer();
 void infoMcmcTimer(int rep, int R);
