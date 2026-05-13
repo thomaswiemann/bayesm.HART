@@ -7,6 +7,6 @@
 # * https://testthat.r-lib.org/articles/special-files.html
 
 library(testthat)
-library(mnlBART)
+library(bayesm.HART)
 
-test_check("mnlBART")
+test_check("bayesm.HART")

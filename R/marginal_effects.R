@@ -59,8 +59,10 @@ marginal_effects <- function(object, ...) {
       stop(paste0("burn must be a single non-negative integer less than the total number of draws (", ndraws_total, ")."))
   }#IF
 
-  # Determine predict type: use DeltaZ+mu if nmix is available (BART), else DeltaZ
-  predict_type <- if (!is.null(object$nmix)) "DeltaZ+mu" else "DeltaZ"
+  # Determine predict type: include mu component when the model carries one
+  # (BART or linear models with nmix$compdraw, or heter-cov models with mu_draw).
+  has_mu <- !is.null(object$nmix) || !is.null(object$mu_draw)
+  predict_type <- if (has_mu) "DeltaZ+mu" else "DeltaZ"
 
   # Initialize Storage
   avg_draws_list <- vector(mode = "list", length = n_grid_points)

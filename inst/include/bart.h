@@ -28,6 +28,38 @@
 #include "bartfuns.h"
 #include "bd.h"
 
+// =====================================================================
+// bart ownership invariants
+// =====================================================================
+//
+// `bart` (and its subclasses heterbart / varbart) holds raw `new[]` buffers
+// (allfit, r, ftemp) and raw pointers (x, y) into externally-owned data.
+// To keep that bookkeeping sane:
+//
+//  * The copy constructor and copy-assignment operator DO NOT copy
+//    allfit / r / ftemp.  They null those pointers in the destination, so a
+//    naive copy yields a bart object on which f(i) and predict() are unsafe.
+//
+//  * There is NO move constructor / move-assignment.  std::vector growth
+//    therefore falls back on the (lossy) copy operations.
+//
+// The canonical ownership pattern, used by initializeBART and required for
+// every new bart-holding container in this codebase:
+//
+//      std::vector<bart> models(N);          // N empty defaults; no heap
+//      for (size_t i = 0; i < N; ++i) {
+//          models[i] = bart(num_trees);      // op= zeros heap, sets m
+//          models[i].setprior(...);
+//          models[i].setdata(...);           // allocates heap in place
+//      }
+//      // models is then NEVER resized; pointers held inside each bart
+//      // (x, y, allfit, ...) stay valid for the lifetime of `models`.
+//
+// Buffers passed to setdata (typically arma::mat / arma::vec memory belonging
+// to the surrounding MCMC loop) MUST outlive every bart that holds pointers
+// into them, and MUST NOT be reallocated underneath the bart.
+// =====================================================================
+
 class bart {
 public:
    //------------------------------
@@ -53,6 +85,11 @@ public:
    void setpi(pinfo& pi) {this->pi = pi;}
    void setprior(double alpha, double beta, double tau)
       {pi.alpha=alpha; pi.mybeta = beta; pi.tau=tau;}
+   // Tighten the birth/death leaf-size guard.  Defaults (5, 0.0) preserve
+   // the original behavior; phi-tree heterbart updates set ess_min > 0
+   // to reject splits with insufficient effective sample size.
+   void setleafguard(size_t nmin, double ess_min)
+      {pi.nmin = nmin; pi.ess_min = ess_min;}
    void setdart(double _a, double _b, double _rho, bool _aug, bool _dart, 
 		double _theta=0., double _omega=1.) {
      this->a=_a; this->b=_b; this->rho=_rho; this->aug=_aug; 
@@ -90,7 +127,7 @@ public:
    void draw(double sigma, rn& gen);
    void updateY(double* newy); 
 //   void draw_s(rn& gen);
-   double f(size_t i) {return allfit[i];}
+   double f(size_t i) const {return allfit[i];}
    // for debugging:
    void print_pred(size_t i) const {
        if (i >= n) {

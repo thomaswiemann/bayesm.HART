@@ -31,6 +31,8 @@ Should NOT contain an intercept and should be centered.
 \item \code{V} (optional): Location matrix for IW prior on component \code{Sigma} (default: \code{nu * I} or scaled based on restriction).
 \item \code{SignRes} (optional): \verb{nvar x 1} vector of sign restrictions. Must contain values of 0, -1, or 1. The value 0 means no restriction, -1 ensures the coefficient is negative, and 1 ensures the coefficient is positive. For example, \code{SignRes = c(0,1,-1)} means the first coefficient is unconstrained, the second will be positive, and the third will be negative. Default: \code{rep(0, nvar)}.
 \item \code{bart} (optional): List of parameters for the HART prior. If specified, this models the representative consumer \eqn{\Delta(Z)} as a scaled sum-of-trees factor model. See Details.
+\item \code{vartree} (optional, \emph{experimental extension beyond Wiemann 2025}): List of parameters enabling heteroscedastic covariance \eqn{\Sigma(Z_i)} via product-of-trees variance models on the Modified Cholesky diagonal \eqn{d_j(\cdot)}. Requires \code{bart} to also be specified, \code{ncomp = 1}, and no sign restrictions. See "Heteroscedastic Covariance" in Details.
+\item \code{phitree} (optional, \emph{experimental extension beyond Wiemann 2025}): List of parameters enabling sum-of-trees regression models on the Modified Cholesky off-diagonals \eqn{\phi_{jk}(\cdot)}. Requires \code{vartree}. Adds the full-Cholesky structure on top of the diagonal \code{vartree} model.
 }}
 
 \item{Mcmc}{A list containing MCMC parameters:
@@ -49,7 +51,7 @@ A list containing:
 \itemize{
 \item \code{Deltadraw}: If \code{Z} provided and \code{bart=NULL}, \verb{(R/keep) x (nz * nvar)} matrix of \code{vec(Delta)} draws.
 \item \code{betadraw}: \verb{nlgt x nvar x (R/keep)} array of unit-level \code{beta_i} draws.
-\item \code{nmix}: List containing mixture draws with components:
+\item \code{nmix}: List containing mixture draws with components (omitted when \code{vartree} is supplied):
 \itemize{
 \item \code{probdraw}: \verb{(R/keep) x ncomp} matrix of mixture component probabilities.
 \item \code{zdraw}: \verb{(R/keep) x nlgt} matrix of component assignments for each unit.
@@ -57,7 +59,10 @@ A list containing:
 }
 \item \code{loglike}: \verb{(R/keep) x 1} vector of log-likelihood values at kept draws.
 \item \code{SignRes}: \verb{nvar x 1} vector of sign restrictions used.
-\item \code{bart_trees}: If HART used, list containing tree structures and related parameters.
+\item \code{bart_models}: If HART used, list of length \code{nvar} containing tree structures and related parameters for the mean trees \eqn{\delta_j(\cdot)}.
+\item \code{var_models} (only with \code{vartree}): list of length \code{nvar} of variance-tree ensembles for \eqn{d_j(\cdot)} (product of trees with \eqn{\chi^{-2}} leaves).
+\item \code{phi_models} (only with \code{vartree} + \code{phitree}): jagged list of length \code{nvar}. \code{phi_models[[1]]} is \code{NULL}; for \code{j > 1}, \code{phi_models[[j]]} is a list of length \code{j-1} containing the sum-of-trees ensemble for \eqn{\phi_{jk}(\cdot)}.
+\item \code{mu_draw} (only with \code{vartree}): \verb{(R/keep) x nvar} matrix of \eqn{\mu} draws (single-component path).
 }
 }
 \description{
@@ -117,6 +122,32 @@ consumer using a scaled vector of \code{nvar} sum-of-trees models.
 \item \code{theta}: When used, sets Dirichlet concentration parameter without additional hyper-prior (default: 0.0).
 \item \code{burn}: Number of internal burn-in iterations for the Dirichlet HART sampler before variable selection is allowed (default: 100).
 }
+}
+
+\subsection{Heteroscedastic Covariance \eqn{\Sigma(Z_i)} (experimental extension)}{
+
+Wiemann (2025) treats \eqn{\Sigma} as global with an inverse-Wishart prior, used as a fixed factor-model loading \eqn{\Sigma^{1/2}}. When \code{Prior$vartree} is supplied, the package replaces this with unit-specific
+\deqn{\Sigma(Z_i)^{-1} = L(Z_i)^\top D(Z_i)^{-1} L(Z_i)}
+where \eqn{L(Z_i)} is unit lower-triangular with \eqn{L_{jk} = -\phi_{jk}(Z_i)} for \eqn{k < j} and \eqn{D(Z_i) = \mathrm{diag}(d_1(Z_i), \ldots, d_D(Z_i))}, \eqn{d_j > 0}. Each \eqn{d_j(\cdot)} is modeled as a product of trees with \eqn{\chi^{-2}} leaves (Pratola et al.); each \eqn{\phi_{jk}(\cdot)} (when \code{Prior$phitree} is supplied) is modeled as a sum of trees with \eqn{N(0, \tau^2)} leaves. Only the single-component path (\code{ncomp = 1}) is supported in this mode.
+
+\strong{\code{Prior$vartree} parameters} (defaults shown):
+\itemize{
+\item \code{num_trees} (40): Number of trees per dimension \eqn{m'}.
+\item \code{nu} (10), \code{lambda} (auto-calibrated from \eqn{\mathrm{var}(\theta_i)}): Baseline parameters of the \eqn{\chi^{-2}} prior. Pratola per-tree calibration is applied internally.
+\item \code{power} (2), \code{base} (0.95), \code{numcut} (100): Tree-structure prior parameters.
+\item DART hyperparameters (\code{sparse}, \code{a}, \code{b}, \code{rho}, \code{theta}, \code{omega}, \code{aug}, \code{burn}): same meaning as \code{Prior$bart}.
+}
+
+\strong{\code{Prior$phitree} parameters} (defaults shown):
+\itemize{
+\item \code{num_trees} (40): Number of trees per \eqn{(j,k)} pair \eqn{m''}.
+\item \code{tau} (\eqn{1/\sqrt{m''}}): Prior standard deviation of leaf \eqn{\lambda_{jkh}}.
+\item \code{power} (2), \code{base} (0.95), \code{numcut} (100): Tree-structure prior parameters.
+\item \code{nmin} (2), \code{ess_min} (5): Leaf-admissibility floors. The default \code{ess_min = 5} requires the effective sample size \eqn{\sum_{i \in \ell} (\theta_i^{(k)} - \mu^{(k)})^2 / d_j(Z_i)} of each candidate leaf to exceed 5; \code{nmin = 2} is the corresponding raw-count floor.
+\item DART hyperparameters: same meaning as \code{Prior$bart}.
+}
+
+When this extension is active, the returned object additionally inherits class \code{"rhierMnlRwMixtureHeterCov"} and contains slots \code{var_models}, \code{phi_models} (jagged, lower-triangular; \code{NULL} if \code{Prior$phitree} not supplied), and \code{mu_draw} (single-component posterior mean draws). \code{predict()} dispatches on this class to evaluate \eqn{\Sigma(Z^*)} at new \eqn{Z^*}.
 }
 
 \subsection{Sign Restrictions}{

@@ -5,8 +5,16 @@ breg <- function(y, X, betabar, A) {
     .Call(`_bayesm_HART_breg`, y, X, betabar, A)
 }
 
+cov_helpers_test <- function(D_vals, Phi_vals, v_in, mu_in, diagonal) {
+    .Call(`_bayesm_HART_cov_helpers_test`, D_vals, Phi_vals, v_in, mu_in, diagonal)
+}
+
 cpwbart_mnl <- function(trees, cutpoints, X) {
     .Call(`_bayesm_HART_cpwbart_mnl`, trees, cutpoints, X)
+}
+
+drawMuHeterCov_test <- function(oldbetas, mubar0, Amu, D_vals, Phi_vals, diagonal, n_draws) {
+    .Call(`_bayesm_HART_drawMuHeterCov_test`, oldbetas, mubar0, Amu, D_vals, Phi_vals, diagonal, n_draws)
 }
 
 llmnl <- function(beta, y, X) {
@@ -33,8 +41,8 @@ llmnl_con <- function(betastar, y, X, SignRes = as.numeric( c(0))) {
     .Call(`_bayesm_HART_llmnl_con`, betastar, y, X, SignRes)
 }
 
-rhierMnlRwMixture_rcpp_loop <- function(lgtdata, Z, deltabar, Ad, mubar, Amu, nu, V, s, R, keep, nprint, drawdelta, olddelta, a, oldprob, oldbetas, ind, SignRes, useBART, bart_params) {
-    .Call(`_bayesm_HART_rhierMnlRwMixture_rcpp_loop`, lgtdata, Z, deltabar, Ad, mubar, Amu, nu, V, s, R, keep, nprint, drawdelta, olddelta, a, oldprob, oldbetas, ind, SignRes, useBART, bart_params)
+rhierMnlRwMixture_rcpp_loop <- function(lgtdata, Z, deltabar, Ad, mubar, Amu, nu, V, s, R, keep, nprint, drawdelta, olddelta, a, oldprob, oldbetas, ind, SignRes, useBART, bart_params, useHeterCov = FALSE, var_params, phi_params) {
+    .Call(`_bayesm_HART_rhierMnlRwMixture_rcpp_loop`, lgtdata, Z, deltabar, Ad, mubar, Amu, nu, V, s, R, keep, nprint, drawdelta, olddelta, a, oldprob, oldbetas, ind, SignRes, useBART, bart_params, useHeterCov, var_params, phi_params)
 }
 
 rhierNegbinRw_rcpp_loop <- function(regdata, hessdata, Z, Beta, deltabar, Ad, mubar, Amu, nu, V, a, b, R, keep, sbeta, alphacroot, nprint, drawdelta, olddelta, a_mix, oldprob, ind, alpha, fixalpha, useBART = FALSE, bart_params) {
@@ -59,5 +67,9 @@ rtrun <- function(mu, sigma, a, b) {
 
 rwishart <- function(nu, V) {
     .Call(`_bayesm_HART_rwishart`, nu, V)
+}
+
+varbart_smoke <- function(Z, eta_sq, m, nu, lambda, power, base, R_iter, burn, keep_every = 1L) {
+    .Call(`_bayesm_HART_varbart_smoke`, Z, eta_sq, m, nu, lambda, power, base, R_iter, burn, keep_every)
 }
 

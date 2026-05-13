@@ -26,6 +26,21 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// cov_helpers_test
+Rcpp::List cov_helpers_test(arma::vec const& D_vals, arma::mat const& Phi_vals, arma::vec const& v_in, arma::vec const& mu_in, bool diagonal);
+RcppExport SEXP _bayesm_HART_cov_helpers_test(SEXP D_valsSEXP, SEXP Phi_valsSEXP, SEXP v_inSEXP, SEXP mu_inSEXP, SEXP diagonalSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::vec const& >::type D_vals(D_valsSEXP);
+    Rcpp::traits::input_parameter< arma::mat const& >::type Phi_vals(Phi_valsSEXP);
+    Rcpp::traits::input_parameter< arma::vec const& >::type v_in(v_inSEXP);
+    Rcpp::traits::input_parameter< arma::vec const& >::type mu_in(mu_inSEXP);
+    Rcpp::traits::input_parameter< bool >::type diagonal(diagonalSEXP);
+    rcpp_result_gen = Rcpp::wrap(cov_helpers_test(D_vals, Phi_vals, v_in, mu_in, diagonal));
+    return rcpp_result_gen;
+END_RCPP
+}
 // cpwbart_mnl
 Rcpp::NumericMatrix cpwbart_mnl(std::string const& trees, Rcpp::List const& cutpoints, arma::mat const& X);
 RcppExport SEXP _bayesm_HART_cpwbart_mnl(SEXP treesSEXP, SEXP cutpointsSEXP, SEXP XSEXP) {
@@ -36,6 +51,23 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< Rcpp::List const& >::type cutpoints(cutpointsSEXP);
     Rcpp::traits::input_parameter< arma::mat const& >::type X(XSEXP);
     rcpp_result_gen = Rcpp::wrap(cpwbart_mnl(trees, cutpoints, X));
+    return rcpp_result_gen;
+END_RCPP
+}
+// drawMuHeterCov_test
+Rcpp::List drawMuHeterCov_test(arma::mat const& oldbetas, arma::vec const& mubar0, arma::mat const& Amu, arma::vec const& D_vals, arma::mat const& Phi_vals, bool diagonal, int n_draws);
+RcppExport SEXP _bayesm_HART_drawMuHeterCov_test(SEXP oldbetasSEXP, SEXP mubar0SEXP, SEXP AmuSEXP, SEXP D_valsSEXP, SEXP Phi_valsSEXP, SEXP diagonalSEXP, SEXP n_drawsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::mat const& >::type oldbetas(oldbetasSEXP);
+    Rcpp::traits::input_parameter< arma::vec const& >::type mubar0(mubar0SEXP);
+    Rcpp::traits::input_parameter< arma::mat const& >::type Amu(AmuSEXP);
+    Rcpp::traits::input_parameter< arma::vec const& >::type D_vals(D_valsSEXP);
+    Rcpp::traits::input_parameter< arma::mat const& >::type Phi_vals(Phi_valsSEXP);
+    Rcpp::traits::input_parameter< bool >::type diagonal(diagonalSEXP);
+    Rcpp::traits::input_parameter< int >::type n_draws(n_drawsSEXP);
+    rcpp_result_gen = Rcpp::wrap(drawMuHeterCov_test(oldbetas, mubar0, Amu, D_vals, Phi_vals, diagonal, n_draws));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -135,8 +167,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // rhierMnlRwMixture_rcpp_loop
-List rhierMnlRwMixture_rcpp_loop(List const& lgtdata, mat const& Z, vec const& deltabar, mat const& Ad, mat const& mubar, mat const& Amu, double nu, mat const& V, double s, int R, int keep, int nprint, bool drawdelta, mat olddelta, vec const& a, vec oldprob, mat oldbetas, vec ind, vec const& SignRes, bool useBART, List const& bart_params);
-RcppExport SEXP _bayesm_HART_rhierMnlRwMixture_rcpp_loop(SEXP lgtdataSEXP, SEXP ZSEXP, SEXP deltabarSEXP, SEXP AdSEXP, SEXP mubarSEXP, SEXP AmuSEXP, SEXP nuSEXP, SEXP VSEXP, SEXP sSEXP, SEXP RSEXP, SEXP keepSEXP, SEXP nprintSEXP, SEXP drawdeltaSEXP, SEXP olddeltaSEXP, SEXP aSEXP, SEXP oldprobSEXP, SEXP oldbetasSEXP, SEXP indSEXP, SEXP SignResSEXP, SEXP useBARTSEXP, SEXP bart_paramsSEXP) {
+List rhierMnlRwMixture_rcpp_loop(List const& lgtdata, mat const& Z, vec const& deltabar, mat const& Ad, mat const& mubar, mat const& Amu, double nu, mat const& V, double s, int R, int keep, int nprint, bool drawdelta, mat olddelta, vec const& a, vec oldprob, mat oldbetas, vec ind, vec const& SignRes, bool useBART, List const& bart_params, bool useHeterCov, List const& var_params, List const& phi_params);
+RcppExport SEXP _bayesm_HART_rhierMnlRwMixture_rcpp_loop(SEXP lgtdataSEXP, SEXP ZSEXP, SEXP deltabarSEXP, SEXP AdSEXP, SEXP mubarSEXP, SEXP AmuSEXP, SEXP nuSEXP, SEXP VSEXP, SEXP sSEXP, SEXP RSEXP, SEXP keepSEXP, SEXP nprintSEXP, SEXP drawdeltaSEXP, SEXP olddeltaSEXP, SEXP aSEXP, SEXP oldprobSEXP, SEXP oldbetasSEXP, SEXP indSEXP, SEXP SignResSEXP, SEXP useBARTSEXP, SEXP bart_paramsSEXP, SEXP useHeterCovSEXP, SEXP var_paramsSEXP, SEXP phi_paramsSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -161,7 +193,10 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< vec const& >::type SignRes(SignResSEXP);
     Rcpp::traits::input_parameter< bool >::type useBART(useBARTSEXP);
     Rcpp::traits::input_parameter< List const& >::type bart_params(bart_paramsSEXP);
-    rcpp_result_gen = Rcpp::wrap(rhierMnlRwMixture_rcpp_loop(lgtdata, Z, deltabar, Ad, mubar, Amu, nu, V, s, R, keep, nprint, drawdelta, olddelta, a, oldprob, oldbetas, ind, SignRes, useBART, bart_params));
+    Rcpp::traits::input_parameter< bool >::type useHeterCov(useHeterCovSEXP);
+    Rcpp::traits::input_parameter< List const& >::type var_params(var_paramsSEXP);
+    Rcpp::traits::input_parameter< List const& >::type phi_params(phi_paramsSEXP);
+    rcpp_result_gen = Rcpp::wrap(rhierMnlRwMixture_rcpp_loop(lgtdata, Z, deltabar, Ad, mubar, Amu, nu, V, s, R, keep, nprint, drawdelta, olddelta, a, oldprob, oldbetas, ind, SignRes, useBART, bart_params, useHeterCov, var_params, phi_params));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -274,26 +309,51 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// varbart_smoke
+Rcpp::List varbart_smoke(arma::mat const& Z, arma::vec const& eta_sq, size_t m, double nu, double lambda, double power, double base, int R_iter, int burn, int keep_every);
+RcppExport SEXP _bayesm_HART_varbart_smoke(SEXP ZSEXP, SEXP eta_sqSEXP, SEXP mSEXP, SEXP nuSEXP, SEXP lambdaSEXP, SEXP powerSEXP, SEXP baseSEXP, SEXP R_iterSEXP, SEXP burnSEXP, SEXP keep_everySEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::mat const& >::type Z(ZSEXP);
+    Rcpp::traits::input_parameter< arma::vec const& >::type eta_sq(eta_sqSEXP);
+    Rcpp::traits::input_parameter< size_t >::type m(mSEXP);
+    Rcpp::traits::input_parameter< double >::type nu(nuSEXP);
+    Rcpp::traits::input_parameter< double >::type lambda(lambdaSEXP);
+    Rcpp::traits::input_parameter< double >::type power(powerSEXP);
+    Rcpp::traits::input_parameter< double >::type base(baseSEXP);
+    Rcpp::traits::input_parameter< int >::type R_iter(R_iterSEXP);
+    Rcpp::traits::input_parameter< int >::type burn(burnSEXP);
+    Rcpp::traits::input_parameter< int >::type keep_every(keep_everySEXP);
+    rcpp_result_gen = Rcpp::wrap(varbart_smoke(Z, eta_sq, m, nu, lambda, power, base, R_iter, burn, keep_every));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 RcppExport SEXP cpwbart(SEXP, SEXP, SEXP, SEXP);
+RcppExport SEXP cpwvarbart(SEXP, SEXP, SEXP, SEXP);
 
 static const R_CallMethodDef CallEntries[] = {
     {"_bayesm_HART_breg", (DL_FUNC) &_bayesm_HART_breg, 4},
+    {"_bayesm_HART_cov_helpers_test", (DL_FUNC) &_bayesm_HART_cov_helpers_test, 5},
     {"_bayesm_HART_cpwbart_mnl", (DL_FUNC) &_bayesm_HART_cpwbart_mnl, 3},
+    {"_bayesm_HART_drawMuHeterCov_test", (DL_FUNC) &_bayesm_HART_drawMuHeterCov_test, 7},
     {"_bayesm_HART_llmnl", (DL_FUNC) &_bayesm_HART_llmnl, 3},
     {"_bayesm_HART_lndIWishart", (DL_FUNC) &_bayesm_HART_lndIWishart, 3},
     {"_bayesm_HART_lndMvn", (DL_FUNC) &_bayesm_HART_lndMvn, 3},
     {"_bayesm_HART_rdirichlet", (DL_FUNC) &_bayesm_HART_rdirichlet, 1},
     {"_bayesm_HART_rhierLinearMixture_rcpp_loop", (DL_FUNC) &_bayesm_HART_rhierLinearMixture_rcpp_loop, 21},
     {"_bayesm_HART_llmnl_con", (DL_FUNC) &_bayesm_HART_llmnl_con, 4},
-    {"_bayesm_HART_rhierMnlRwMixture_rcpp_loop", (DL_FUNC) &_bayesm_HART_rhierMnlRwMixture_rcpp_loop, 21},
+    {"_bayesm_HART_rhierMnlRwMixture_rcpp_loop", (DL_FUNC) &_bayesm_HART_rhierMnlRwMixture_rcpp_loop, 24},
     {"_bayesm_HART_rhierNegbinRw_rcpp_loop", (DL_FUNC) &_bayesm_HART_rhierNegbinRw_rcpp_loop, 26},
     {"_bayesm_HART_rmixGibbs", (DL_FUNC) &_bayesm_HART_rmixGibbs, 8},
     {"_bayesm_HART_rmixture", (DL_FUNC) &_bayesm_HART_rmixture, 3},
     {"_bayesm_HART_rmultireg", (DL_FUNC) &_bayesm_HART_rmultireg, 6},
     {"_bayesm_HART_rtrun", (DL_FUNC) &_bayesm_HART_rtrun, 4},
     {"_bayesm_HART_rwishart", (DL_FUNC) &_bayesm_HART_rwishart, 2},
-    {"cpwbart", (DL_FUNC) &cpwbart, 4},
+    {"_bayesm_HART_varbart_smoke", (DL_FUNC) &_bayesm_HART_varbart_smoke, 10},
+    {"cpwbart",    (DL_FUNC) &cpwbart,    4},
+    {"cpwvarbart", (DL_FUNC) &cpwvarbart, 4},
     {NULL, NULL, 0}
 };
 

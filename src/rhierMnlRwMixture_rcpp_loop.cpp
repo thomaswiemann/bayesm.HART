@@ -1,5 +1,54 @@
 #include "bayesm.HART.h"
 
+// Package a single bart-like model (any class exposing getxinfo() and
+// gettree()) into the {treedraws: {cutpoints, trees}} List that the existing
+// R-side post-processing expects.  Used directly for jagged phi ensembles and
+// indirectly (via pack_bart_list_) for flat bart / varbart ensembles.
+template <class B>
+static List pack_bart_entry_(B& model, std::stringstream& tss) {
+    xinfo& xi = model.getxinfo();
+    Rcpp::List xiret(xi.size());
+    for (size_t j = 0; j < xi.size(); j++) {
+        Rcpp::NumericVector vtemp(xi[j].size());
+        std::copy(xi[j].begin(), xi[j].end(), vtemp.begin());
+        xiret[j] = vtemp;
+    }
+    return List::create(
+        Named("treedraws") = List::create(
+            Named("cutpoints") = xiret,
+            Named("trees")     = Rcpp::CharacterVector(tss.str())
+        )
+    );
+}
+
+// Flat List(nvar) of per-dimension model entries (bart, varbart).
+template <class B>
+static List pack_bart_list_(int nvar,
+                            std::vector<B>& models,
+                            std::vector<std::stringstream>& tss) {
+    List out(nvar);
+    for (int i = 0; i < nvar; i++) out[i] = pack_bart_entry_(models[i], tss[i]);
+    return out;
+}
+
+// Jagged List(D) of List(j) entries for phi-trees: out[0] is NULL, out[j>0]
+// has length j with entries phi[j][k] for k = 0, ..., j-1.
+template <class B>
+static List pack_bart_jagged_(int nvar,
+                              std::vector<std::vector<B>>& models,
+                              std::vector<std::vector<std::stringstream>>& tss) {
+    List out(nvar);
+    out[0] = R_NilValue;
+    for (int j = 1; j < nvar; j++) {
+        List inner(j);
+        for (int k = 0; k < j; k++) {
+            inner[k] = pack_bart_entry_(models[j][k], tss[j][k]);
+        }
+        out[j] = inner;
+    }
+    return out;
+}
+
 //FUNCTION SPECIFIC TO MAIN FUNCTION------------------------------------------------------
 //[[Rcpp::export]]
 double llmnl_con(vec const& betastar, vec const& y, mat const& X, vec const& SignRes = NumericVector::create(0)) {
@@ -118,14 +167,26 @@ List rhierMnlRwMixture_rcpp_loop(List const& lgtdata, mat const& Z,
     double nu, mat const& V, double s,
     int R, int keep, int nprint, bool drawdelta,
     mat olddelta, vec const& a, vec oldprob, mat oldbetas, vec ind, vec const& SignRes,
-    bool useBART, List const& bart_params) {
+    bool useBART, List const& bart_params,
+    bool useHeterCov = false,
+    List const& var_params = List::create(),
+    List const& phi_params = List::create()) {
 
     // Wayne Taylor 10/01/2014
     // modified by Thomas Wiemann 2025
+    // useHeterCov branch: heteroscedastic Sigma(Z_i) via modified-Cholesky tree
+    //   ensembles.  Mutually exclusive with the mixture path.
+    //   Phase 1 (phi_params empty): diagonal Sigma(Z_i) = D(Z_i).
+    //   Phase 2 (phi_params non-empty): full modified-Cholesky
+    //     Sigma(Z_i)^{-1} = L(Z_i)^T D(Z_i)^{-1} L(Z_i) with phi_jk(Z_i) trees.
 
     int nlgt = lgtdata.size();
     int nvar = V.n_cols;
     int nz = Z.n_cols;
+
+    // Validation for the heter-cov path.
+    if (useHeterCov && !useBART)    stop("useHeterCov requires useBART = TRUE");
+    if (useHeterCov && !drawdelta)  stop("useHeterCov requires drawdelta = TRUE");
 
     mat rootpi, betabar, ucholinv, incroot;
     int mkeep;
@@ -178,6 +239,74 @@ List rhierMnlRwMixture_rcpp_loop(List const& lgtdata, mat const& Z,
         varprob.zeros();
     }
 
+    // ===== Heter-cov storage =====
+    //   Phase 1: phi_models stays empty, cov_helpers takes the diagonal path.
+    //   Phase 2: phi_models is populated by initializePhiBART; same code reads
+    //   the full Cholesky via cov::cov_eval / cov::rootpi / sigma_sqrt_apply.
+    std::vector<varbart> var_models;
+    std::vector<std::vector<heterbart>> phi_models;
+    mat eta_sq_buf;                                         // nlgt x nvar
+    std::vector<double*> peta_sq_cols(nvar);
+    vec mu_post(nvar);                                      // single posterior mean
+    mat mu_draw;                                            // R/keep x nvar
+    std::vector<std::stringstream> var_treess;
+    cube var_varcount, var_varprob;
+    int var_burn = 0;
+    bool var_sparse = false;
+
+    // Phase-2-only storage (full Cholesky via phi-trees).
+    const bool useFullCov = useHeterCov && (phi_params.size() > 0);
+    const size_t n_pairs  = useFullCov ? (nvar * (nvar - 1)) / 2 : 0;
+    mat Y_phi;                                              // nlgt x n_pairs (per-(j,k) Y buffers)
+    vec sigma_phi_buf;                                      // nlgt
+    std::vector<std::vector<double*>> py_phi_cols;          // [j][k] -> Y_phi colptr
+    int n_phi_treess = 0;
+    std::vector<std::vector<std::stringstream>> phi_treess; // [j][k] tree streams
+    if (useFullCov) {
+        Y_phi.zeros(nlgt, n_pairs);
+        sigma_phi_buf.zeros(nlgt);
+        py_phi_cols.resize(nvar);
+        size_t pair_idx = 0;
+        for (int j = 1; j < nvar; j++) {
+            py_phi_cols[j].resize(j);
+            for (int k = 0; k < j; k++) {
+                py_phi_cols[j][k] = Y_phi.colptr(pair_idx++);
+            }
+        }
+        // Per-(j,k) tree-string streams (jagged, lower triangular).
+        phi_treess.resize(nvar);
+        size_t phi_num_trees = as<size_t>(phi_params["num_trees"]);
+        for (int j = 1; j < nvar; j++) {
+            phi_treess[j].resize(j);
+            for (int k = 0; k < j; k++) {
+                phi_treess[j][k].precision(10);
+                phi_treess[j][k] << R / keep << " " << phi_num_trees << " " << nz << endl;
+            }
+            n_phi_treess += j;
+        }
+    }
+    if (useHeterCov) {
+        eta_sq_buf.zeros(nlgt, nvar);
+        for (int j = 0; j < nvar; j++) peta_sq_cols[j] = eta_sq_buf.colptr(j);
+        mu_post.zeros();
+        mu_draw.zeros(R / keep, nvar);
+
+        var_treess.resize(nvar);
+        size_t var_num_trees = as<size_t>(var_params["num_trees"]);
+        for (int j = 0; j < nvar; j++) {
+            var_treess[j].precision(10);
+            var_treess[j] << R / keep << " " << var_num_trees << " " << nz << endl;
+        }
+        var_varcount.set_size(nz, nvar, R / keep); var_varcount.zeros();
+        var_varprob .set_size(nz, nvar, R / keep); var_varprob .zeros();
+
+        if (var_params.containsElementNamed("sparse")) {
+            var_sparse = as<bool>(var_params["sparse"]);
+            if (var_sparse && var_params.containsElementNamed("burn"))
+                var_burn = as<int>(var_params["burn"]);
+        }
+    }
+
     // Create column-major Z for BART
     mat Zt = Z.t();
     double* pZt = Zt.memptr(); // pointer to (transpose of) Z
@@ -203,10 +332,45 @@ List rhierMnlRwMixture_rcpp_loop(List const& lgtdata, mat const& Z,
 
     for (int rep = 0; rep < R; rep++) {
 
-        //first draw comps,ind,p | {beta_i}, delta
-        // ind,p need initialization comps is drawn first in sub-Gibbs
+        // ====================================================================
+        // Step A: draw mu | {theta_i}, Sigma(.)
+        //
+        // Heter-cov path: conjugate normal (single component, no mixture).
+        // Mixture path: rmixGibbs as before.
+        // ====================================================================
         List mgout;
-        if (useBART && drawdelta) {
+        List oldcomp;
+        if (useHeterCov) {
+            if (rep == 0) {
+                // Initial mu = column means of theta_i.
+                mu_post = (sum(oldbetas, 0) / static_cast<double>(nlgt)).t();
+                // Naive eta_sq baseline (theta - mu)^2 for var_models init.
+                for (int j = 0; j < nvar; j++) {
+                    for (int lgt = 0; lgt < nlgt; lgt++) {
+                        eta_sq_buf(lgt, j) = std::pow(oldbetas(lgt, j) - mu_post(j), 2.0);
+                    }
+                }
+                var_models = initializeVarBART(pZt, nlgt, nz, peta_sq_cols, var_params, gen);
+                if (useFullCov) {
+                    // phi_models initialized BEFORE update_stdoldbetas_het so the
+                    // Mahalanobis transform sees the full Cholesky from the start.
+                    // Y buffers are zero at init -> phi_models predict 0 (their
+                    // prior mean), which is the correct starting point.
+                    phi_models = initializePhiBART(pZt, nlgt, nz, py_phi_cols,
+                                                   phi_params, gen);
+                }
+                // Standardize betas using the initial (mu, var_models, phi_models) and
+                // initialize the mean trees on the standardized residuals.
+                update_stdoldbetas_het(oldbetas, pstd_oldbetas_cols,
+                                       mu_post, var_models, phi_models);
+                bart_models = initializeBART(pZt, nlgt, nz, pstd_oldbetas_cols,
+                                             bart_params, gen);
+            } else {
+                mu_post = drawMuHeterCov(oldbetas, mubar.row(0).t(), Amu,
+                                         var_models, phi_models, gen);
+            }
+        }
+        else if (useBART && drawdelta) {
             if (rep == 0) {
                 mgout = rmixGibbs(oldbetas, mubar, Amu, nu, V, a, oldprob, ind);
                 update_stdoldbetas(oldbetas, pstd_oldbetas_cols, ind, mgout["comps"]);
@@ -224,12 +388,118 @@ List rhierMnlRwMixture_rcpp_loop(List const& lgtdata, mat const& Z,
             mgout = rmixGibbs(oldbetas, mubar, Amu, nu, V, a, oldprob, ind);
         }
 
-        List oldcomp = mgout["comps"];
-        oldprob = as<vec>(mgout["p"]); //conversion from Rcpp to Armadillo requires explict declaration of variable type using as<>
-        ind = as<vec>(mgout["z"]);
+        if (!useHeterCov) {
+            oldcomp = mgout["comps"];
+            oldprob = as<vec>(mgout["p"]);
+            ind = as<vec>(mgout["z"]);
+        }
 
-        //now draw delta | {beta_i}, ind, comps
-        if (useBART && drawdelta) {
+        // ====================================================================
+        // heter-cov Gibbs cycle:  C -> D' -> B  (Wiemann 2025 §3.1 ordering:
+        // covariance components Sigma updated BEFORE BART, so BART always sees
+        // the freshest Sigma when standardizing tilde_theta).  delta_Z is
+        // computed at the natural end of Step B and consumed unchanged by
+        // Step E (no staleness, no recompute).
+        //
+        // Throughout we work in the (delta, d, phi) tuple of "fundamental"
+        // tree outputs rather than the derived delta_Z = L^{-1} D^{1/2} delta:
+        //
+        //   eta_i = L(theta_i - mu) - D^{1/2} delta_i
+        //   eta_i^{(j)} = ((theta_i - mu) - sum_{k<j} phi_jk (theta_k-mu_k))
+        //               - sqrt(d_j(Z_i)) * delta_j(Z_i)
+        //
+        // This avoids a subtle bug: expanding eta_i = L(theta_i - mu - delta_Z)
+        // componentwise as (theta_j - mu_j - delta_Z_j) - sum phi_jk
+        // (theta_k - mu_k) silently drops the cross terms sum phi_jk
+        // delta_Z_k whenever both delta_Z and phi are non-zero.
+        // ====================================================================
+        if (useHeterCov) {
+            // DART burn-in (mean and variance trees independently configured).
+            if (sparse && rep == burn + 1) {
+                for (int j = 0; j < nvar; j++) bart_models[j].startdart();
+            }
+            if (var_sparse && rep == var_burn + 1) {
+                for (int j = 0; j < nvar; j++) var_models[j].startdart();
+            }
+
+            // ===== Step C: variance trees d_j | mu, theta, current delta, phi.
+            // Compute eta_i = L(theta_i - mu) - D^{1/2} delta_i once per unit
+            // using the CURRENT bart_models (delta) and phi_models, then draw.
+            for (int i = 0; i < nlgt; i++) {
+                cov::cov_eval ev{var_models, phi_models, (size_t)i};
+                vec eta_i = oldbetas.row(i).t() - mu_post;
+                cov::apply_L(eta_i, ev);                            // eta_i := L (theta_i - mu)
+                for (int j = 0; j < nvar; j++) {
+                    double sqrt_dj = std::sqrt(var_models[j].f(i));
+                    double delta_j = bart_models[j].f(i);
+                    double e_ij    = eta_i[j] - sqrt_dj * delta_j;
+                    eta_sq_buf(i, j) = e_ij * e_ij;
+                }
+            }
+            for (int j = 0; j < nvar; j++) var_models[j].draw(gen);
+
+            // ===== Step D' (Phase 2 only): phi_jk | mu, theta, current
+            //       delta, NEW d, OTHER phi.
+            // Per discussions/2026-05-12-phibart-vs-heterbart.md, fit each
+            // phi_jk via the varying-coefficient -> heterbart transform
+            //
+            //   r_i = phi_jk(Z_i) * c_i^{(k)} + eta_i^{(j)}     (data model)
+            //   Y_i = r_i / c_i^{(k)},  sigma_i = sqrt(d_j) / |c_i^{(k)}|.
+            //
+            //   r_i = (theta_j - mu_j) - sqrt(d_j) delta_j
+            //         - sum_{m<j, m != k} phi_jm (theta_m - mu_m)
+            //
+            // c_i^{(k)} clamp: |c| >= 1e-8.  ESS guard inside heterbd ensures
+            // clamped observations contribute negligibly to splits.
+            if (useFullCov) {
+                const double eps = 1e-8;
+                for (int j = 1; j < nvar; j++) {
+                    for (int k = 0; k < j; k++) {
+                        double* y_buf = py_phi_cols[j][k];
+                        for (int i = 0; i < nlgt; i++) {
+                            double c_ik = oldbetas(i, k) - mu_post(k);
+                            if (std::abs(c_ik) < eps)
+                                c_ik = (c_ik >= 0 ? eps : -eps);
+
+                            double sqrt_dj = std::sqrt(var_models[j].f(i));
+                            double delta_j = bart_models[j].f(i);
+                            // r_i: L-row (j, .) applied to (theta - mu), minus
+                            // sqrt(d_j) delta_j, minus the other (j, m) phi
+                            // contributions for m != k.
+                            double r_i = oldbetas(i, j) - mu_post(j) - sqrt_dj * delta_j;
+                            for (int m = 0; m < j; m++) {
+                                if (m == k) continue;
+                                r_i -= phi_models[j][m].f(i)
+                                     * (oldbetas(i, m) - mu_post(m));
+                            }
+
+                            y_buf[i]         = r_i / c_ik;
+                            sigma_phi_buf[i] = sqrt_dj / std::abs(c_ik);
+                        }
+                        phi_models[j][k].draw(sigma_phi_buf.memptr(), gen);
+                    }
+                }
+            }
+
+            // ===== Step B: mean trees delta | mu, NEW d, NEW phi, theta.
+            // Standardize tilde_theta_i = D(Z_i)^{-1/2} L(Z_i) (theta_i - mu)
+            // using the FRESHLY updated d and phi, then backfit.  Mirrors
+            // Wiemann 2025 Step 4 (BART | mu, Sigma, theta) directly.
+            update_stdoldbetas_het(oldbetas, pstd_oldbetas_cols,
+                                   mu_post, var_models, phi_models);
+            for (int j = 0; j < nvar; j++) bart_models[j].draw(1.0, gen);
+
+            // delta_Z(i, .) = Sigma(Z_i)^{1/2} delta(Z_i) = L^{-1} D^{1/2} delta,
+            // evaluated with CURRENT mu, d, phi, delta.  Step E and the
+            // diagnostic accumulator both consume this directly.
+            for (int i = 0; i < nlgt; i++) {
+                for (int j = 0; j < nvar; j++) pred_i(j) = bart_models[j].f(i);
+                cov::cov_eval ev{var_models, phi_models, (size_t)i};
+                vec d_i = cov::sigma_sqrt_apply(pred_i, ev);
+                delta_Z.row(i) = d_i.t();
+            }
+        }
+        else if (useBART && drawdelta) {
             // Start DART after burn-in
             if (sparse && rep == burn + 1) {
                 for (int i = 0; i < nvar; i++) {
@@ -263,17 +533,22 @@ List rhierMnlRwMixture_rcpp_loop(List const& lgtdata, mat const& Z,
             delta_Z = Z * trans(olddelta);
         }
 
-        //loop over all LGT equations drawing beta_i | ind[i],z[i,],mu[ind[i]],rooti[ind[i]]
+        // ====================================================================
+        // Step E: theta_i Metropolis | Delta(.), Sigma(.), data.
+        // ====================================================================
         for (int lgt = 0; lgt < nlgt; lgt++) {
-            List oldcomplgt = oldcomp[ind[lgt] - 1];
-            rootpi = as<mat>(oldcomplgt[1]);
-
-            //note: beta_i = Delta(z_i) + u_i 
-            if (drawdelta) {
-                betabar = as<vec>(oldcomplgt[0]) + delta_Z.row(lgt).t();
-            } 
-            else {
-                betabar = as<vec>(oldcomplgt[0]);
+            if (useHeterCov) {
+                cov::cov_eval ev{var_models, phi_models, (size_t)lgt};
+                rootpi  = cov::rootpi(ev);                         // upper-tri
+                betabar = mu_post + delta_Z.row(lgt).t();
+            } else {
+                List oldcomplgt = oldcomp[ind[lgt] - 1];
+                rootpi = as<mat>(oldcomplgt[1]);
+                if (drawdelta) {
+                    betabar = as<vec>(oldcomplgt[0]) + delta_Z.row(lgt).t();
+                } else {
+                    betabar = as<vec>(oldcomplgt[0]);
+                }
             }
 
             if (rep == 0) oldll[lgt] = llmnl_con(vectorise(oldbetas(lgt, span::all)), lgtdata_vector[lgt].y, lgtdata_vector[lgt].X, SignRes);
@@ -295,25 +570,45 @@ List rhierMnlRwMixture_rcpp_loop(List const& lgtdata, mat const& Z,
         if ((rep + 1) % keep == 0) {
             mkeep = (rep + 1) / keep;
             betadraw.slice(mkeep - 1) = oldbetas;
-            probdraw(mkeep - 1, span::all) = trans(oldprob);
             loglike[mkeep - 1] = sum(oldll);
-            compdraw[mkeep - 1] = oldcomp;
-            if (useBART && drawdelta) {
-                // Store BART and variable usage information
-                for (int i = 0; i < nvar; i++) {
-                    // Store trees
-                    for (size_t j = 0; j < bart_models[i].getm(); j++) {
-                        treess[i] << bart_models[i].gettree(j);
-                    }
-                    // Store variable usage 
-                    varcount.slice(mkeep - 1).col(i) = conv_to<vec>::from(bart_models[i].getnv());
-                    varprob.slice(mkeep - 1).col(i) = conv_to<vec>::from(bart_models[i].getpv());
+            if (useHeterCov) {
+                // Store posterior mu and BOTH bart + var trees + var counts.
+                mu_draw.row(mkeep - 1) = mu_post.t();
+                for (int j = 0; j < nvar; j++) {
+                    for (size_t k = 0; k < bart_models[j].getm(); k++) treess[j]    << bart_models[j].gettree(k);
+                    for (size_t k = 0; k < var_models[j].getm();  k++) var_treess[j]<< var_models[j].gettree(k);
+                    varcount    .slice(mkeep - 1).col(j) = conv_to<vec>::from(bart_models[j].getnv());
+                    varprob     .slice(mkeep - 1).col(j) = conv_to<vec>::from(bart_models[j].getpv());
+                    var_varcount.slice(mkeep - 1).col(j) = conv_to<vec>::from(var_models[j].getnv());
+                    var_varprob .slice(mkeep - 1).col(j) = conv_to<vec>::from(var_models[j].getpv());
                 }
-				//DeltaZdraw.slice(mkeep - 1) = delta_Z;
+                // Phase-2 phi-tree serialization (one tree-string per (j, k)).
+                if (useFullCov) {
+                    for (int j = 1; j < nvar; j++) {
+                        for (int k = 0; k < j; k++) {
+                            for (size_t t = 0; t < phi_models[j][k].getm(); t++) {
+                                phi_treess[j][k] << phi_models[j][k].gettree(t);
+                            }
+                        }
+                    }
+                }
             }
-            else if (drawdelta) {
-				Deltadraw(mkeep - 1, span::all) = trans(vectorise(olddelta));
-				//DeltaZdraw.slice(mkeep - 1) = delta_Z;
+            else {
+                probdraw(mkeep - 1, span::all) = trans(oldprob);
+                compdraw[mkeep - 1] = oldcomp;
+                if (useBART && drawdelta) {
+                    // Store BART and variable usage information
+                    for (int i = 0; i < nvar; i++) {
+                        for (size_t j = 0; j < bart_models[i].getm(); j++) {
+                            treess[i] << bart_models[i].gettree(j);
+                        }
+                        varcount.slice(mkeep - 1).col(i) = conv_to<vec>::from(bart_models[i].getnv());
+                        varprob.slice(mkeep - 1).col(i) = conv_to<vec>::from(bart_models[i].getpv());
+                    }
+                }
+                else if (drawdelta) {
+                    Deltadraw(mkeep - 1, span::all) = trans(vectorise(olddelta));
+                }
             }
         }
     }
@@ -345,31 +640,35 @@ List rhierMnlRwMixture_rcpp_loop(List const& lgtdata, mat const& Z,
         }//end loop through SignRes
     }
 
-    // Create BART output if needed
-    List bartModels;
-    if (useBART && drawdelta) {
-        bartModels = List(nvar);
-        for (int i = 0; i < nvar; i++) {
-            xinfo& xi = bart_models[i].getxinfo();
-            Rcpp::List xiret(xi.size());
-            for (size_t j = 0; j < xi.size(); j++) {
-                Rcpp::NumericVector vtemp(xi[j].size());
-                std::copy(xi[j].begin(), xi[j].end(), vtemp.begin());
-                xiret[j] = vtemp;
-            }
+    // Heter-cov return path (Phase 1 and Phase 2).
+    //
+    // The R-side predict.rhierMnlRwMixture method dispatches on class
+    // "rhierMnlRwMixtureHeterCov" and consumes (bart_models, var_models,
+    // phi_models, mu_draw) to evaluate Sigma(Z*)^{1/2} delta(Z*) at any
+    // user-supplied Z*.  No diagnostic running-sum accumulators are returned
+    // from C++; they would duplicate work that predict.* now does cleanly.
+    if (useHeterCov) {
+        SEXP phi_models_pkg = useFullCov
+            ? (SEXP) pack_bart_jagged_(nvar, phi_models, phi_treess)
+            : R_NilValue;
 
-            bartModels[i] = List::create(
-                Named("treedraws") = List::create(
-                    Named("cutpoints") = xiret,
-                    Named("trees") = Rcpp::CharacterVector(treess[i].str())
-                )
-            );
-        }
+        return(List::create(
+            Named("bart_models")  = pack_bart_list_(nvar, bart_models, treess),
+            Named("var_models")   = pack_bart_list_(nvar, var_models,  var_treess),
+            Named("phi_models")   = phi_models_pkg,
+            Named("mu_draw")      = mu_draw,
+            Named("varcount")     = varcount,
+            Named("varprob")      = varprob,
+            Named("var_varcount") = var_varcount,
+            Named("var_varprob")  = var_varprob,
+            Named("betadraw")     = betadraw,
+            Named("loglike")      = loglike,
+            Named("SignRes")      = SignRes));
     }
 
     if (useBART && drawdelta) {
         return(List::create(
-            Named("bart_models") = bartModels,
+            Named("bart_models") = pack_bart_list_(nvar, bart_models, treess),
             Named("varcount") = varcount,
             Named("varprob") = varprob,
 			//Named("DeltaZdraw") = DeltaZdraw,
