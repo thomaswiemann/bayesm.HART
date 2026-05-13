@@ -31,8 +31,8 @@ Should NOT contain an intercept and should be centered.
 \item \code{V} (optional): Location matrix for IW prior on component \code{Sigma} (default: \code{nu * I} or scaled based on restriction).
 \item \code{SignRes} (optional): \verb{nvar x 1} vector of sign restrictions. Must contain values of 0, -1, or 1. The value 0 means no restriction, -1 ensures the coefficient is negative, and 1 ensures the coefficient is positive. For example, \code{SignRes = c(0,1,-1)} means the first coefficient is unconstrained, the second will be positive, and the third will be negative. Default: \code{rep(0, nvar)}.
 \item \code{bart} (optional): List of parameters for the HART prior. If specified, this models the representative consumer \eqn{\Delta(Z)} as a scaled sum-of-trees factor model. See Details.
-\item \code{vartree} (optional, \emph{experimental extension beyond Wiemann 2025}): List of parameters enabling heteroscedastic covariance \eqn{\Sigma(Z_i)} via product-of-trees variance models on the Modified Cholesky diagonal \eqn{d_j(\cdot)}. Requires \code{bart} to also be specified, \code{ncomp = 1}, and no sign restrictions. See "Heteroscedastic Covariance" in Details.
-\item \code{phitree} (optional, \emph{experimental extension beyond Wiemann 2025}): List of parameters enabling sum-of-trees regression models on the Modified Cholesky off-diagonals \eqn{\phi_{jk}(\cdot)}. Requires \code{vartree}. Adds the full-Cholesky structure on top of the diagonal \code{vartree} model.
+\item \code{vartree} (optional, \emph{experimental extension beyond Wiemann 2025}): List of parameters enabling heteroscedastic covariance \eqn{\Sigma(Z_i)} via product-of-trees variance models on the Modified Cholesky diagonal \eqn{d_j(\cdot)}. Requires \code{bart} to also be specified and \code{ncomp = 1}. Compatible with \code{SignRes} (see "Heteroscedastic Covariance" in Details). When \code{nvar > 1}, the package automatically promotes to the full-Cholesky structure described under \code{phitree} (diagonal-only \eqn{\Sigma(Z_i)} would force every conditional cross-correlation to zero, which is essentially never a believable posterior).
+\item \code{phitree} (optional, \emph{experimental extension beyond Wiemann 2025}): List of parameters enabling sum-of-trees regression models on the Modified Cholesky off-diagonals \eqn{\phi_{jk}(\cdot)}. Requires \code{vartree}. Adds the full-Cholesky structure on top of the diagonal \code{vartree} model. Auto-enabled when \code{vartree} is supplied and \code{nvar > 1}.
 }}
 
 \item{Mcmc}{A list containing MCMC parameters:
@@ -147,7 +147,9 @@ where \eqn{L(Z_i)} is unit lower-triangular with \eqn{L_{jk} = -\phi_{jk}(Z_i)} 
 \item DART hyperparameters: same meaning as \code{Prior$bart}.
 }
 
-When this extension is active, the returned object additionally inherits class \code{"rhierMnlRwMixtureHeterCov"} and contains slots \code{var_models}, \code{phi_models} (jagged, lower-triangular; \code{NULL} if \code{Prior$phitree} not supplied), and \code{mu_draw} (single-component posterior mean draws). \code{predict()} dispatches on this class to evaluate \eqn{\Sigma(Z^*)} at new \eqn{Z^*}.
+When this extension is active, the returned object additionally inherits class \code{"rhierMnlRwMixtureHeterCov"} and contains slots \code{var_models}, \code{phi_models} (jagged, lower-triangular; \code{NULL} if \code{nvar == 1}), and \code{mu_draw} (single-component posterior mean draws). \code{predict()} dispatches on this class to evaluate \eqn{\Sigma(Z^*)} at new \eqn{Z^*}.
+
+Sign restrictions are fully compatible with this extension. Under \code{SignRes != 0}, the variance/phi trees model \eqn{\Sigma(Z_i)} on the unconstrained scale \eqn{\beta^*_i = \log|\beta_i|/SignRes} (exactly as in the standard MNL HART path), and the post-loop transform \eqn{\beta_i = SignRes \cdot \exp(\beta^*_i)} is applied unconditionally to every kept draw.
 }
 
 \subsection{Sign Restrictions}{

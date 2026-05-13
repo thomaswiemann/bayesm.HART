@@ -23,6 +23,17 @@
 #'   - `Ad` (optional): Prior precision for vec(Delta) (default: 0.01 * I). Only used when `drawdelta = TRUE` and `useBART = FALSE`.
 #'   - `deltabar` (optional): Prior mean for vec(Delta) (default: 0). Only used when `drawdelta = TRUE` and `useBART = FALSE`.
 #'   - `bart` (optional): List of HART prior parameters. See Details.
+#'   - `vartree` (optional, *experimental extension beyond Wiemann 2025*): List of
+#'     parameters enabling heteroscedastic covariance \eqn{\Sigma(Z_i)} via
+#'     product-of-trees variance models on the Modified Cholesky diagonal
+#'     \eqn{d_j(\cdot)}. Requires `bart` to also be specified and `ncomp = 1`.
+#'     When `nvar > 1`, the package automatically promotes to the full-Cholesky
+#'     structure described under `phitree`. See "Heteroscedastic Covariance"
+#'     in Details.
+#'   - `phitree` (optional, *experimental extension beyond Wiemann 2025*): List of
+#'     parameters enabling sum-of-trees regression models on the Modified
+#'     Cholesky off-diagonals \eqn{\phi_{jk}(\cdot)}. Requires `vartree`.
+#'     Auto-enabled when `vartree` is supplied and `nvar > 1`.
 #' @param Mcmc A list containing MCMC parameters:
 #'   - `R`: Number of MCMC iterations (required).
 #'   - `keep` (optional): Thinning parameter (default: 1).
@@ -48,17 +59,73 @@
 #'   - `sparse`: Use Dirichlet HART for sparsity (default: FALSE).
 #'   - `theta`, `omega`, `a`, `b`, `rho`, `aug`, `burn`: Dirichlet HART parameters.
 #'
+#' ## Heteroscedastic Covariance \eqn{\Sigma(Z_i)} (experimental extension)
+#'
+#' When `Prior$vartree` is supplied, the homoscedastic mixture-of-normals
+#' covariance \eqn{\Sigma_{k_i}} is replaced with a unit-specific
+#' \deqn{\Sigma(Z_i)^{-1} = L(Z_i)^\top D(Z_i)^{-1} L(Z_i)}
+#' where \eqn{L(Z_i)} is unit lower-triangular with \eqn{L_{jk} = -\phi_{jk}(Z_i)}
+#' for \eqn{k < j} and \eqn{D(Z_i) = \mathrm{diag}(d_1(Z_i), \ldots, d_{nvar}(Z_i))},
+#' \eqn{d_j > 0}. Each \eqn{d_j(\cdot)} is modeled as a product of trees with
+#' \eqn{\chi^{-2}} leaves; each \eqn{\phi_{jk}(\cdot)} (when `Prior$phitree` is
+#' supplied or auto-promoted) is modeled as a sum of trees with
+#' \eqn{N(0, \tau^2)} leaves. Only the single-component path (`ncomp = 1`) is
+#' supported in this mode. Per-unit \eqn{\beta_i} are drawn from the conjugate
+#' Gaussian posterior using \eqn{\Sigma(Z_i)^{-1}} as the prior precision.
+#'
+#' **`Prior$vartree` parameters** (defaults shown):
+#'   - `num_trees` (40): Number of trees per dimension.
+#'   - `nu` (10), `lambda` (auto-calibrated from per-unit OLS): \eqn{\chi^{-2}}
+#'     prior parameters.
+#'   - `power` (2), `base` (0.95), `numcut` (100): Tree-structure prior parameters.
+#'   - DART hyperparameters (`sparse`, `a`, `b`, `rho`, `theta`, `omega`, `aug`,
+#'     `burn`): same meaning as `Prior$bart`.
+#'
+#' **`Prior$phitree` parameters** (defaults shown):
+#'   - `num_trees` (40): Number of trees per \eqn{(j,k)} pair.
+#'   - `tau` (1/sqrt(num_trees)): Prior standard deviation of leaf parameters.
+#'   - `power` (2), `base` (0.95), `numcut` (100): Tree-structure prior parameters.
+#'   - `nmin` (2), `ess_min` (5): Leaf-admissibility floors.
+#'   - DART hyperparameters: same meaning as `Prior$bart`.
+#'
+#' When this extension is active, the returned object additionally inherits
+#' classes `"rhierLinearMixtureHeterCov"` and `"bayesm.HART.HeterCov"` and
+#' contains slots `var_models`, `phi_models` (jagged, lower-triangular; `NULL`
+#' if `nvar == 1`), and `mu_draw`. `predict()` dispatches on these classes to
+#' evaluate \eqn{\Sigma(Z^*)} at any new \eqn{Z^*}.
+#'
 #' @return A list of class `"rhierLinearMixture"` containing:
 #'   - `betadraw`: `nreg x nvar x (R/keep)` array of unit-level beta draws.
 #'   - `taudraw`: `(R/keep) x nreg` matrix of error variance draws.
 #'   - `loglike`: `(R/keep) x 1` vector of log-likelihoods.
-#'   - `nmix`: List with `probdraw`, `zdraw`, `compdraw` (mixture draws).
+#'   - `nmix`: List with `probdraw`, `zdraw`, `compdraw` (omitted under heter-cov).
 #'   - If `drawdelta` and non-BART: `Deltadraw`.
 #'   - If BART: `bart_models`, `varcount`, `varprob`.
+#'   - If heter-cov (additional class `"rhierLinearMixtureHeterCov"`):
+#'     `var_models`, `phi_models` (jagged or `NULL`), `mu_draw`,
+#'     `var_varcount`, `var_varprob`.
 #'
 #' @seealso [predict.rhierLinearMixture()], [marginal_effects.rhierLinearMixture()]
 #'
 #' @author Peter Rossi, Wayne Taylor (original bayesm code), Thomas Wiemann (HART modifications).
+#'
+#' @examples
+#' \donttest{
+#' set.seed(20260513)
+#' sim <- bayesm.HART::sim_hier_linear(
+#'   nreg = 30, nobs = 12, nvar = 1, nz = 2,
+#'   const = TRUE, het_observed = "linear",
+#'   target_var_betabar = 1.0, target_var_eps = 0.5,
+#'   sigma_sq = 0.5)
+#' Prior <- list(ncomp = 1L,
+#'               bart    = list(num_trees = 20),
+#'               vartree = list(num_trees = 20))
+#' Mcmc  <- list(R = 200L, keep = 1L, nprint = 0L)
+#' fit   <- bayesm.HART::rhierLinearMixture(
+#'   Data = list(regdata = sim$regdata, Z = sim$Z),
+#'   Prior = Prior, Mcmc = Mcmc, r_verbose = FALSE)
+#' str(fit, max.level = 1)
+#' }
 #'
 #' @export
 rhierLinearMixture=
@@ -191,27 +258,25 @@ if(sum(dim(V)==c(nvar,nvar)) != 2) pandterm("Invalid V in prior")
 
 # ---- HART prior modification ----
 useBART <- ifelse(!is.null(Prior$bart) & drawdelta, TRUE, FALSE)
-bart_params = NULL
+bart_params <- NULL
 if (useBART) {
-  bart_params <- list(
-    num_trees = ifelse(is.null(Prior$bart$num_trees), 200, Prior$bart$num_trees),
-    power = ifelse(is.null(Prior$bart$power), 2.0, Prior$bart$power),
-    base = ifelse(is.null(Prior$bart$base), 0.95, Prior$bart$base),
-    tau = ifelse(is.null(Prior$bart$tau), 1.0 / sqrt(
-      ifelse(is.null(Prior$bart$num_trees), 200, Prior$bart$num_trees)
-    ), Prior$bart$tau),
-    numcut = ifelse(is.null(Prior$bart$numcut), 100, Prior$bart$numcut),
-    sparse = ifelse(is.null(Prior$bart$sparse), FALSE, Prior$bart$sparse),
-    theta = ifelse(is.null(Prior$bart$theta), 0.0, Prior$bart$theta),
-    omega = ifelse(is.null(Prior$bart$omega), 1.0, Prior$bart$omega),
-    a = ifelse(is.null(Prior$bart$a), 0.5, Prior$bart$a),
-    b = ifelse(is.null(Prior$bart$b), 1.0, Prior$bart$b),
-    rho = ifelse(is.null(Prior$bart$rho), nz, Prior$bart$rho),
-    aug = ifelse(is.null(Prior$bart$aug), FALSE, Prior$bart$aug),
-    burn = ifelse(is.null(Prior$bart$burn), 100, Prior$bart$burn)
-  )
+  bart_params <- .parse_bart_params(Prior$bart, nz)
 }
 # ---- end HART prior modification ----
+
+# ---------------------------------------------------------------------------
+# Heteroscedastic covariance Sigma(Z_i) via modified-Cholesky tree ensembles.
+# Auto-enabled by Prior$vartree.  Requires Prior$bart, drawdelta, ncomp == 1.
+# Linear lambda baseline + MCMC warm-start use per-unit OLS slopes (computed
+# below once XpX/Xpy are available); see R/heter_cov_priors.R for the parsing.
+# ---------------------------------------------------------------------------
+hcv_flags   <- .parse_heter_cov_flags(Prior, nvar)
+useHeterCov <- hcv_flags$useHeterCov
+useFullCov  <- hcv_flags$useFullCov
+auto_full   <- hcv_flags$auto_full
+var_params  <- list()
+phi_params  <- list()
+.validate_heter_cov(useHeterCov, useBART, ncomp, drawdelta, SignRes = NULL)
 
 if(is.null(Prior$Ad) & drawdelta) {Ad=BayesmConstant.A*diag(nvar*nz)}
    else {Ad=Prior$Ad}
@@ -311,14 +376,34 @@ if (!useBART) {
 
 oldprob=rep(1/ncomp,ncomp)
 
+# Per-unit OLS slopes: used as the lambda baseline for vartree auto-calibration
+# under heter-cov, and also as the C++ warm-start for `oldbetas` (avoids the
+# zero-init pathology where d_j(.) trees fit to inflated squared residuals).
+# Falls back to zeros if XpX is singular for a unit.
+Beta_init <- matrix(0, nrow = nreg, ncol = nvar)
+if (useHeterCov) {
+  Beta_init <- t(vapply(regdata, function(rd)
+    tryCatch(as.numeric(solve(rd$XpX, rd$Xpy)),
+             error = function(e) rep(0, nvar)),
+    numeric(nvar)))
+  var_params <- .parse_var_params(Prior$vartree, Beta_init, nz)
+  if (useFullCov) phi_params <- .parse_phi_params(Prior$phitree, nz)
+  if (r_verbose)
+    .print_heter_cov_summary(useFullCov, var_params, phi_params,
+                             lambda_user_supplied = !is.null(Prior$vartree$lambda),
+                             auto_full = auto_full)
+}
+
 ###################################################################
 # Wayne Taylor 10/02/2014
-# Modified by Thomas Wiemann 2025 -- added HART support
+# Modified by Thomas Wiemann 2025 -- added HART support, mixture-of-normals,
+#   and heter-cov (Sigma(Z_i)) extension.
 ###################################################################
 draws = rhierLinearMixture_rcpp_loop(regdata, Z, deltabar,
     Ad, mubar, Amu, nu, V, nu.e, ssq, R, keep, nprint, drawdelta,
     as.matrix(olddelta), a, oldprob, ind, tau,
-    useBART, bart_params)
+    useBART, bart_params,
+    useHeterCov, var_params, phi_params, Beta_init)
 ###################################################################
 
 #
@@ -326,13 +411,25 @@ draws = rhierLinearMixture_rcpp_loop(regdata, Z, deltabar,
 #
 attributes(draws$taudraw)$class=c("bayesm.mat","mcmc")
 attributes(draws$taudraw)$mcpar=c(1,R,keep)
-if(!useBART & drawdelta) {
-  attributes(draws$Deltadraw)$class=c("bayesm.mat","mcmc")
-  attributes(draws$Deltadraw)$mcpar=c(1,R,keep)
-}
 attributes(draws$betadraw)$class=c("bayesm.hcoef")
-attributes(draws$nmix)$class="bayesm.nmix"
-class(draws) <- "rhierLinearMixture"
+
+if (useHeterCov) {
+  # "bayesm.HART.HeterCov" is the marker superclass shared by all
+  # heteroscedastic-Sigma(Z) hierarchical models; it lets predict_helpers.R
+  # dispatch generically without hardcoding any model-specific class name.
+  attributes(draws$mu_draw)$class <- c("bayesm.mat", "mcmc")
+  attributes(draws$mu_draw)$mcpar <- c(1, R, keep)
+  class(draws) <- c("rhierLinearMixtureHeterCov",
+                    "bayesm.HART.HeterCov",
+                    "rhierLinearMixture")
+} else {
+  if(!useBART & drawdelta) {
+    attributes(draws$Deltadraw)$class=c("bayesm.mat","mcmc")
+    attributes(draws$Deltadraw)$mcpar=c(1,R,keep)
+  }
+  attributes(draws$nmix)$class="bayesm.nmix"
+  class(draws) <- "rhierLinearMixture"
+}
 
 return(draws)
 }

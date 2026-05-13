@@ -124,7 +124,9 @@ mnlMetropOnceOut mnlMetropOnce(vec const& y, mat const& X, vec const& oldbeta, d
 
 //Used in rnegbinRW and rhierNegbinRw
 double llnegbin(vec const& y, vec const& lambda, double alpha, bool constant);
-double lpostbeta(double alpha, vec const& beta, mat const& X, vec const& y, vec const& betabar, mat const& rootA);
+// `rooti` is the bayesm-`rooti` upper-triangular matrix with rooti * rooti^T = Sigma^{-1}.
+// (Same convention as lndMvn / mnlMetropOnce_con.  See utilityFunctions.cpp for details.)
+double lpostbeta(double alpha, vec const& beta, mat const& X, vec const& y, vec const& betabar, mat const& rooti);
 double lpostalpha(double alpha, vec const& beta, mat const& X, vec const& y, double a, double b);
 
 //FUNCTION TIMING (contained in functionTiming.cpp)---------------------------------------------------------------

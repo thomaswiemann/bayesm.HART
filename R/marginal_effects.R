@@ -3,15 +3,29 @@
 #' Computes the posterior distribution of average marginal effects by
 #' varying a target covariate over a grid.
 #'
-#' @param object A fitted model object.
+#' @param object A fitted hierarchical model object (e.g.,
+#'   `rhierMnlRwMixture`, `rhierLinearMixture`, `rhierNegbinRw`).
+#' @param z_values A numeric matrix of grid values for the unit-level
+#'   covariates `Z`. Each row defines one counterfactual `Z*`. Columns that
+#'   are entirely `NA` are held at their training values; columns with no
+#'   `NA`s are swept to the supplied grid value.
+#' @param Z A numeric matrix of unit-level covariates from the training
+#'   sample (typically `Data$Z` from the original fit). Must have the same
+#'   number of columns as `z_values`.
+#' @param burn Non-negative integer. Number of initial MCMC draws to drop
+#'   before averaging (default `0`).
+#' @param verbose Logical. Print progress per grid point (default `TRUE`).
 #' @param ... Other arguments passed to methods.
 #'
-#' @details This is a generic function. The main implementation for this package
-#'   is `marginal_effects.rhierMnlRwMixture`.
+#' @details This is a generic function. Method implementations are provided
+#'   for `rhierMnlRwMixture`, `rhierLinearMixture`, and `rhierNegbinRw` (the
+#'   heter-cov subclasses inherit dispatch through their base classes).
 #'
-#' @return The result depends on the method implementation.
+#' @return An object of class `"marginal_effects"`; see
+#'   `summary.marginal_effects()` for downstream summarization.
 #' @export
-marginal_effects <- function(object, ...) {
+marginal_effects <- function(object, z_values, Z, burn = 0, verbose = TRUE,
+                             ...) {
   UseMethod("marginal_effects")
 }#MARGINAL_EFFECTS
 
@@ -386,7 +400,8 @@ summary.marginal_effects <- function(
 #'   scale_linetype_manual scale_fill_manual labs theme_classic theme element_blank
 #'   waiver .data
 #' @importFrom dplyr bind_rows filter select rename
-#' @importFrom rlang list2 `!!!`
+#' @importFrom rlang list2 `!!!` `:=`
+#' @importFrom stats predict
 #' @export
 #' @examples
 #' # --- Full Example Sequence for Plotting ---

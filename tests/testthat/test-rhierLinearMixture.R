@@ -248,6 +248,50 @@ test_that("rhierLinearMixture recovers beta (linear DGP, moderate R)", {
   }
 })
 
+test_that("rhierLinearMixture precision matrix convention is correct (M3.2 bug check)", {
+  # This test uses nvar = 2 (ncoef = 3) with an asymmetric Cholesky root to
+  # ensure that the precision matrix is computed as rootpi * t(rootpi) and
+  # not t(rootpi) * rootpi.
+  set.seed(42)
+  nreg <- 1
+  nobs <- 10
+  ncoef <- 3
+  
+  X <- cbind(1, matrix(rnorm(nobs * 2), nobs, 2))
+  beta_true <- c(1.5, -0.5, 0.8)
+  y <- X %*% beta_true + rnorm(nobs, 0, 0.5)
+  
+  # Asymmetric V ensures R'R != RR'
+  Sigma_k <- matrix(c(1, 0.8, 0.2, 
+                      0.8, 2, -0.5,
+                      0.2, -0.5, 1.5), 3, 3)
+  
+  Prior <- list(
+    ncomp = 1,
+    mubar = matrix(c(0, 0, 0), 3, 1),
+    Amu = matrix(100, 1, 1),
+    nu = 100,
+    V = Sigma_k * 100,
+    nu.e = 3,
+    ssq = rep(1.0, 1)
+  )
+  
+  Data <- list(regdata = list(list(y=y, X=X)))
+  
+  # Run the sampler
+  set.seed(123)
+  out <- rhierLinearMixture(Data=Data, Prior=Prior, 
+                            Mcmc=list(R=1000, keep=1, nprint=0), r_verbose=FALSE)
+  
+  # Get posterior mean
+  beta_post_mean <- apply(out$betadraw[1,,501:1000], 1, mean)
+  
+  # Check against known correct values from the patched implementation
+  expect_equal(beta_post_mean[1], 1.04265, tolerance = 0.05)
+  expect_equal(beta_post_mean[2], -0.04129, tolerance = 0.05)
+  expect_equal(beta_post_mean[3],  0.82022, tolerance = 0.05)
+})
+
 # ==============================================================================
 # 7. BART Integration
 # ==============================================================================

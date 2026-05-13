@@ -33,8 +33,8 @@ rdirichlet <- function(alpha) {
     .Call(`_bayesm_HART_rdirichlet`, alpha)
 }
 
-rhierLinearMixture_rcpp_loop <- function(regdata, Z, deltabar, Ad, mubar, Amu, nu, V, nu_e, ssq, R, keep, nprint, drawdelta, olddelta, a, oldprob, ind, tau, useBART = FALSE, bart_params) {
-    .Call(`_bayesm_HART_rhierLinearMixture_rcpp_loop`, regdata, Z, deltabar, Ad, mubar, Amu, nu, V, nu_e, ssq, R, keep, nprint, drawdelta, olddelta, a, oldprob, ind, tau, useBART, bart_params)
+rhierLinearMixture_rcpp_loop <- function(regdata, Z, deltabar, Ad, mubar, Amu, nu, V, nu_e, ssq, R, keep, nprint, drawdelta, olddelta, a, oldprob, ind, tau, useBART = FALSE, bart_params, useHeterCov = FALSE, var_params, phi_params, Beta_init) {
+    .Call(`_bayesm_HART_rhierLinearMixture_rcpp_loop`, regdata, Z, deltabar, Ad, mubar, Amu, nu, V, nu_e, ssq, R, keep, nprint, drawdelta, olddelta, a, oldprob, ind, tau, useBART, bart_params, useHeterCov, var_params, phi_params, Beta_init)
 }
 
 llmnl_con <- function(betastar, y, X, SignRes = as.numeric( c(0))) {
@@ -45,8 +45,8 @@ rhierMnlRwMixture_rcpp_loop <- function(lgtdata, Z, deltabar, Ad, mubar, Amu, nu
     .Call(`_bayesm_HART_rhierMnlRwMixture_rcpp_loop`, lgtdata, Z, deltabar, Ad, mubar, Amu, nu, V, s, R, keep, nprint, drawdelta, olddelta, a, oldprob, oldbetas, ind, SignRes, useBART, bart_params, useHeterCov, var_params, phi_params)
 }
 
-rhierNegbinRw_rcpp_loop <- function(regdata, hessdata, Z, Beta, deltabar, Ad, mubar, Amu, nu, V, a, b, R, keep, sbeta, alphacroot, nprint, drawdelta, olddelta, a_mix, oldprob, ind, alpha, fixalpha, useBART = FALSE, bart_params) {
-    .Call(`_bayesm_HART_rhierNegbinRw_rcpp_loop`, regdata, hessdata, Z, Beta, deltabar, Ad, mubar, Amu, nu, V, a, b, R, keep, sbeta, alphacroot, nprint, drawdelta, olddelta, a_mix, oldprob, ind, alpha, fixalpha, useBART, bart_params)
+rhierNegbinRw_rcpp_loop <- function(regdata, hessdata, Z, oldbetas, deltabar, Ad, mubar, Amu, nu, V, a, b, R, keep, sbeta, alphacroot, nprint, drawdelta, olddelta, a_mix, oldprob, ind, alpha, fixalpha, useBART = FALSE, bart_params, useHeterCov = FALSE, var_params, phi_params) {
+    .Call(`_bayesm_HART_rhierNegbinRw_rcpp_loop`, regdata, hessdata, Z, oldbetas, deltabar, Ad, mubar, Amu, nu, V, a, b, R, keep, sbeta, alphacroot, nprint, drawdelta, olddelta, a_mix, oldprob, ind, alpha, fixalpha, useBART, bart_params, useHeterCov, var_params, phi_params)
 }
 
 rmixGibbs <- function(y, Bbar, A, nu, V, a, p, z) {

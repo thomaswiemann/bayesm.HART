@@ -13,7 +13,7 @@
 #' @param target_var_betabar Numeric. Target variance for the **first coefficient**
 #'   of the observed component betabar_i = f(Z_i). Must be non-negative.
 #'   The first coefficient will be centered to have mean zero. The remaining
-#'   coefficients (2 to ncoef) are fixed constants [-1, 1, -1, 1].
+#'   coefficients (2 to ncoef) are fixed constants `c(-1, 1, -1, 1)`.
 #'   Ignored if het_observed = "none".
 #' @param target_var_eps Numeric. Target variance for each coefficient in the
 #'   unobserved component eps_i. Must be non-negative. Controls `sigma_inv_diag`.

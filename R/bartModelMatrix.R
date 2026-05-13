@@ -33,7 +33,7 @@ bartModelMatrix=function(X, numcut=0L, usequants=FALSE, type=7,
         xnm = names(X)
         for(i in 1:p) {
             if(is.factor(X[[i]])) {
-                Xtemp = class.ind(X[[i]])
+                Xtemp = nnet::class.ind(X[[i]])
                 colnames(Xtemp) = paste(xnm[i],1:ncol(Xtemp),sep='')
                 X[[i]]=Xtemp
                 grp=c(grp, rep(i, ncol(Xtemp)))

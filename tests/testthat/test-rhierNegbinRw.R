@@ -189,6 +189,51 @@ test_that("rhierNegbinRw with fixalpha keeps alpha constant", {
   expect_true(all(out$alphadraw == alpha_fixed))
 })
 
+test_that("rhierNegbinRw precision matrix convention is correct (M4.2 bug check)", {
+  set.seed(42)
+  nreg <- 1
+  nobs <- 15
+  ncoef <- 3
+  
+  X <- cbind(1, matrix(rnorm(nobs * 2), nobs, 2))
+  beta_true <- c(0.5, -0.2, 0.3)
+  
+  # Generate counts
+  mu <- exp(X %*% beta_true)
+  alpha <- 5.0
+  y <- rnbinom(nobs, size=alpha, mu=mu)
+  
+  # Asymmetric V ensures R'R != RR'
+  Sigma_k <- matrix(c(1, 0.8, 0.2, 
+                      0.8, 2, -0.5,
+                      0.2, -0.5, 1.5), 3, 3)
+  
+  Prior <- list(
+    ncomp = 1,
+    mubar = matrix(c(0, 0, 0), 3, 1),
+    Amu = matrix(100, 1, 1),
+    nu = 100,
+    V = Sigma_k * 100,
+    a = 5.0,
+    b = 1.0
+  )
+  
+  Data <- list(regdata = list(list(y=y, X=X)))
+  
+  # Run the sampler
+  set.seed(123)
+  out <- rhierNegbinRw(Data=Data, Prior=Prior, 
+                       Mcmc=list(R=1000, keep=1, nprint=0), r_verbose=FALSE)
+  
+  # Get posterior mean
+  beta_post_mean <- apply(out$betadraw[1,,501:1000], 1, mean)
+  
+  # Check against known correct values from the patched implementation
+  expect_equal(beta_post_mean[1], -0.21474, tolerance = 0.05)
+  expect_equal(beta_post_mean[2],  0.10806, tolerance = 0.05)
+  expect_equal(beta_post_mean[3],  0.83208, tolerance = 0.05)
+})
+
 # ==============================================================================
 # 7. BART Integration Tests
 # ==============================================================================

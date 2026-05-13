@@ -300,7 +300,7 @@ test_that("predict method with type = 'posterior_probs' works", {
   # Manually calculate using the helper (assuming it's loaded)
   beta_1_1 <- mock_object$betadraw[1, , 1]
   X_1 <- mock_newdata_t1$nlgtdata[[1]]$X
-  expected_prob_1_1 <- bayesm.HART:::calculate_mnl_probs_from_beta(X_1, beta_1_1, p_test)
+  expected_prob_1_1 <- calculate_mnl_probs_from_beta(X_1, beta_1_1, p_test)
   
   # Use drop=FALSE when subsetting the 3D array to keep dimensions
   expect_equal(pred_t1[[1]][,,1, drop = FALSE], array(expected_prob_1_1, dim=c(T1_test, p_test, 1)), 
@@ -324,7 +324,7 @@ test_that("predict method with type = 'posterior_probs' works", {
   # Check calculation for one unit/obs/draw
   beta_1_3_t2 <- mock_object_t2$betadraw[1, , 3]
   X_1_t2 <- mock_newdata_t2$nlgtdata[[1]]$X
-  expected_prob_1_3_t2 <- bayesm.HART:::calculate_mnl_probs_from_beta(X_1_t2, beta_1_3_t2, p_test)
+  expected_prob_1_3_t2 <- calculate_mnl_probs_from_beta(X_1_t2, beta_1_3_t2, p_test)
   
   # Use drop=FALSE when subsetting the 3D array
   expect_equal(pred_t2[[1]][,,3, drop = FALSE], array(expected_prob_1_3_t2, dim=c(T2_test, p_test, 1)), 

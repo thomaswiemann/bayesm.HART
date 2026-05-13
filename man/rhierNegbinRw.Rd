@@ -23,14 +23,25 @@ rhierNegbinRw(Data, Prior, Mcmc, r_verbose = TRUE)
 \item \code{ncomp} (required): Number of normal mixture components.
 \item \code{nu} (optional): Degrees of freedom for IW prior on mixture component covariances (default: nvar + 3).
 \item \code{V} (optional): \verb{nvar x nvar} location matrix for IW prior (default: nu * I).
-\item \code{a} (optional): Shape parameter for gamma prior on alpha (default: 0.5).
+\item \code{a} (optional): Shape parameter for gamma prior on alpha (default: 0.5). Note: This differs from \code{rhierLinearMixture} where \code{a} is the Dirichlet prior.
 \item \code{b} (optional): Rate parameter for gamma prior on alpha (default: 0.1).
 \item \code{mubar} (optional): \verb{1 x nvar} prior mean for mixture component means (default: 0).
 \item \code{Amu} (optional): \verb{1 x 1} prior precision for mixture component means (default: 0.01).
-\item \code{a_mix} (optional): \verb{ncomp x 1} Dirichlet prior parameters for mixture weights (default: rep(5, ncomp)).
+\item \code{a_mix} (optional): \verb{ncomp x 1} Dirichlet prior parameters for mixture weights (default: rep(5, ncomp)). Named \code{a_mix} here to avoid collision with the gamma prior shape parameter \code{a}.
 \item \code{Ad} (optional): \verb{nvar*nz x nvar*nz} prior precision for vec(Delta) (default: 0.01 * I). Only used when \code{drawdelta = TRUE} and \code{useBART = FALSE}.
 \item \code{deltabar} (optional): \code{nvar*nz} prior mean for vec(Delta) (default: 0). Only used when \code{drawdelta = TRUE} and \code{useBART = FALSE}.
 \item \code{bart} (optional): List of HART prior parameters. See \code{rhierLinearMixture} for details.
+\item \code{vartree} (optional, \emph{experimental extension beyond Wiemann 2025}): List of
+parameters enabling heteroscedastic covariance \eqn{\Sigma(Z_i)} via
+product-of-trees variance models on the Modified Cholesky diagonal
+\eqn{d_j(\cdot)}. Requires \code{bart} to also be specified and \code{ncomp = 1}.
+When \code{nvar > 1}, the package automatically promotes to the full-Cholesky
+structure described under \code{phitree}. See "Heteroscedastic Covariance"
+in Details.
+\item \code{phitree} (optional, \emph{experimental extension beyond Wiemann 2025}): List of
+parameters enabling sum-of-trees regression models on the Modified
+Cholesky off-diagonals \eqn{\phi_{jk}(\cdot)}. Requires \code{vartree}.
+Auto-enabled when \code{vartree} is supplied and \code{nvar > 1}.
 }}
 
 \item{Mcmc}{A list containing MCMC parameters:
@@ -53,10 +64,13 @@ A list of class \code{"rhierNegbinRw"} containing:
 \item \code{betadraw}: \verb{nreg x nvar x (R/keep)} array of unit-level beta draws.
 \item \code{alphadraw}: \verb{(R/keep) x 1} vector of overdispersion draws.
 \item \code{loglike}: \verb{(R/keep) x 1} vector of log-likelihoods.
-\item \code{nmix}: List with \code{probdraw}, \code{zdraw}, \code{compdraw} (mixture draws).
+\item \code{nmix}: List with \code{probdraw}, \code{zdraw}, \code{compdraw} (omitted under heter-cov).
 \item \code{acceptrbeta}, \code{acceptralpha}: Metropolis acceptance rates (percent).
 \item If \code{drawdelta} and non-BART: \code{Deltadraw}.
 \item If BART: \code{bart_models}, \code{varcount}, \code{varprob}.
+\item If heter-cov (additional class \code{"rhierNegbinRwHeterCov"}):
+\code{var_models}, \code{phi_models} (jagged or \code{NULL}), \code{mu_draw},
+\code{var_varcount}, \code{var_varprob}.
 }
 }
 \description{
@@ -85,6 +99,49 @@ Same as \code{rhierLinearMixture}. If \code{Prior$bart} is a list, \eqn{\Delta(Z
 modeled via a sum-of-trees (BART) prior instead of a linear hierarchical
 specification.
 }
+
+\subsection{Heteroscedastic Covariance \eqn{\Sigma(Z_i)} (experimental extension)}{
+
+Same modified-Cholesky construction as \code{rhierLinearMixture}. When
+\code{Prior$vartree} is supplied, the homoscedastic mixture covariance
+\eqn{\Sigma_{k_i}} is replaced with a unit-specific
+\deqn{\Sigma(Z_i)^{-1} = L(Z_i)^\top D(Z_i)^{-1} L(Z_i)}
+where \eqn{d_j(\cdot)} is a product-of-trees ensemble with \eqn{\chi^{-2}}
+leaves and \eqn{\phi_{jk}(\cdot)} is a sum-of-trees ensemble with
+\eqn{N(0, \tau^2)} leaves. Per-unit \eqn{\beta_i} are drawn via a
+Random-Walk Metropolis-Hastings step that uses \eqn{\Sigma(Z_i)^{-1}} as
+the prior precision. Only the single-component path (\code{ncomp = 1}) is
+supported in this mode.
+
+Hyperparameters for \code{Prior$vartree} and \code{Prior$phitree} mirror those
+documented in \code{rhierLinearMixture}. The \code{lambda} parameter of \code{vartree}
+is auto-calibrated from per-unit MLE \eqn{\hat\beta_i} when not supplied.
+
+When this extension is active, the returned object additionally inherits
+classes \code{"rhierNegbinRwHeterCov"} and \code{"bayesm.HART.HeterCov"} and
+contains slots \code{var_models}, \code{phi_models} (jagged, lower-triangular; \code{NULL}
+if \code{nvar == 1}), and \code{mu_draw}. \code{predict()} dispatches on these classes to
+evaluate \eqn{\Sigma(Z^*)} at any new \eqn{Z^*}.
+}
+}
+\examples{
+\donttest{
+set.seed(20260513)
+sim <- bayesm.HART::sim_hier_negbin(
+  nreg = 30, nobs = 12, nvar = 1, nz = 2,
+  const = TRUE, het_observed = "linear",
+  target_var_betabar = 0.5, target_var_eps = 0.25,
+  alpha = 5.0)
+Prior <- list(ncomp = 1L,
+              bart    = list(num_trees = 20),
+              vartree = list(num_trees = 20))
+Mcmc  <- list(R = 200L, keep = 1L, nprint = 0L)
+fit   <- bayesm.HART::rhierNegbinRw(
+  Data = list(regdata = sim$regdata, Z = sim$Z),
+  Prior = Prior, Mcmc = Mcmc, r_verbose = FALSE)
+str(fit, max.level = 1)
+}
+
 }
 \seealso{
 \code{\link[=predict.rhierNegbinRw]{predict.rhierNegbinRw()}}, \code{\link[=marginal_effects.rhierNegbinRw]{marginal_effects.rhierNegbinRw()}}

@@ -26,8 +26,8 @@
 #'   - `V` (optional): Location matrix for IW prior on component `Sigma` (default: `nu * I` or scaled based on restriction).
 #'   - `SignRes` (optional): `nvar x 1` vector of sign restrictions. Must contain values of 0, -1, or 1. The value 0 means no restriction, -1 ensures the coefficient is negative, and 1 ensures the coefficient is positive. For example, `SignRes = c(0,1,-1)` means the first coefficient is unconstrained, the second will be positive, and the third will be negative. Default: `rep(0, nvar)`.
 #'   - `bart` (optional): List of parameters for the HART prior. If specified, this models the representative consumer \eqn{\Delta(Z)} as a scaled sum-of-trees factor model. See Details.
-#'   - `vartree` (optional, *experimental extension beyond Wiemann 2025*): List of parameters enabling heteroscedastic covariance \eqn{\Sigma(Z_i)} via product-of-trees variance models on the Modified Cholesky diagonal \eqn{d_j(\cdot)}. Requires `bart` to also be specified, `ncomp = 1`, and no sign restrictions. See "Heteroscedastic Covariance" in Details.
-#'   - `phitree` (optional, *experimental extension beyond Wiemann 2025*): List of parameters enabling sum-of-trees regression models on the Modified Cholesky off-diagonals \eqn{\phi_{jk}(\cdot)}. Requires `vartree`. Adds the full-Cholesky structure on top of the diagonal `vartree` model.
+#'   - `vartree` (optional, *experimental extension beyond Wiemann 2025*): List of parameters enabling heteroscedastic covariance \eqn{\Sigma(Z_i)} via product-of-trees variance models on the Modified Cholesky diagonal \eqn{d_j(\cdot)}. Requires `bart` to also be specified and `ncomp = 1`. Compatible with `SignRes` (see "Heteroscedastic Covariance" in Details). When `nvar > 1`, the package automatically promotes to the full-Cholesky structure described under `phitree` (diagonal-only \eqn{\Sigma(Z_i)} would force every conditional cross-correlation to zero, which is essentially never a believable posterior).
+#'   - `phitree` (optional, *experimental extension beyond Wiemann 2025*): List of parameters enabling sum-of-trees regression models on the Modified Cholesky off-diagonals \eqn{\phi_{jk}(\cdot)}. Requires `vartree`. Adds the full-Cholesky structure on top of the diagonal `vartree` model. Auto-enabled when `vartree` is supplied and `nvar > 1`.
 #' @param Mcmc A list containing MCMC parameters:
 #'   - `R`: Number of MCMC iterations (required).
 #'   - `keep` (optional): Thinning parameter (default: 1).
@@ -95,7 +95,9 @@
 #'   - `nmin` (2), `ess_min` (5): Leaf-admissibility floors. The default `ess_min = 5` requires the effective sample size \eqn{\sum_{i \in \ell} (\theta_i^{(k)} - \mu^{(k)})^2 / d_j(Z_i)} of each candidate leaf to exceed 5; `nmin = 2` is the corresponding raw-count floor.
 #'   - DART hyperparameters: same meaning as `Prior$bart`.
 #'
-#' When this extension is active, the returned object additionally inherits class `"rhierMnlRwMixtureHeterCov"` and contains slots `var_models`, `phi_models` (jagged, lower-triangular; `NULL` if `Prior$phitree` not supplied), and `mu_draw` (single-component posterior mean draws). `predict()` dispatches on this class to evaluate \eqn{\Sigma(Z^*)} at new \eqn{Z^*}.
+#' When this extension is active, the returned object additionally inherits class `"rhierMnlRwMixtureHeterCov"` and contains slots `var_models`, `phi_models` (jagged, lower-triangular; `NULL` if `nvar == 1`), and `mu_draw` (single-component posterior mean draws). `predict()` dispatches on this class to evaluate \eqn{\Sigma(Z^*)} at new \eqn{Z^*}.
+#'
+#' Sign restrictions are fully compatible with this extension. Under `SignRes != 0`, the variance/phi trees model \eqn{\Sigma(Z_i)} on the unconstrained scale \eqn{\beta^*_i = \log|\beta_i|/SignRes} (exactly as in the standard MNL HART path), and the post-loop transform \eqn{\beta_i = SignRes \cdot \exp(\beta^*_i)} is applied unconditionally to every kept draw.
 #'
 #' ## Sign Restrictions
 #' If `SignRes[k]` is non-zero, the k-th coefficient \eqn{\beta_{ik}} is modeled as
@@ -253,24 +255,7 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
   bart_params = Ad = deltabar = NULL # Set to NULL if unused
   if (useBART) {
     # Bart parameter defaults
-    bart_params <- list(
-      num_trees = ifelse(is.null(Prior$bart$num_trees), 200, 
-                         Prior$bart$num_trees),
-      power = ifelse(is.null(Prior$bart$power), 2.0, Prior$bart$power),
-      base = ifelse(is.null(Prior$bart$base), 0.95, Prior$bart$base),
-      tau = ifelse(is.null(Prior$bart$tau), 1.0 / sqrt( # Default calculation
-        ifelse(is.null(Prior$bart$num_trees), 200, Prior$bart$num_trees)
-      ), Prior$bart$tau), # Use provided tau if exists
-      numcut = ifelse(is.null(Prior$bart$numcut), 100, Prior$bart$numcut),
-      sparse = ifelse(is.null(Prior$bart$sparse), FALSE, Prior$bart$sparse),
-      theta = ifelse(is.null(Prior$bart$theta), 0.0, Prior$bart$theta),
-      omega = ifelse(is.null(Prior$bart$omega), 1.0, Prior$bart$omega),
-      a = ifelse(is.null(Prior$bart$a), 0.5, Prior$bart$a),
-      b = ifelse(is.null(Prior$bart$b), 1.0, Prior$bart$b),
-      rho = ifelse(is.null(Prior$bart$rho), nz, Prior$bart$rho),
-      aug = ifelse(is.null(Prior$bart$aug), FALSE, Prior$bart$aug),
-      burn = ifelse(is.null(Prior$bart$burn), 100, Prior$bart$burn)
-    )
+    bart_params <- .parse_bart_params(Prior$bart, nz)
   } else {
     if(is.null(Prior$Ad) & drawdelta) {Ad=BayesmConstant.A*diag(nvar*nz)} else {Ad=Prior$Ad}
     if(drawdelta) {if(ncol(Ad) != nvar*nz | nrow(Ad) != nvar*nz) {pandterm("Ad must be nvar*nz x nvar*nz")}}
@@ -279,28 +264,16 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
   }
   # ---------------------------------------------------------------------------
   # Heteroscedastic covariance Sigma(Z_i) via modified-Cholesky tree ensembles.
-  #
-  # An additive extension beyond Wiemann (2025): replaces the global Sigma /
-  # mixture path with d_j(.) variance trees (Phase 1) and optional phi_jk(.)
-  # regression trees (Phase 2).  Auto-enabled when Prior$vartree is supplied.
-  # Requires Prior$bart (mean trees), Z != NULL, ncomp == 1, no sign
-  # restrictions.  Phi-trees (Phase 2) are auto-enabled when Prior$phitree is
-  # also supplied.
+  # Additive extension beyond Wiemann (2025); auto-enabled by Prior$vartree.
+  # See R/heter_cov_priors.R for shared parsing/validation/printing.
   # ---------------------------------------------------------------------------
-  useHeterCov <- !is.null(Prior$vartree)
-  useFullCov  <- useHeterCov && !is.null(Prior$phitree)
+  hcv_flags   <- .parse_heter_cov_flags(Prior, nvar)
+  useHeterCov <- hcv_flags$useHeterCov
+  useFullCov  <- hcv_flags$useFullCov
+  auto_full   <- hcv_flags$auto_full
   var_params  <- list()    # placeholder forwarded to C++ when useHeterCov=FALSE
   phi_params  <- list()    # placeholder forwarded to C++ when useFullCov=FALSE
-  if (useHeterCov) {
-    if (!useBART)
-      pandterm("Prior$vartree requires Prior$bart (heter-cov needs mean trees).")
-    if (ncomp != 1)
-      pandterm("Prior$vartree requires ncomp == 1 (no mixture under heteroscedastic Sigma).")
-    if (sum(abs(SignRes)) != 0)
-      pandterm("Prior$vartree is not supported with sign restrictions on beta.")
-    if (!drawdelta)
-      pandterm("Prior$vartree requires Z (drawdelta = TRUE).")
-  }
+  .validate_heter_cov(useHeterCov, useBART, ncomp, drawdelta, SignRes)
   if(is.null(Prior$a)) { a=rep(BayesmConstant.a,ncomp)} else {a=Prior$a}
   if(length(a) != ncomp) {pandterm("Requires dim(a)= ncomp (no of components)")}
   bada=FALSE
@@ -528,63 +501,16 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
   # ---------------------------------------------------------------------------
   # Heter-cov hyperparameter setup.  oldbetas (per-unit MLE betas) are now
   # available, so lambda for the variance-tree chi^{-2} prior can be
-  # data-calibrated if the user did not supply one.
+  # data-calibrated if the user did not supply one.  All parsing lives in
+  # R/heter_cov_priors.R for reuse by Negbin and Linear.
   # ---------------------------------------------------------------------------
   if (useHeterCov) {
-    lambda_default <- mean(apply(oldbetas, 2, var))
-    if (!is.finite(lambda_default) || lambda_default <= 0) lambda_default <- 1.0
-    num_var_trees <- ifelse(is.null(Prior$vartree$num_trees), 40L,
-                            as.integer(Prior$vartree$num_trees))
-    var_params <- list(
-      num_trees = num_var_trees,
-      power     = ifelse(is.null(Prior$vartree$power),  2.0,  Prior$vartree$power),
-      base      = ifelse(is.null(Prior$vartree$base),   0.95, Prior$vartree$base),
-      nu        = ifelse(is.null(Prior$vartree$nu),     10.0, Prior$vartree$nu),
-      lambda    = ifelse(is.null(Prior$vartree$lambda), lambda_default,
-                                                        Prior$vartree$lambda),
-      numcut    = ifelse(is.null(Prior$vartree$numcut), 100L, Prior$vartree$numcut),
-      sparse    = ifelse(is.null(Prior$vartree$sparse), FALSE, Prior$vartree$sparse),
-      theta     = ifelse(is.null(Prior$vartree$theta),  0.0,  Prior$vartree$theta),
-      omega     = ifelse(is.null(Prior$vartree$omega),  1.0,  Prior$vartree$omega),
-      a         = ifelse(is.null(Prior$vartree$a),      0.5,  Prior$vartree$a),
-      b         = ifelse(is.null(Prior$vartree$b),      1.0,  Prior$vartree$b),
-      rho       = ifelse(is.null(Prior$vartree$rho),    nz,   Prior$vartree$rho),
-      aug       = ifelse(is.null(Prior$vartree$aug),    FALSE, Prior$vartree$aug),
-      burn      = ifelse(is.null(Prior$vartree$burn),   100L, Prior$vartree$burn)
-    )
-    if (useFullCov) {
-      num_phi_trees <- ifelse(is.null(Prior$phitree$num_trees), 40L,
-                              as.integer(Prior$phitree$num_trees))
-      phi_params <- list(
-        num_trees = num_phi_trees,
-        power     = ifelse(is.null(Prior$phitree$power),   2.0,  Prior$phitree$power),
-        base      = ifelse(is.null(Prior$phitree$base),    0.95, Prior$phitree$base),
-        tau       = ifelse(is.null(Prior$phitree$tau),     1.0/sqrt(num_phi_trees),
-                                                           Prior$phitree$tau),
-        numcut    = ifelse(is.null(Prior$phitree$numcut),  100L, Prior$phitree$numcut),
-        sparse    = ifelse(is.null(Prior$phitree$sparse),  FALSE, Prior$phitree$sparse),
-        theta     = ifelse(is.null(Prior$phitree$theta),   0.0,  Prior$phitree$theta),
-        omega     = ifelse(is.null(Prior$phitree$omega),   1.0,  Prior$phitree$omega),
-        a         = ifelse(is.null(Prior$phitree$a),       0.5,  Prior$phitree$a),
-        b         = ifelse(is.null(Prior$phitree$b),       1.0,  Prior$phitree$b),
-        rho       = ifelse(is.null(Prior$phitree$rho),     nz,   Prior$phitree$rho),
-        aug       = ifelse(is.null(Prior$phitree$aug),     FALSE, Prior$phitree$aug),
-        nmin      = ifelse(is.null(Prior$phitree$nmin),    2L,   Prior$phitree$nmin),
-        ess_min   = ifelse(is.null(Prior$phitree$ess_min), 5.0,  Prior$phitree$ess_min)
-      )
-    }
-    if (r_verbose) {
-      cat("\nHeteroscedastic Sigma(Z) enabled (",
-          if (useFullCov) "full Cholesky" else "diagonal", ")\n", sep = "")
-      cat(sprintf("  vartree:   num_trees=%d  nu=%g  lambda=%g (%s)\n",
-                  var_params$num_trees, var_params$nu, var_params$lambda,
-                  ifelse(is.null(Prior$vartree$lambda), "auto-calibrated", "user")))
-      if (useFullCov) {
-        cat(sprintf("  phitree:   num_trees=%d  tau=%g  nmin=%d  ess_min=%g\n",
-                    phi_params$num_trees, phi_params$tau,
-                    phi_params$nmin, phi_params$ess_min))
-      }
-    }
+    var_params <- .parse_var_params(Prior$vartree, oldbetas, nz)
+    if (useFullCov) phi_params <- .parse_phi_params(Prior$phitree, nz)
+    if (r_verbose)
+      .print_heter_cov_summary(useFullCov, var_params, phi_params,
+                               lambda_user_supplied = !is.null(Prior$vartree$lambda),
+                               auto_full = auto_full)
   }
 
   ###################################################################
@@ -604,7 +530,13 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
     attributes(draws$betadraw)$class <- c("bayesm.hcoef")
     attributes(draws$mu_draw)$class  <- c("bayesm.mat", "mcmc")
     attributes(draws$mu_draw)$mcpar  <- c(1, R, keep)
-    class(draws) <- c("rhierMnlRwMixtureHeterCov", "rhierMnlRwMixture")
+    # "bayesm.HART.HeterCov" is the marker superclass shared by all
+    # heteroscedastic-Sigma(Z) hierarchical models (MNL, Negbin, Linear); it
+    # lets predict_helpers.R dispatch generically without hardcoding any
+    # model-specific class name.
+    class(draws) <- c("rhierMnlRwMixtureHeterCov",
+                      "bayesm.HART.HeterCov",
+                      "rhierMnlRwMixture")
   } else {
     if(!useBART & drawdelta){
       attributes(draws$Deltadraw)$class=c("bayesm.mat","mcmc")
@@ -666,7 +598,7 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
       
       # Call helper function from utils.R (using :::)
       # Assume bayesm.HART namespace is available or ::: is appropriate
-      probs_mat_is <- bayesm.HART:::calculate_mnl_probs_from_beta(X_i, beta_is, p)
+      probs_mat_is <- calculate_mnl_probs_from_beta(X_i, beta_is, p)
       
       # Assign the T_i x p matrix to the s-th slice of the 3D array
       prob_array_i[, , draw_count] <- probs_mat_is
@@ -695,7 +627,7 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
 .predict_prior_probs <- function(object, newdata, delta_z_array,
                                  kept_draws_indices_nmix, nsim, r_verbose,
                                  hetercov_comps = NULL) {
-  is_heter <- inherits(object, "rhierMnlRwMixtureHeterCov")
+  is_heter <- inherits(object, "bayesm.HART.HeterCov")
   if (!is_heter && !requireNamespace("bayesm", quietly = TRUE)) {
     stop("The 'bayesm' package is required for type='prior_probs'. Please install it.")
   }
@@ -760,7 +692,7 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
         for (k in seq_len(nsim)) {
           beta_is_k    <- DeltaZ_is + eta_mat[k, ]
           probs_mat_is <-
-            bayesm.HART:::calculate_mnl_probs_from_beta(X_i, beta_is_k, p)
+            calculate_mnl_probs_from_beta(X_i, beta_is_k, p)
           prob_is_sum  <- prob_is_sum + probs_mat_is
         }
       } else {
@@ -772,7 +704,7 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
                                                      comps = comps_s)$x)
           beta_is_k    <- DeltaZ_is + eta_is_k
           probs_mat_is <-
-            bayesm.HART:::calculate_mnl_probs_from_beta(X_i, beta_is_k, p)
+            calculate_mnl_probs_from_beta(X_i, beta_is_k, p)
           prob_is_sum  <- prob_is_sum + probs_mat_is
         }
       }
@@ -844,7 +776,7 @@ predict.rhierMnlRwMixture <- function(object, newdata = NULL,
   # exactly ONCE, then share the result with both .calculate_delta_z and
   # (when type == "prior_probs") .predict_prior_probs.
   hetercov_comps <- NULL
-  if (inherits(object, "rhierMnlRwMixtureHeterCov") &&
+  if (inherits(object, "bayesm.HART.HeterCov") &&
       type %in% c("DeltaZ", "DeltaZ+mu", "prior_probs")) {
     if (is.null(newdata$Z))
       stop("Heter-cov predictions require newdata$Z.")

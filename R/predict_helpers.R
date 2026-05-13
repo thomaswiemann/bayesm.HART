@@ -39,7 +39,7 @@
 #   (b) Sum-of-trees, fixed Sigma (object$bart_models, object$nmix):
 #         Delta(Z*) = Sigma_r^{1/2} sum-of-trees(Z*),   with Sigma_r^{1/2}
 #         derived from nmix$compdraw[[r]][[1]]$rooti (= Sigma_r^{-1/2}).
-#   (c) Heteroscedastic Sigma(Z*) (object inherits "rhierMnlRwMixtureHeterCov"):
+#   (c) Heteroscedastic Sigma(Z*) (object inherits "bayesm.HART.HeterCov"):
 #         Delta(Z*) = Sigma(Z*)^{1/2} sum-of-trees(Z*) where
 #         Sigma(Z*)^{1/2} = L(Z*)^{-1} D(Z*)^{1/2} is rebuilt per draw from
 #         var_models (product-of-trees -> d) and phi_models (sum-of-trees -> phi).
@@ -48,7 +48,7 @@
   nvar         <- dim(object$betadraw)[2]
   ndraws_total <- dim(object$betadraw)[3]
 
-  is_heter <- inherits(object, "rhierMnlRwMixtureHeterCov")
+  is_heter <- inherits(object, "bayesm.HART.HeterCov")
   has_bart <- !is.null(object$bart_models)
   has_lin  <- !is.null(object$Deltadraw)
   model_has_Z <- has_lin || has_bart
@@ -105,7 +105,7 @@
 
   # --- Prepare arguments for pwbart, handling ... ---
   passed_args <- list(...)
-  pwbart_arg_names <- names(formals(bayesm.HART:::pwbart))
+  pwbart_arg_names <- names(formals(pwbart))
   valid_passed_args <- passed_args[names(passed_args) %in% pwbart_arg_names]
   base_args <- list(x.test = Z, mu = 0, transposed = FALSE, dodraws = TRUE)
   final_args_template <- utils::modifyList(base_args, valid_passed_args)
@@ -118,7 +118,7 @@
     if (r_verbose) cat("Predicting coefficient", j, "with BART model\n")
     args_j <- final_args_template
     args_j$treedraws <- object$bart_models[[j]]$treedraws
-    raw_pred[, j, ] <- t(do.call(bayesm.HART:::pwbart, args_j))
+    raw_pred[, j, ] <- t(do.call(pwbart, args_j))
   }
 
   if (is.null(object$nmix) || is.null(object$nmix$compdraw))
@@ -186,10 +186,10 @@
   for (j in seq_len(nvar)) {
     if (r_verbose) cat("Predicting delta_", j, " (mean tree)  / d_", j,
                        " (var tree)\n", sep = "")
-    delta_arr[, j, ] <- t(bayesm.HART:::pwbart(
+    delta_arr[, j, ] <- t(pwbart(
       x.test = Z, treedraws = object$bart_models[[j]]$treedraws,
       mu = 0, transposed = FALSE, dodraws = TRUE))
-    d_arr[, j, ] <- t(bayesm.HART:::pwvarbart(
+    d_arr[, j, ] <- t(pwvarbart(
       x.test = Z, treedraws = object$var_models[[j]]$treedraws,
       transposed = FALSE, dodraws = TRUE))
   }
@@ -204,7 +204,7 @@
                      j, j - 1))
       for (k in seq_len(j - 1)) {
         if (r_verbose) cat("Predicting phi_", j, k, " (off-diag tree)\n", sep = "")
-        phi_arr[, j, k, ] <- t(bayesm.HART:::pwbart(
+        phi_arr[, j, k, ] <- t(pwbart(
           x.test = Z, treedraws = pj[[k]]$treedraws,
           mu = 0, transposed = FALSE, dodraws = TRUE))
       }
@@ -225,7 +225,7 @@
   nvar       <- dim(delta_z_array)[2]
   ndraws_out <- dim(delta_z_array)[3]
 
-  if (inherits(object, "rhierMnlRwMixtureHeterCov")) {
+  if (inherits(object, "bayesm.HART.HeterCov")) {
     if (is.null(object$mu_draw))
       stop("Heter-cov object missing mu_draw.")
     mudraw <- t(object$mu_draw[kept_draws_indices, , drop = FALSE])  # nvar x ndraws_out

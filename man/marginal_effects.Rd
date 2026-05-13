@@ -7,7 +7,7 @@
 \alias{marginal_effects.rhierNegbinRw}
 \title{Calculate Marginal Effects for Hierarchical Models}
 \usage{
-marginal_effects(object, ...)
+marginal_effects(object, z_values, Z, burn = 0, verbose = TRUE, ...)
 
 \method{marginal_effects}{rhierMnlRwMixture}(object, z_values, Z, burn = 0, verbose = TRUE, ...)
 
@@ -16,18 +16,35 @@ marginal_effects(object, ...)
 \method{marginal_effects}{rhierNegbinRw}(object, z_values, Z, burn = 0, verbose = TRUE, ...)
 }
 \arguments{
-\item{object}{A fitted model object.}
+\item{object}{A fitted hierarchical model object (e.g.,
+\code{rhierMnlRwMixture}, \code{rhierLinearMixture}, \code{rhierNegbinRw}).}
+
+\item{z_values}{A numeric matrix of grid values for the unit-level
+covariates \code{Z}. Each row defines one counterfactual \verb{Z*}. Columns that
+are entirely \code{NA} are held at their training values; columns with no
+\code{NA}s are swept to the supplied grid value.}
+
+\item{Z}{A numeric matrix of unit-level covariates from the training
+sample (typically \code{Data$Z} from the original fit). Must have the same
+number of columns as \code{z_values}.}
+
+\item{burn}{Non-negative integer. Number of initial MCMC draws to drop
+before averaging (default \code{0}).}
+
+\item{verbose}{Logical. Print progress per grid point (default \code{TRUE}).}
 
 \item{...}{Other arguments passed to methods.}
 }
 \value{
-The result depends on the method implementation.
+An object of class \code{"marginal_effects"}; see
+\code{summary.marginal_effects()} for downstream summarization.
 }
 \description{
 Computes the posterior distribution of average marginal effects by
 varying a target covariate over a grid.
 }
 \details{
-This is a generic function. The main implementation for this package
-is \code{marginal_effects.rhierMnlRwMixture}.
+This is a generic function. Method implementations are provided
+for \code{rhierMnlRwMixture}, \code{rhierLinearMixture}, and \code{rhierNegbinRw} (the
+heter-cov subclasses inherit dispatch through their base classes).
 }

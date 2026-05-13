@@ -17,14 +17,25 @@
 #'   - `ncomp` (required): Number of normal mixture components.
 #'   - `nu` (optional): Degrees of freedom for IW prior on mixture component covariances (default: nvar + 3).
 #'   - `V` (optional): `nvar x nvar` location matrix for IW prior (default: nu * I).
-#'   - `a` (optional): Shape parameter for gamma prior on alpha (default: 0.5).
+#'   - `a` (optional): Shape parameter for gamma prior on alpha (default: 0.5). Note: This differs from `rhierLinearMixture` where `a` is the Dirichlet prior.
 #'   - `b` (optional): Rate parameter for gamma prior on alpha (default: 0.1).
 #'   - `mubar` (optional): `1 x nvar` prior mean for mixture component means (default: 0).
 #'   - `Amu` (optional): `1 x 1` prior precision for mixture component means (default: 0.01).
-#'   - `a_mix` (optional): `ncomp x 1` Dirichlet prior parameters for mixture weights (default: rep(5, ncomp)).
+#'   - `a_mix` (optional): `ncomp x 1` Dirichlet prior parameters for mixture weights (default: rep(5, ncomp)). Named `a_mix` here to avoid collision with the gamma prior shape parameter `a`.
 #'   - `Ad` (optional): `nvar*nz x nvar*nz` prior precision for vec(Delta) (default: 0.01 * I). Only used when `drawdelta = TRUE` and `useBART = FALSE`.
 #'   - `deltabar` (optional): `nvar*nz` prior mean for vec(Delta) (default: 0). Only used when `drawdelta = TRUE` and `useBART = FALSE`.
 #'   - `bart` (optional): List of HART prior parameters. See `rhierLinearMixture` for details.
+#'   - `vartree` (optional, *experimental extension beyond Wiemann 2025*): List of
+#'     parameters enabling heteroscedastic covariance \eqn{\Sigma(Z_i)} via
+#'     product-of-trees variance models on the Modified Cholesky diagonal
+#'     \eqn{d_j(\cdot)}. Requires `bart` to also be specified and `ncomp = 1`.
+#'     When `nvar > 1`, the package automatically promotes to the full-Cholesky
+#'     structure described under `phitree`. See "Heteroscedastic Covariance"
+#'     in Details.
+#'   - `phitree` (optional, *experimental extension beyond Wiemann 2025*): List of
+#'     parameters enabling sum-of-trees regression models on the Modified
+#'     Cholesky off-diagonals \eqn{\phi_{jk}(\cdot)}. Requires `vartree`.
+#'     Auto-enabled when `vartree` is supplied and `nvar > 1`.
 #' @param Mcmc A list containing MCMC parameters:
 #'   - `R`: Number of MCMC iterations (required).
 #'   - `keep` (optional): Thinning parameter (default: 1).
@@ -52,18 +63,62 @@
 #' modeled via a sum-of-trees (BART) prior instead of a linear hierarchical
 #' specification.
 #'
+#' ## Heteroscedastic Covariance \eqn{\Sigma(Z_i)} (experimental extension)
+#'
+#' Same modified-Cholesky construction as `rhierLinearMixture`. When
+#' `Prior$vartree` is supplied, the homoscedastic mixture covariance
+#' \eqn{\Sigma_{k_i}} is replaced with a unit-specific
+#' \deqn{\Sigma(Z_i)^{-1} = L(Z_i)^\top D(Z_i)^{-1} L(Z_i)}
+#' where \eqn{d_j(\cdot)} is a product-of-trees ensemble with \eqn{\chi^{-2}}
+#' leaves and \eqn{\phi_{jk}(\cdot)} is a sum-of-trees ensemble with
+#' \eqn{N(0, \tau^2)} leaves. Per-unit \eqn{\beta_i} are drawn via a
+#' Random-Walk Metropolis-Hastings step that uses \eqn{\Sigma(Z_i)^{-1}} as
+#' the prior precision. Only the single-component path (`ncomp = 1`) is
+#' supported in this mode.
+#'
+#' Hyperparameters for `Prior$vartree` and `Prior$phitree` mirror those
+#' documented in `rhierLinearMixture`. The `lambda` parameter of `vartree`
+#' is auto-calibrated from per-unit MLE \eqn{\hat\beta_i} when not supplied.
+#'
+#' When this extension is active, the returned object additionally inherits
+#' classes `"rhierNegbinRwHeterCov"` and `"bayesm.HART.HeterCov"` and
+#' contains slots `var_models`, `phi_models` (jagged, lower-triangular; `NULL`
+#' if `nvar == 1`), and `mu_draw`. `predict()` dispatches on these classes to
+#' evaluate \eqn{\Sigma(Z^*)} at any new \eqn{Z^*}.
+#'
 #' @return A list of class `"rhierNegbinRw"` containing:
 #'   - `betadraw`: `nreg x nvar x (R/keep)` array of unit-level beta draws.
 #'   - `alphadraw`: `(R/keep) x 1` vector of overdispersion draws.
 #'   - `loglike`: `(R/keep) x 1` vector of log-likelihoods.
-#'   - `nmix`: List with `probdraw`, `zdraw`, `compdraw` (mixture draws).
+#'   - `nmix`: List with `probdraw`, `zdraw`, `compdraw` (omitted under heter-cov).
 #'   - `acceptrbeta`, `acceptralpha`: Metropolis acceptance rates (percent).
 #'   - If `drawdelta` and non-BART: `Deltadraw`.
 #'   - If BART: `bart_models`, `varcount`, `varprob`.
+#'   - If heter-cov (additional class `"rhierNegbinRwHeterCov"`):
+#'     `var_models`, `phi_models` (jagged or `NULL`), `mu_draw`,
+#'     `var_varcount`, `var_varprob`.
 #'
 #' @seealso [predict.rhierNegbinRw()], [marginal_effects.rhierNegbinRw()]
 #'
 #' @author Sridhar Narayanan, Peter Rossi (original bayesm code), Thomas Wiemann (HART + mixture modifications).
+#'
+#' @examples
+#' \donttest{
+#' set.seed(20260513)
+#' sim <- bayesm.HART::sim_hier_negbin(
+#'   nreg = 30, nobs = 12, nvar = 1, nz = 2,
+#'   const = TRUE, het_observed = "linear",
+#'   target_var_betabar = 0.5, target_var_eps = 0.25,
+#'   alpha = 5.0)
+#' Prior <- list(ncomp = 1L,
+#'               bart    = list(num_trees = 20),
+#'               vartree = list(num_trees = 20))
+#' Mcmc  <- list(R = 200L, keep = 1L, nprint = 0L)
+#' fit   <- bayesm.HART::rhierNegbinRw(
+#'   Data = list(regdata = sim$regdata, Z = sim$Z),
+#'   Prior = Prior, Mcmc = Mcmc, r_verbose = FALSE)
+#' str(fit, max.level = 1)
+#' }
 #'
 #' @export
 rhierNegbinRw= function(Data, Prior, Mcmc, r_verbose = TRUE) {
@@ -99,7 +154,7 @@ llnegbinR = function(par,X,y, nvar) {
     mean=exp(X%*%beta)
     prob=alpha/(alpha+mean)
     prob=ifelse(prob<1.0e-100,1.0e-100,prob)
-     out=dnbinom(y,size=alpha,prob=prob,log=TRUE)
+     out=stats::dnbinom(y,size=alpha,prob=prob,log=TRUE)
      return(sum(out))
 }
 
@@ -199,23 +254,7 @@ if(length(a_mix) != ncomp) {pandterm("Requires dim(a_mix)= ncomp (no of componen
 useBART <- ifelse(!is.null(Prior$bart) & drawdelta, TRUE, FALSE)
 bart_params = NULL
 if (useBART) {
-  bart_params <- list(
-    num_trees = ifelse(is.null(Prior$bart$num_trees), 200, Prior$bart$num_trees),
-    power = ifelse(is.null(Prior$bart$power), 2.0, Prior$bart$power),
-    base = ifelse(is.null(Prior$bart$base), 0.95, Prior$bart$base),
-    tau = ifelse(is.null(Prior$bart$tau), 1.0 / sqrt(
-      ifelse(is.null(Prior$bart$num_trees), 200, Prior$bart$num_trees)
-    ), Prior$bart$tau),
-    numcut = ifelse(is.null(Prior$bart$numcut), 100, Prior$bart$numcut),
-    sparse = ifelse(is.null(Prior$bart$sparse), FALSE, Prior$bart$sparse),
-    theta = ifelse(is.null(Prior$bart$theta), 0.0, Prior$bart$theta),
-    omega = ifelse(is.null(Prior$bart$omega), 1.0, Prior$bart$omega),
-    a = ifelse(is.null(Prior$bart$a), 0.5, Prior$bart$a),
-    b = ifelse(is.null(Prior$bart$b), 1.0, Prior$bart$b),
-    rho = ifelse(is.null(Prior$bart$rho), nz, Prior$bart$rho),
-    aug = ifelse(is.null(Prior$bart$aug), FALSE, Prior$bart$aug),
-    burn = ifelse(is.null(Prior$bart$burn), 100, Prior$bart$burn)
-  )
+  bart_params <- .parse_bart_params(Prior$bart, nz)
 }
 
 # Delta prior (for non-BART drawdelta path)
@@ -230,6 +269,20 @@ if(drawdelta & !useBART) {
   if(length(deltabar) != nz*nvar) {pandterm("deltabar must be of length nvar*nz")}
 }
 # ---- end HART prior modification ----
+
+# ---------------------------------------------------------------------------
+# Heteroscedastic covariance Sigma(Z_i) via modified-Cholesky tree ensembles.
+# Auto-enabled by Prior$vartree.  Requires Prior$bart, drawdelta, ncomp == 1.
+# Negbin lambda baseline uses per-unit MLE betas (Beta_init below); see
+# R/heter_cov_priors.R for the parsing helpers.
+# ---------------------------------------------------------------------------
+hcv_flags   <- .parse_heter_cov_flags(Prior, nvar)
+useHeterCov <- hcv_flags$useHeterCov
+useFullCov  <- hcv_flags$useFullCov
+auto_full   <- hcv_flags$auto_full
+var_params  <- list()
+phi_params  <- list()
+.validate_heter_cov(useHeterCov, useBART, ncomp, drawdelta, SignRes = NULL)
 
 #
 # check for Mcmc 
@@ -321,6 +374,10 @@ if (r_verbose) {
 }
 
 hess_i=NULL
+# Per-unit MLE betas (collected for heter-cov lambda calibration; harmless
+# overhead for non-heter-cov paths).  Default to pooled MLE on convergence
+# failure so lambda_default = mean(apply(Beta_init, 2, var)) stays finite.
+Beta_init = matrix(rep(beta_mle, nreg), nrow = nreg, ncol = nvar, byrow = TRUE)
 if(nobs > 1000){
   sind=sample(c(1:nobs),size=1000)
   ypooleds=ypooled[sind]
@@ -336,12 +393,28 @@ for (i in 1:nreg) {
     mle2 = optim(mle$par[1:nvar],llnegbinFract, X=regdata[[i]]$X, y=regdata[[i]]$y, Xpooled=Xpooleds, 
            ypooled=ypooleds, w=w,wgt=wgt, nvar=nvar, lnalpha=mle$par[nvar+1], 
            method="BFGS", hessian=TRUE, control=list(fnscale=-1, trace=0,reltol=1e-6))
-    if (mle2$convergence==0)
+    if (mle2$convergence==0) {
         hess_i[[i]] = list(hess=-mle2$hessian)
-    else
+        Beta_init[i, ] = mle2$par
+    } else {
         hess_i[[i]] = list(hess=diag(rep(1,nvar)))
+        # Beta_init[i, ] keeps its pooled-MLE default.
+    }
    if(i%%50 ==0 & r_verbose) cat("  completed unit #",i,fill=TRUE)	
    fsh()
+}
+
+# Heter-cov hyperparameter setup (Beta_init now available for lambda calibration).
+if (useHeterCov) {
+  var_params <- .parse_var_params(Prior$vartree, Beta_init, nz)
+  if (useFullCov) phi_params <- .parse_phi_params(Prior$phitree, nz)
+  if (r_verbose)
+    .print_heter_cov_summary(useFullCov, var_params, phi_params,
+                             lambda_user_supplied = !is.null(Prior$vartree$lambda),
+                             auto_full = auto_full)
+  # Warm-start MCMC at per-unit MLEs under heter-cov; the BART path keeps the
+  # original pooled-MLE start for backward compatibility.
+  Beta = Beta_init
 }
 
 # ---- Mixture initialization (mirrors MNL/linear) ----
@@ -382,24 +455,34 @@ draws=rhierNegbinRw_rcpp_loop(regdata, hess_i, Z, Beta, deltabar,
                               drawdelta, as.matrix(olddelta), a_mix,
                               oldprob, ind,
                               alpha, fixalpha,
-                              useBART, bart_params)
+                              useBART, bart_params,
+                              useHeterCov, var_params, phi_params)
 ###################################################################
 
 # === Format output ===
 # Normalize Betadraw -> betadraw for consistency with shared predict helpers
-if (!is.null(draws$Betadraw)) {
-  draws$betadraw <- draws$Betadraw
-  draws$Betadraw <- NULL
-}
+# (Now handled directly in C++)
 attributes(draws$alphadraw)$class=c("bayesm.mat","mcmc")
 attributes(draws$alphadraw)$mcpar=c(1,R,keep)
-if(!useBART & drawdelta) {
-  attributes(draws$Deltadraw)$class=c("bayesm.mat","mcmc")
-  attributes(draws$Deltadraw)$mcpar=c(1,R,keep)
-}
 attributes(draws$betadraw)$class=c("bayesm.hcoef")
-attributes(draws$nmix)$class <- "bayesm.nmix"
-class(draws) <- "rhierNegbinRw"
+
+if (useHeterCov) {
+  # "bayesm.HART.HeterCov" is the marker superclass shared by all
+  # heteroscedastic-Sigma(Z) hierarchical models; it lets predict_helpers.R
+  # dispatch generically without hardcoding any model-specific class name.
+  attributes(draws$mu_draw)$class <- c("bayesm.mat", "mcmc")
+  attributes(draws$mu_draw)$mcpar <- c(1, R, keep)
+  class(draws) <- c("rhierNegbinRwHeterCov",
+                    "bayesm.HART.HeterCov",
+                    "rhierNegbinRw")
+} else {
+  if(!useBART & drawdelta) {
+    attributes(draws$Deltadraw)$class=c("bayesm.mat","mcmc")
+    attributes(draws$Deltadraw)$mcpar=c(1,R,keep)
+  }
+  attributes(draws$nmix)$class <- "bayesm.nmix"
+  class(draws) <- "rhierNegbinRw"
+}
 
 return(draws)
 }

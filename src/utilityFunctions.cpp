@@ -62,19 +62,31 @@ double llnegbin(vec const& y, vec const& lambda, double alpha, bool constant){
   return (sum(logp));
 }
 
-double lpostbeta(double alpha, vec const& beta, mat const& X, vec const& y, vec const& betabar, mat const& rootA){
+double lpostbeta(double alpha, vec const& beta, mat const& X, vec const& y, vec const& betabar, mat const& rooti){
 
-// Keunwoo Kim 11/02/2014
-
-// Computes log posterior for beta | alpha
+// Keunwoo Kim 11/02/2014  (bayesm)
+// HART revision 2026-05-13:
+//   The original signature took `rootA = chol(Sigma^{-1})` (upper-tri root of the
+//   prior PRECISION).  All HART hierarchical-Negbin call sites instead pass the
+//   bayesm `rooti` matrix returned by rmixGibbs / cov::rootpi, which satisfies
+//   rooti %*% trans(rooti) = Sigma^{-1}  (NOT  trans(rooti) %*% rooti = Sigma^{-1}).
+//   See discussions/2026-05-13-rhier-audit-results.md item M4.2 for the bug history.
+//
+//   Internally we now form the Mahalanobis term as `trans(rooti) * (beta-betabar)`
+//   so that the quadratic form is
+//     (beta-betabar)^T * rooti * trans(rooti) * (beta-betabar)
+//       = (beta-betabar)^T * Sigma^{-1} * (beta-betabar).
+//
+//   This matches lndMvn's convention (see src/lndMvn_rcpp.cpp) and is consistent
+//   with every HART caller of lpostbeta.
 
   vec lambda = exp(X*beta);
   double ll = llnegbin(y, lambda, alpha, FALSE);
 
-  // unormalized prior
-  vec z = rootA*(beta-betabar);
+  // unnormalized log prior  N(beta | betabar, Sigma)  with rooti rooti^T = Sigma^{-1}
+  vec z = trans(rooti)*(beta-betabar);
   double lprior = - 0.5*sum(z%z);
-  
+
   return (ll+lprior);
 }
 

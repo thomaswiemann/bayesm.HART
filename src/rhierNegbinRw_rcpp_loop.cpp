@@ -1,44 +1,59 @@
 #include "bayesm.HART.h"
-  
+#include "mixbart_block.h"
+#include "hetercov_block.h"
+
 //EXTRA FUNCTIONS SPECIFIC TO THE MAIN FUNCTION--------------------------------------------
-double llnegbinpooled(std::vector<moments> regdata_vector, mat Beta, double alpha){
-  
+double llnegbinpooled(std::vector<moments> regdata_vector, mat oldbetas, double alpha){
+
 // Wayne Taylor 12/01/2014
 
 // "Unlists" the regdata and calculates the negative binomial loglikelihood using individual-level betas
-  
+
   int nreg = regdata_vector.size();
   double ll = 0.0;
-  
+
   for(int reg = 0; reg<nreg; reg++){
-  vec lambda = exp(regdata_vector[reg].X*trans(Beta(reg,span::all)));
+  vec lambda = exp(regdata_vector[reg].X*trans(oldbetas(reg,span::all)));
   ll = ll + llnegbin(regdata_vector[reg].y,lambda,alpha,TRUE);
   }
-  
+
   return(ll);
 }
 
 // [[Rcpp::export]]
 List rhierNegbinRw_rcpp_loop(List const& regdata, List const& hessdata, mat const& Z,
-                             mat Beta, vec const& deltabar, mat const& Ad,
+                             mat oldbetas, vec const& deltabar, mat const& Ad,
                              mat const& mubar, mat const& Amu,
                              double nu, mat const& V, double a, double b,
                              int R, int keep, double sbeta, double alphacroot, int nprint,
                              bool drawdelta, mat olddelta, vec const& a_mix,
                              vec oldprob, vec ind,
                              double alpha, bool fixalpha,
-                             bool useBART = false, List const& bart_params = List::create()){
-                            
+                             bool useBART = false, List const& bart_params = List::create(),
+                             bool useHeterCov = false,
+                             List const& var_params = List::create(),
+                             List const& phi_params = List::create()){
+
 // Wayne Taylor 12/01/2014
-// Modified by Thomas Wiemann 2025 -- added HART/BART support
+// Modified by Thomas Wiemann 2025 -- HART/BART support, mixture-of-normals,
+//   plus heter-cov branch (modified-Cholesky tree ensembles for Sigma(Z_i)).
+//
+// Three execution modes (mutually exclusive):
+//   * Heter-cov: hetercov_block ensembles for d_j(Z_i) [+ phi_jk(Z_i)].
+//   * Mix-BART : sum-of-trees Delta(Z) on top of mixture-of-normals u_i.
+//   * Linear   : original bayesm linear-Delta + rmixGibbs path.
+
+  // Heter-cov path validation.
+  if (useHeterCov && !useBART)   stop("useHeterCov requires useBART = TRUE");
+  if (useHeterCov && !drawdelta) stop("useHeterCov requires drawdelta = TRUE");
 
   double ldiff, acc, unif, logalphac, oldlpostalpha, clpostalpha;
   int mkeep, rep;
   int nreg = regdata.size();
   int nz = Z.n_cols;
-  int nvar = V.n_cols;  
+  int nvar = V.n_cols;
   int nacceptbeta = 0;
-  int nacceptalpha = 0; 
+  int nacceptalpha = 0;
 
   // convert regdata and hessdata Lists to std::vector of struct
   std::vector<moments> regdata_vector;
@@ -49,138 +64,92 @@ List rhierNegbinRw_rcpp_loop(List const& regdata, List const& hessdata, mat cons
   for (int reg = 0; reg<nreg; reg++){
     regdatai = regdata[reg];
     hessi = hessdata[reg];
-  
+
     regdatai_struct.y = as<vec>(regdatai["y"]);
     regdatai_struct.X = as<mat>(regdatai["X"]);
     regdatai_struct.hess = as<mat>(hessi["hess"]);
-    regdata_vector.push_back(regdatai_struct);    
+    regdata_vector.push_back(regdatai_struct);
   }
 
   // Allocate common storage
   vec oldlpostbeta = zeros<vec>(nreg);
   vec clpostbeta = zeros<vec>(nreg);
-  cube Betadraw = zeros<cube>(nreg, nvar, R/keep);
+  cube betadraw = zeros<cube>(nreg, nvar, R/keep);
   vec alphadraw = zeros<vec>(R/keep);
   vec loglike = zeros<vec>(R/keep);
 
   // =========================================================================
-  // BART PATH
+  // HETER-COV PATH  (Sigma(Z_i) via modified-Cholesky tree ensembles)
   // =========================================================================
-  if (useBART) {
+  if (useHeterCov) {
 
-    mat delta_Z = zeros<mat>(nreg, nvar);
-    vec pred_i(nvar);
-    vec scaled_pred(nvar);
+    HeterCovState hcs;
+    hetercov_init(hcs, nreg, nz, nvar, R, keep,
+                  bart_params, var_params, phi_params);
 
-    // BART-specific storage
-    mat probdraw(R/keep, oldprob.size());
-    List compdraw(R/keep);
-
-    // Initialize BART tree storage
-    std::vector<bart> bart_models;
-    std::vector<std::stringstream> treess(nvar);
-    cube varcount, varprob;
-    
-    size_t num_trees = bart_params["num_trees"];
-    for (int k = 0; k < nvar; k++) {
-      treess[k].precision(10);
-      treess[k] << R / keep << " " << num_trees << " " << nz << endl;
-    }
-    varcount.set_size(nz, nvar, R/keep);
-    varprob.set_size(nz, nvar, R/keep);
-    varcount.zeros();
-    varprob.zeros();
-
-    // Create column-major Z for BART
+    // BART operates on standardized betas; std_oldbetas is the caller-owned
+    // working buffer that update_stdoldbetas_het writes into and that BART
+    // reads residuals from.  hetercov_block does NOT own this storage.
+    mat std_oldbetas = oldbetas;
+    std::vector<double*> pstd_oldbetas_cols(nvar);
+    for (int i = 0; i < nvar; i++) pstd_oldbetas_cols[i] = std_oldbetas.colptr(i);
     mat Zt = Z.t();
     double* pZt = Zt.memptr();
-    mat std_oldbetas = Beta;
-    std::vector<double*> pstd_oldbetas_cols(nvar);
-    for (int i = 0; i < nvar; i++) {
-      pstd_oldbetas_cols[i] = std_oldbetas.colptr(i);
-    }
-
-    // Random number generator for BART
     arn gen;
-
-    // DART burn-in
-    int burn = 0;
-    bool sparse = bart_params["sparse"];
-    if (sparse) burn = bart_params["burn"];
 
     if (nprint>0) startMcmcTimer();
 
-    // MCMC loop (BART path)
     for (rep = 0; rep < R; rep++) {
 
-      // Draw comps, ind, p | {beta_i}, delta_Z
-      List mgout;
-      if (rep == 0) {
-        mgout = rmixGibbs(Beta, mubar, Amu, nu, V, a_mix, oldprob, ind);
-        update_stdoldbetas(Beta, pstd_oldbetas_cols, ind, mgout["comps"]);
-        bart_models = initializeBART(pZt, nreg, nz, pstd_oldbetas_cols, bart_params, gen);
-      } else {
-        mgout = rmixGibbs(Beta - delta_Z, mubar, Amu, nu, V, a_mix, oldprob, ind);
-      }
+      // Steps A, B, C, D': Draw mu, variance trees (d_j), phi trees, and mean trees (Delta)
+      // fully encapsulated in hetercov_draw_iter; on return
+      // hcs.{mu_post, var_models, phi_models, bart_models, delta_Z} reflect
+      // the freshly drawn Sigma(Z_i)^{1/2} delta_i.
+      hetercov_draw_iter(hcs, oldbetas, mubar.row(0).t(), Amu,
+                         pZt, pstd_oldbetas_cols,
+                         bart_params, var_params, phi_params,
+                         rep, gen);
 
-      List oldcomp = mgout["comps"];
-      oldprob = as<vec>(mgout["p"]);
-      ind = as<vec>(mgout["z"]);
-
-      // Start DART after burn-in
-      if (sparse && rep == burn + 1) {
-        for (int i = 0; i < nvar; i++) {
-          bart_models[i].startdart();
-        }
-      }
-
-      // Normalize oldbetas and draw BART
-      update_stdoldbetas(Beta, pstd_oldbetas_cols, ind, oldcomp);
-      for (int i = 0; i < nvar; i++) {
-        bart_models[i].draw(1.0, gen);
-      }
-
-      // Compute delta_Z
-      for (int i = 0; i < nreg; i++) {
-        for (int j = 0; j < nvar; j++) {
-          pred_i(j) = bart_models[j].f(i);
-        }
-        List comp_i = oldcomp[ind[i] - 1];
-        mat rootii = trans(as<mat>(comp_i[1]));
-        scaled_pred = solve(trimatl(rootii), pred_i);
-        delta_Z.row(i) = trans(scaled_pred);
-      }
-
-      // Draw beta_i via MH with per-unit mixture prior
+      // Step E: per-unit Negbin RW Metropolis with prior
+      //   beta_i | . ~ N(mu + Sigma(Z_i)^{1/2} delta_i,  Sigma(Z_i)),
+      // i.e. rootpi = cov::rootpi(ev) (upper-tri square root of Sigma^{-1}).
       for (int reg = 0; reg < nreg; reg++) {
-        List oldcompreg = oldcomp[ind[reg] - 1];
-        mat rootpi = as<mat>(oldcompreg[1]);
-        vec betabari = as<vec>(oldcompreg[0]) + trans(delta_Z.row(reg));
+        cov::cov_eval ev{hcs.var_models, hcs.phi_models, (size_t)reg};
+        mat rootpi  = cov::rootpi(ev);
+        vec betabari = hcs.mu_post + hcs.delta_Z.row(reg).t();
 
         mat Vbetainv_reg = rootpi * trans(rootpi);
         mat betacvar = sbeta * solve(regdata_vector[reg].hess + Vbetainv_reg, eye(nvar, nvar));
         mat betaroot = trans(chol(betacvar));
-        vec betac = vectorise(Beta(reg, span::all)) + betaroot * vec(rnorm(nvar));
+        vec betac = vectorise(oldbetas(reg, span::all)) + betaroot * vec(rnorm(nvar));
 
-        oldlpostbeta[reg] = lpostbeta(alpha, trans(Beta(reg, span::all)),
+        oldlpostbeta[reg] = lpostbeta(alpha, trans(oldbetas(reg, span::all)),
                                        regdata_vector[reg].X, regdata_vector[reg].y, betabari, rootpi);
-        clpostbeta[reg] = lpostbeta(alpha, betac,
-                                     regdata_vector[reg].X, regdata_vector[reg].y, betabari, rootpi);
+        clpostbeta[reg]   = lpostbeta(alpha, betac,
+                                       regdata_vector[reg].X, regdata_vector[reg].y, betabari, rootpi);
         ldiff = clpostbeta[reg] - oldlpostbeta[reg];
         acc = exp(ldiff);
         if (acc > 1) acc = 1;
         if (acc < 1) { unif = runif(1)[0]; } else { unif = 0; }
         if (unif <= acc) {
-          Beta(reg, span::all) = trans(betac);
+          oldbetas(reg, span::all) = trans(betac);
           nacceptbeta = nacceptbeta + 1;
         }
       }
 
-      // Draw alpha (same in both paths)
+      // Alpha MH (identical across paths).
+      // Symmetric proposal on log scale: log(alpha_c) ~ N(log(alpha), alphacroot^2).
+      // Working on the log scale, the target density is
+      //   pi_tilde(log alpha) = pi(alpha) * |d alpha / d log alpha|
+      //                       = (alpha^{a-1} e^{-b alpha}) * alpha
+      //                       = alpha^{a} e^{-b alpha}
+      // so the log-target uses  a*log(alpha) - b*alpha + ll(alpha)  (NOT (a-1)*log(alpha)).
+      // The Jacobian factor `log(alpha)` is alpha-dependent and does NOT cancel between
+      // old and candidate.  See discussions/2026-05-13-rhier-audit-results.md item M4.4.
       if (!fixalpha) {
         logalphac = log(alpha) + alphacroot * rnorm(1)[0];
-        oldlpostalpha = llnegbinpooled(regdata_vector, Beta, alpha) + (a - 1) * log(alpha) - b * alpha;
-        clpostalpha = llnegbinpooled(regdata_vector, Beta, exp(logalphac)) + (a - 1) * logalphac - b * exp(logalphac);
+        oldlpostalpha = llnegbinpooled(regdata_vector, oldbetas, alpha) + a * log(alpha)  - b * alpha;
+        clpostalpha   = llnegbinpooled(regdata_vector, oldbetas, exp(logalphac)) + a * logalphac - b * exp(logalphac);
         ldiff = clpostalpha - oldlpostalpha;
         acc = exp(ldiff);
         if (acc > 1) acc = 1;
@@ -195,20 +164,112 @@ List rhierNegbinRw_rcpp_loop(List const& regdata, List const& hessdata, mat cons
 
       if ((rep+1)%keep==0) {
         mkeep = (rep+1)/keep;
-        Betadraw.slice(mkeep-1) = Beta;
+        betadraw.slice(mkeep-1) = oldbetas;
+        alphadraw[mkeep-1]      = alpha;
+        loglike[mkeep-1]        = llnegbinpooled(regdata_vector, oldbetas, alpha);
+        hetercov_store(hcs, mkeep);
+      }
+    }
+
+    if (nprint>0) endMcmcTimer();
+
+    // Heter-cov return: hetercov_pack supplies tree ensembles + cubes + mu_draw.
+    List out = hetercov_pack(hcs);
+    out["betadraw"]     = betadraw;
+    out["alphadraw"]    = alphadraw;
+    out["loglike"]      = loglike;
+    out["acceptrbeta"]  = nacceptbeta / (R * nreg * 1.0) * 100;
+    out["acceptralpha"] = nacceptalpha / (R * 1.0) * 100;
+    return out;
+  }
+
+  // =========================================================================
+  // BART PATH (sum-of-trees Delta(Z) over mixture-of-normals u_i)
+  // =========================================================================
+  if (useBART) {
+
+    // BART-specific storage
+    mat probdraw(R/keep, oldprob.size());
+    List compdraw(R/keep);
+
+    MixBartState mbs;
+    mixbart_init(mbs, nreg, nz, nvar, R, keep, bart_params, oldprob, ind);
+
+    // BART operates on standardized betas; std_oldbetas is the caller-owned working
+    // buffer that update_stdoldbetas writes into and that BART reads residuals
+    // from.  pstd_oldbetas_cols[j] points to column j; the mixbart helpers do
+    // NOT own this storage.
+    mat std_oldbetas = oldbetas;
+    std::vector<double*> pstd_oldbetas_cols(nvar);
+    for (int i = 0; i < nvar; i++) pstd_oldbetas_cols[i] = std_oldbetas.colptr(i);
+    mat Zt = Z.t();
+    double* pZt = Zt.memptr();
+    arn gen;
+
+    if (nprint>0) startMcmcTimer();
+
+    // MCMC loop (BART path)
+    for (rep = 0; rep < R; rep++) {
+
+      // Steps 2 & 3: Standardize unit-level betas and draw mean trees (Delta)
+      mixbart_draw_iter(mbs, oldbetas, mubar, Amu, nu, V, a_mix, pZt, pstd_oldbetas_cols, bart_params, rep, gen);
+      List oldcomp = mbs.oldcomp;
+      oldprob = mbs.oldprob;
+      ind = mbs.ind;
+      mat delta_Z = mbs.delta_Z;
+
+      // Step E: Draw unit-level parameters beta_i | Sigma_k^{-1}, etc.
+      for (int reg = 0; reg < nreg; reg++) {
+        List oldcompreg = oldcomp[ind[reg] - 1];
+        mat rootpi = as<mat>(oldcompreg[1]);
+        vec betabari = as<vec>(oldcompreg[0]) + trans(delta_Z.row(reg));
+
+        mat Vbetainv_reg = rootpi * trans(rootpi);
+        mat betacvar = sbeta * solve(regdata_vector[reg].hess + Vbetainv_reg, eye(nvar, nvar));
+        mat betaroot = trans(chol(betacvar));
+        vec betac = vectorise(oldbetas(reg, span::all)) + betaroot * vec(rnorm(nvar));
+
+        oldlpostbeta[reg] = lpostbeta(alpha, trans(oldbetas(reg, span::all)),
+                                       regdata_vector[reg].X, regdata_vector[reg].y, betabari, rootpi);
+        clpostbeta[reg] = lpostbeta(alpha, betac,
+                                     regdata_vector[reg].X, regdata_vector[reg].y, betabari, rootpi);
+        ldiff = clpostbeta[reg] - oldlpostbeta[reg];
+        acc = exp(ldiff);
+        if (acc > 1) acc = 1;
+        if (acc < 1) { unif = runif(1)[0]; } else { unif = 0; }
+        if (unif <= acc) {
+          oldbetas(reg, span::all) = trans(betac);
+          nacceptbeta = nacceptbeta + 1;
+        }
+      }
+
+      // Draw alpha (same in both paths).  See M4.4 in audit results: log-scale Jacobian
+      // included via `a*log(alpha)` (not `(a-1)*log(alpha)`).
+      if (!fixalpha) {
+        logalphac = log(alpha) + alphacroot * rnorm(1)[0];
+        oldlpostalpha = llnegbinpooled(regdata_vector, oldbetas, alpha) + a * log(alpha) - b * alpha;
+        clpostalpha = llnegbinpooled(regdata_vector, oldbetas, exp(logalphac)) + a * logalphac - b * exp(logalphac);
+        ldiff = clpostalpha - oldlpostalpha;
+        acc = exp(ldiff);
+        if (acc > 1) acc = 1;
+        if (acc < 1) { unif = runif(1)[0]; } else { unif = 0; }
+        if (unif <= acc) {
+          alpha = exp(logalphac);
+          nacceptalpha = nacceptalpha + 1;
+        }
+      }
+
+      if (nprint>0) if ((rep+1)%nprint==0) infoMcmcTimer(rep, R);
+
+      if ((rep+1)%keep==0) {
+        mkeep = (rep+1)/keep;
+        betadraw.slice(mkeep-1) = oldbetas;
         alphadraw[mkeep-1] = alpha;
         probdraw(mkeep-1, span::all) = trans(oldprob);
         compdraw[mkeep-1] = oldcomp;
-        loglike[mkeep-1] = llnegbinpooled(regdata_vector, Beta, alpha);
+        loglike[mkeep-1] = llnegbinpooled(regdata_vector, oldbetas, alpha);
 
-        // Store BART trees and variable usage
-        for (int i = 0; i < nvar; i++) {
-          for (size_t j = 0; j < bart_models[i].getm(); j++) {
-            treess[i] << bart_models[i].gettree(j);
-          }
-          varcount.slice(mkeep-1).col(i) = conv_to<vec>::from(bart_models[i].getnv());
-          varprob.slice(mkeep-1).col(i) = conv_to<vec>::from(bart_models[i].getpv());
-        }
+        mixbart_store(mbs, mkeep);
       }
     }
 
@@ -219,33 +280,14 @@ List rhierNegbinRw_rcpp_loop(List const& regdata, List const& hessdata, mat cons
         Named("zdraw") = R_NilValue,
         Named("compdraw") = compdraw);
 
-    List bartModels(nvar);
-    for (int i = 0; i < nvar; i++) {
-      xinfo& xi = bart_models[i].getxinfo();
-      Rcpp::List xiret(xi.size());
-      for (size_t j = 0; j < xi.size(); j++) {
-        Rcpp::NumericVector vtemp(xi[j].size());
-        std::copy(xi[j].begin(), xi[j].end(), vtemp.begin());
-        xiret[j] = vtemp;
-      }
-      bartModels[i] = List::create(
-        Named("treedraws") = List::create(
-          Named("cutpoints") = xiret,
-          Named("trees") = Rcpp::CharacterVector(treess[i].str())
-        )
-      );
-    }
-
-    return List::create(
-      Named("bart_models") = bartModels,
-      Named("varcount") = varcount,
-      Named("varprob") = varprob,
-      Named("loglike") = loglike,
-      Named("Betadraw") = Betadraw,
-      Named("alphadraw") = alphadraw,
-      Named("nmix") = nmix,
-      Named("acceptrbeta") = nacceptbeta / (R * nreg * 1.0) * 100,
-      Named("acceptralpha") = nacceptalpha / (R * 1.0) * 100);
+    List out = mixbart_pack(mbs);
+    out["alphadraw"] = alphadraw;
+    out["betadraw"] = betadraw;
+    out["nmix"] = nmix;
+    out["loglike"] = loglike;
+    out["acceptrbeta"] = nacceptbeta / (R * nreg * 1.0) * 100;
+    out["acceptralpha"] = nacceptalpha / (R * 1.0) * 100;
+    return out;
 
   } else {
 
@@ -259,18 +301,18 @@ List rhierNegbinRw_rcpp_loop(List const& regdata, List const& hessdata, mat cons
     if (drawdelta) delta_Z.zeros(nreg, nvar);
 
     if (nprint>0) startMcmcTimer();
-    
+
     //  start main iteration loop
     for (rep = 0; rep < R; rep++){
-      
-      //first draw comps,ind,p | {beta_i}, delta
+
+      // Step 4: Draw mixture component assignments and update global mixture parameters
       // ind,p need initialization comps is drawn first in sub-Gibbs
       List mgout;
       if (drawdelta) {
           olddelta.reshape(nvar, nz);
-          mgout = rmixGibbs(Beta - delta_Z, mubar, Amu, nu, V, a_mix, oldprob, ind);
+          mgout = rmixGibbs(oldbetas - delta_Z, mubar, Amu, nu, V, a_mix, oldprob, ind);
       } else {
-          mgout = rmixGibbs(Beta, mubar, Amu, nu, V, a_mix, oldprob, ind);
+          mgout = rmixGibbs(oldbetas, mubar, Amu, nu, V, a_mix, oldprob, ind);
       }
 
       List oldcomp = mgout["comps"];
@@ -279,12 +321,12 @@ List rhierNegbinRw_rcpp_loop(List const& regdata, List const& hessdata, mat cons
 
       //now draw delta | {beta_i}, ind, comps
       if (drawdelta) {
-          olddelta = drawDelta(Z, Beta, ind, oldcomp, deltabar, Ad);
+          olddelta = drawDelta(Z, oldbetas, ind, oldcomp, deltabar, Ad);
           olddelta.reshape(nvar, nz);
           delta_Z = Z * trans(olddelta);
       }
 
-      //loop over all regression equations drawing beta_i | ind[i],comp[ind[i]]
+      // Step 6: Loop over all regression equations drawing beta_i | ind[i],comp[ind[i]]
       for(int reg = 0; reg<nreg; reg++){
           List oldcompreg = oldcomp[ind[reg]-1];
           mat rootpi = as<mat>(oldcompreg[1]);
@@ -301,50 +343,51 @@ List rhierNegbinRw_rcpp_loop(List const& regdata, List const& hessdata, mat cons
           mat Abeta = rootpi * trans(rootpi);
           mat betacvar = sbeta*solve(regdata_vector[reg].hess+Abeta,eye(nvar,nvar));
           mat betaroot = trans(chol(betacvar));
-          vec betac = vectorise(Beta(reg,span::all)) + betaroot*vec(rnorm(nvar));
-         
-          oldlpostbeta[reg] = lpostbeta(alpha, trans(Beta(reg,span::all)), regdata_vector[reg].X, regdata_vector[reg].y, betabari, rootpi);
+          vec betac = vectorise(oldbetas(reg,span::all)) + betaroot*vec(rnorm(nvar));
+
+          oldlpostbeta[reg] = lpostbeta(alpha, trans(oldbetas(reg,span::all)), regdata_vector[reg].X, regdata_vector[reg].y, betabari, rootpi);
           clpostbeta[reg] = lpostbeta(alpha, betac, regdata_vector[reg].X, regdata_vector[reg].y, betabari, rootpi);
           ldiff = clpostbeta[reg] - oldlpostbeta[reg];
           acc = exp(ldiff);
-          if (acc > 1) acc = 1;    
+          if (acc > 1) acc = 1;
           if(acc < 1) {unif=runif(1)[0];} else {unif=0;}
           if (unif <= acc){
-            Beta(reg,span::all) = trans(betac);
+            oldbetas(reg,span::all) = trans(betac);
             nacceptbeta = nacceptbeta + 1;
           }
       }
-      
-      // Draw alpha
+
+      // Draw alpha.  See M4.4 in audit results: log-scale Jacobian included via
+      // `a*log(alpha)` (not `(a-1)*log(alpha)`).
       if (!fixalpha){
         logalphac = log(alpha) + alphacroot*rnorm(1)[0];
-        oldlpostalpha = llnegbinpooled(regdata_vector,Beta,alpha)+(a-1)*log(alpha) - b*alpha;
-        clpostalpha = llnegbinpooled(regdata_vector,Beta,exp(logalphac))+(a-1)*logalphac - b*exp(logalphac);
+        oldlpostalpha = llnegbinpooled(regdata_vector,oldbetas,alpha) + a*log(alpha) - b*alpha;
+        clpostalpha = llnegbinpooled(regdata_vector,oldbetas,exp(logalphac)) + a*logalphac - b*exp(logalphac);
         ldiff = clpostalpha - oldlpostalpha;
         acc = exp(ldiff);
-        if (acc > 1) acc = 1;    
+        if (acc > 1) acc = 1;
         if(acc < 1) {unif=runif(1)[0];} else {unif=0;}
         if (unif <= acc){
           alpha = exp(logalphac);
           nacceptalpha = nacceptalpha + 1;
         }
-      }  
+      }
 
-      if (nprint>0) if ((rep+1)%nprint==0) infoMcmcTimer(rep, R);    
-      
+      if (nprint>0) if ((rep+1)%nprint==0) infoMcmcTimer(rep, R);
+
       if((rep+1)%keep==0){
         mkeep = (rep+1)/keep;
-        Betadraw.slice(mkeep-1) = Beta;
+        betadraw.slice(mkeep-1) = oldbetas;
         alphadraw[mkeep-1] = alpha;
         probdraw(mkeep-1, span::all) = trans(oldprob);
         if(drawdelta) Deltadraw(mkeep-1,span::all) = trans(vectorise(olddelta));
         compdraw[mkeep-1] = oldcomp;
-        loglike[mkeep-1] = llnegbinpooled(regdata_vector,Beta,alpha);
-        } 
+        loglike[mkeep-1] = llnegbinpooled(regdata_vector,oldbetas,alpha);
+        }
     }
-    
+
     if (nprint>0) endMcmcTimer();
-    
+
     List nmix = List::create(Named("probdraw") = probdraw,
               Named("zdraw") = R_NilValue,
               Named("compdraw") = compdraw);
@@ -352,7 +395,7 @@ List rhierNegbinRw_rcpp_loop(List const& regdata, List const& hessdata, mat cons
     if(drawdelta){
       return List::create(
         Named("loglike") = loglike,
-        Named("Betadraw") = Betadraw,
+        Named("betadraw") = betadraw,
         Named("alphadraw") = alphadraw,
         Named("Deltadraw") = Deltadraw,
         Named("nmix") = nmix,
@@ -361,7 +404,7 @@ List rhierNegbinRw_rcpp_loop(List const& regdata, List const& hessdata, mat cons
     } else {
       return List::create(
         Named("loglike") = loglike,
-        Named("Betadraw") = Betadraw,
+        Named("betadraw") = betadraw,
         Named("alphadraw") = alphadraw,
         Named("nmix") = nmix,
         Named("acceptrbeta") = nacceptbeta/(R*nreg*1.0)*100,
