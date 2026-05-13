@@ -6,7 +6,7 @@ Authors@R:
 Description: Implements the Metropolis-withing-Gibbs sampler for the Bayesian 
   hierarchical multinomial logit model with HART priors developed in Wiemann 
   (2025). Originally a fork of the bayesm and BART R packages.
-License: GPL (>= 3) + file LICENSE
+License: GPL (>= 3)
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
