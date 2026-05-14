@@ -116,6 +116,8 @@
 #'     - `compdraw`: `(R/keep)` list of `ncomp` lists. `compdraw[[r]][[j]] = list(mu, rooti)` contains the draw of \eqn{\mu_j} and \eqn{\Sigma_j^{-1/2}} for component `j` at kept draw `r`.
 #'   - `loglike`: `(R/keep) x 1` vector of log-likelihood values at kept draws.
 #'   - `SignRes`: `nvar x 1` vector of sign restrictions used.
+#'   - `acceptrbeta`: Metropolis acceptance rate (percent) for the unit-level
+#'     MNL random-walk updates of `beta_i`.
 #'   - `bart_models`: If HART used, list of length `nvar` containing tree structures and related parameters for the mean trees \eqn{\delta_j(\cdot)}.
 #'   - `var_models` (only with `vartree`): list of length `nvar` of variance-tree ensembles for \eqn{d_j(\cdot)} (product of trees with \eqn{\chi^{-2}} leaves).
 #'   - `phi_models` (only with `vartree` + `phitree`): jagged list of length `nvar`. `phi_models[[1]]` is `NULL`; for `j > 1`, `phi_models[[j]]` is a list of length `j-1` containing the sum-of-trees ensemble for \eqn{\phi_{jk}(\cdot)}.

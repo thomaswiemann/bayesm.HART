@@ -95,9 +95,9 @@ List rhierMnlRwMixture_rcpp_loop(List const& lgtdata, mat const& Z,
     int R, int keep, int nprint, bool drawdelta,
     mat olddelta, vec const& a, vec oldprob, mat oldbetas, vec ind, vec const& SignRes,
     bool useBART, List const& bart_params,
-    bool useHeterCov = false,
-    List const& var_params = List::create(),
-    List const& phi_params = List::create()) {
+    bool useHeterCov,
+    List const& var_params,
+    List const& phi_params) {
 
     // Wayne Taylor 10/01/2014
     // modified by Thomas Wiemann 2025
@@ -139,6 +139,7 @@ List rhierMnlRwMixture_rcpp_loop(List const& lgtdata, mat const& Z,
 
     // allocate space for draws
     vec oldll = zeros<vec>(nlgt);
+    int nacceptbeta = 0;
     cube betadraw(nlgt, nvar, R / keep);
     mat probdraw(R / keep, oldprob.size());
     vec loglike(R / keep);
@@ -246,6 +247,7 @@ List rhierMnlRwMixture_rcpp_loop(List const& lgtdata, mat const& Z,
 
             metropout_struct = mnlMetropOnce_con(lgtdata_vector[lgt].y, lgtdata_vector[lgt].X, vectorise(oldbetas(lgt, span::all)),
                 oldll[lgt], s, incroot, betabar, rootpi, SignRes);
+            if (metropout_struct.stay == 0) nacceptbeta = nacceptbeta + 1;
 
             oldbetas(lgt, span::all) = trans(metropout_struct.betadraw);
             oldll[lgt] = metropout_struct.oldll;
@@ -296,6 +298,8 @@ List rhierMnlRwMixture_rcpp_loop(List const& lgtdata, mat const& Z,
         }
     }
 
+    double acceptrbeta = nacceptbeta / (R * nlgt * 1.0) * 100;
+
     // Heter-cov return path: hetercov_pack supplies the heter-cov outputs;
     // caller merges in betadraw / loglike / SignRes.  The R-side
     // predict.rhierMnlRwMixture method dispatches on class
@@ -307,6 +311,7 @@ List rhierMnlRwMixture_rcpp_loop(List const& lgtdata, mat const& Z,
         out["betadraw"] = betadraw;
         out["loglike"]  = loglike;
         out["SignRes"]  = SignRes;
+        out["acceptrbeta"] = acceptrbeta;
         return out;
     }
 
@@ -316,6 +321,7 @@ List rhierMnlRwMixture_rcpp_loop(List const& lgtdata, mat const& Z,
         out["nmix"]     = nmix;
         out["loglike"]  = loglike;
         out["SignRes"]  = SignRes;
+        out["acceptrbeta"] = acceptrbeta;
         return out;
     }
     else if (drawdelta) {
@@ -324,14 +330,16 @@ List rhierMnlRwMixture_rcpp_loop(List const& lgtdata, mat const& Z,
             Named("betadraw") = betadraw,
             Named("nmix") = nmix,
             Named("loglike") = loglike,
-            Named("SignRes") = SignRes));
+            Named("SignRes") = SignRes,
+            Named("acceptrbeta") = acceptrbeta));
     }
     else {
         return(List::create(
             Named("betadraw") = betadraw,
             Named("nmix") = nmix,
             Named("loglike") = loglike,
-            Named("SignRes") = SignRes));
+            Named("SignRes") = SignRes,
+            Named("acceptrbeta") = acceptrbeta));
     }
 
 }

@@ -1,5 +1,6 @@
 #include "mixbart_block.h"
 #include "bart_pack.h"
+#include "sigma_gibbs.h"
 
 using namespace Rcpp;
 using namespace arma;
@@ -52,71 +53,64 @@ void mixbart_draw_iter(MixBartState& s,
         update_stdoldbetas(oldbetas, pstd_oldbetas_cols, s.ind, s.oldcomp);
         s.bart_models = initializeBART(pZt, s.nlgt, s.nz, pstd_oldbetas_cols, bart_params, gen);
     } else {
-        mgout = rmixGibbs(oldbetas - s.delta_Z, mubar, Amu, nu, V, a_mix, s.oldprob, s.ind);
-        s.oldcomp = mgout["comps"];
-        s.oldprob = as<vec>(mgout["p"]);
-        s.ind = as<vec>(mgout["z"]);
+        // Cholesky-Gibbs (mu, Sigma) update for each mixture component.
+        // Order matches rmixGibbs:
+        //   1) update components given OLD labels
+        //   2) draw labels given NEW components
+        //   3) draw probs given NEW labels
 
-        // ----------------------------------------------------------------
-        // MH correction for the Sigma draw (ncomp == 1 only).
-        //
-        // rmixGibbs draws (mu_new, Sigma_new) from the IW conjugate update
-        // using residuals theta_i - Delta*(Z_i).  In the (Sigma, delta)
-        // parameterization, the exact full conditional for Sigma includes a
-        // cross term from Sigma^{1/2} appearing in the mean Delta(Z_i).
-        // The IW draw ignores this.  We correct with an MH accept/reject.
-        //
-        // The log MH ratio is:
-        //   log alpha = -sum_i a_i^T b_i - 0.5 * sum_i ||b_i||^2
-        // where:
-        //   L_new  = rootpi_new^T   (lower-tri Cholesky of Sigma_new^{-1})
-        //   L_old  = rootpi_old^T
-        //   M      = L_new * L_old^{-1}
-        //   b_i    = (M - I) * delta_i
-        //   a_i    = L_new * epsilon_i
-        //   epsilon_i = theta_i - mu_new - Delta*_old(Z_i)
-        //
-        // On reject: keep mu_new, revert rootpi to rootpi_prev.
-        // ----------------------------------------------------------------
-        if (s.oldcomp.size() == 1 && s.rootpi_prev.n_rows > 0) {
-            List comp0 = s.oldcomp[0];
-            vec  mu_new     = as<vec>(comp0[0]);
-            mat  rootpi_new = trimatu(as<mat>(comp0[1]));
-
-            // M = L_new * L_old^{-1} where L = rootpi^T (lower-tri).
-            // M^T = L_old^{-T} * L_new^T = rootpi_old^{-1} * rootpi_new
-            mat Mt = solve(trimatu(s.rootpi_prev), rootpi_new);
-            mat MmI = Mt.t() - eye<mat>(s.nvar, s.nvar);  // M - I
-
-            double log_alpha = 0.0;
-            for (int i = 0; i < s.nlgt; i++) {
-                vec delta_i(s.nvar), eps_i(s.nvar);
-                for (int d = 0; d < s.nvar; d++) {
-                    delta_i(d) = s.bart_models[d].f(i);
-                    eps_i(d)   = oldbetas(i, d) - mu_new(d) - s.delta_Z(i, d);
-                }
-                vec b_i = MmI * delta_i;
-                vec a_i = rootpi_new.t() * eps_i;  // L_new * eps_i
-                log_alpha -= dot(a_i, b_i) + 0.5 * dot(b_i, b_i);
+        mat delta(s.nlgt, s.nvar);
+        for (int i = 0; i < s.nlgt; i++) {
+            for (int d = 0; d < s.nvar; d++) {
+                delta(i, d) = s.bart_models[d].f(i);
             }
+        }
 
-            s.sigma_mh_total++;
-            if (log(R::runif(0.0, 1.0)) > std::min(0.0, log_alpha)) {
-                // Reject Sigma_new: keep mu_new, revert rootpi.
-                List comp_reverted = List::create(
-                    Named("mu") = mu_new,
-                    Named("rooti") = wrap(s.rootpi_prev));
-                s.oldcomp[0] = comp_reverted;
+        vec mubar0 = mubar.row(0).t();
+        double Amu_scalar = Amu(0, 0);
+        int ncomp = s.oldcomp.size();
+        List new_oldcomp(ncomp);
+
+        for (int k = 0; k < ncomp; k++) {
+            uvec idx_k = find(s.ind == (k + 1)); // ind is 1-indexed
+            int n_k = idx_k.n_elem;
+
+            if (n_k > 0) {
+                List comp_k = s.oldcomp[k];
+                vec mu_k = as<vec>(comp_k[0]);
+                mat rooti_k = as<mat>(comp_k[1]);
+                mat L_k = rooti_k.t();
+
+                mat theta_k = oldbetas.rows(idx_k);
+                mat delta_k = delta.rows(idx_k);
+
+                sigma_mu_block_gibbs(L_k, mu_k, theta_k, delta_k,
+                                     V, nu, mubar0, Amu_scalar, gen);
+
+                new_oldcomp[k] = List::create(
+                    Named("mu") = NumericVector(mu_k.begin(), mu_k.end()),
+                    Named("rooti") = L_k.t());
             } else {
-                s.sigma_mh_accept++;
+                // Empty component fallback: prior draw (matches rmixGibbs path).
+                mat S = solve(trimatu(chol(V)), eye(s.nvar, s.nvar));
+                S = S * trans(S);
+                List rw = rwishart(nu, S);
+                mat IW = as<mat>(rw["IW"]);
+                mat CI = as<mat>(rw["CI"]);
+                mat rooti_k = solve(trimatu(chol(IW)), eye(s.nvar, s.nvar));
+                vec r(s.nvar);
+                for (int d = 0; d < s.nvar; d++) r(d) = gen.normal();
+                vec mu_k = mubar0 + (CI * r) / std::sqrt(Amu_scalar);
+
+                new_oldcomp[k] = List::create(
+                    Named("mu") = NumericVector(mu_k.begin(), mu_k.end()),
+                    Named("rooti") = rooti_k);
             }
         }
+        s.oldcomp = new_oldcomp;
 
-        // Store current rootpi for next iteration's MH comparison.
-        if (s.oldcomp.size() == 1) {
-            List comp0 = s.oldcomp[0];
-            s.rootpi_prev = trimatu(as<mat>(comp0[1]));
-        }
+        s.ind = drawLabelsFromComps(oldbetas - s.delta_Z, s.oldprob, s.oldcomp);
+        s.oldprob = drawPFromLabels(a_mix, s.ind);
     }
     
     if (s.sparse && rep == s.burn + 1) {
@@ -164,8 +158,6 @@ Rcpp::List mixbart_pack(MixBartState& s) {
     return List::create(
         Named("bart_models") = pack_bart_list_(s.nvar, s.bart_models, tss),
         Named("varcount") = s.varcount,
-        Named("varprob") = s.varprob,
-        Named("sigma_mh_accept_rate") = s.sigma_mh_total > 0
-            ? (double)s.sigma_mh_accept / s.sigma_mh_total : NA_REAL
+        Named("varprob") = s.varprob
     );
 }

@@ -29,10 +29,10 @@ List rhierNegbinRw_rcpp_loop(List const& regdata, List const& hessdata, mat cons
                              bool drawdelta, mat olddelta, vec const& a_mix,
                              vec oldprob, vec ind,
                              double alpha, bool fixalpha,
-                             bool useBART = false, List const& bart_params = List::create(),
-                             bool useHeterCov = false,
-                             List const& var_params = List::create(),
-                             List const& phi_params = List::create()){
+                             bool useBART, List const& bart_params,
+                             bool useHeterCov,
+                             List const& var_params,
+                             List const& phi_params){
 
 // Wayne Taylor 12/01/2014
 // Modified by Thomas Wiemann 2025 -- HART/BART support, mixture-of-normals,

@@ -58,7 +58,10 @@ double lndIWishart(double nu, mat const& V, mat const& IW);
 vec breg(vec const& y, mat const& X, vec const& betabar, mat const& A);
 
 List rmixGibbs( mat const& y,  mat const& Bbar, mat const& A, double nu, mat const& V,  vec const& a, vec const& p,  vec const& z);
-  //rmixGibbs contains the following support functions, which are called ONLY THROUGH rmixGibbs: drawCompsFromLabels, drawLabelsFromComps, and drawPFromLabels
+  // Sub-steps of rmixGibbs.  Exposed so `mixbart_block` can drive its own
+  // (mu, Sigma) updates via `sigma_gibbs` while reusing the label/prob draws.
+vec drawLabelsFromComps(mat const& y, vec const& p, List comps);
+vec drawPFromLabels(vec const& a, vec const& z);
 List rmixGibbs_BART(mat const& y, mat const& Bbar, mat const& A, double nu, mat const& V, vec const& a, vec const& p, vec const& z);
 
 //SUPPORT FUNCTIONS (contained in utilityFunctions.cpp and trunNorm.cpp)-----------------------------------------------------------

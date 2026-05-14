@@ -8,11 +8,11 @@ List rhierLinearMixture_rcpp_loop(List const& regdata, mat const& Z,
                                   double nu, mat const& V, double nu_e, vec const& ssq,
                                   int R, int keep, int nprint, bool drawdelta,
                                   mat olddelta, vec const& a, vec oldprob, vec ind, vec tau,
-                                  bool useBART = false, List const& bart_params = List::create(),
-                                  bool useHeterCov = false,
-                                  List const& var_params = List::create(),
-                                  List const& phi_params = List::create(),
-                                  mat const& Beta_init = mat()){
+                                  bool useBART, List const& bart_params,
+                                  bool useHeterCov,
+                                  List const& var_params,
+                                  List const& phi_params,
+                                  mat const& Beta_init){
 
 // Wayne Taylor 10/02/2014
 // Modified by Thomas Wiemann 2025 -- HART/BART support, mixture-of-normals,

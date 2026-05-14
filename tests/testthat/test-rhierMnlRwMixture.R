@@ -698,7 +698,7 @@ test_that("Mixture with ncomp = 1 parameter recovery is reasonable", {
 
   # --- Settings ---
   nlgt_rec <- 500 # More units for better estimates
-  nT_rec <- 10
+  nT_rec <- 20    # Increased T to prevent BART from overfitting unit-level noise
   p_rec <- 3
   nz_rec <- 2
   R_rec <- 1000  # More draws needed for recovery check
