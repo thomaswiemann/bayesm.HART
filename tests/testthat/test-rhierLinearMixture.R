@@ -464,6 +464,10 @@ test_that("predict.rhierLinearMixture errors on invalid type", {
   )
   expect_error(predict(out, newdata = list(Z = sim$Z), type = "posterior_probs"),
                "Invalid type")
+  expect_error(
+    predict(out, newdata = list(Z = sim$Z), type = "SigmaZ"),
+    "only available for heteroscedastic covariance models"
+  )
 })
 
 # ==============================================================================

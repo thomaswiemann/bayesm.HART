@@ -39,6 +39,20 @@ library(testthat)
                              sum(!is.finite(pred))))
 }
 
+.check_sigma_pred <- function(pred, expected_nrow, expected_ncoef, expected_ndraws) {
+  expect_equal(dim(pred), c(expected_nrow, expected_ncoef, expected_ncoef, expected_ndraws))
+  expect_true(all(is.finite(pred)),
+              info = sprintf("SigmaZ contains non-finite values (n=%d)",
+                             sum(!is.finite(pred))))
+  for (i in seq_len(expected_nrow)) {
+    for (s in seq_len(expected_ndraws)) {
+      expect_equal(pred[i, , , s], t(pred[i, , , s]), tolerance = 1e-8,
+                   ignore_attr = TRUE)
+      expect_true(all(diag(pred[i, , , s]) > 0))
+    }
+  }
+}
+
 # --- MNL --------------------------------------------------------------------
 test_that("predict.rhierMnlRwMixture extrapolates over Z* outside training support", {
   set.seed(20260513L)
@@ -71,6 +85,9 @@ test_that("predict.rhierMnlRwMixture extrapolates over Z* outside training suppo
                     burn = 5L, r_verbose = FALSE)
     .check_pred(pred, nrow(Z_star), nvar, 30L - 5L)
   }
+  pred_sigma <- predict(fit, newdata = list(Z = Z_star), type = "SigmaZ",
+                        burn = 5L, r_verbose = FALSE)
+  .check_sigma_pred(pred_sigma, nrow(Z_star), nvar, 30L - 5L)
 })
 
 # --- Linear -----------------------------------------------------------------
@@ -96,6 +113,9 @@ test_that("predict.rhierLinearMixture extrapolates over Z* outside training supp
                     burn = 5L, r_verbose = FALSE)
     .check_pred(pred, nrow(Z_star), ncoef, 30L - 5L)
   }
+  pred_sigma <- predict(fit, newdata = list(Z = Z_star), type = "SigmaZ",
+                        burn = 5L, r_verbose = FALSE)
+  .check_sigma_pred(pred_sigma, nrow(Z_star), ncoef, 30L - 5L)
 })
 
 # --- Negbin -----------------------------------------------------------------
@@ -121,4 +141,7 @@ test_that("predict.rhierNegbinRw extrapolates over Z* outside training support",
                     burn = 5L, r_verbose = FALSE)
     .check_pred(pred, nrow(Z_star), ncoef, 30L - 5L)
   }
+  pred_sigma <- predict(fit, newdata = list(Z = Z_star), type = "SigmaZ",
+                        burn = 5L, r_verbose = FALSE)
+  .check_sigma_pred(pred_sigma, nrow(Z_star), ncoef, 30L - 5L)
 })

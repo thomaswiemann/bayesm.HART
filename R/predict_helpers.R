@@ -214,8 +214,50 @@
        use_full = use_full)
 }
 
+# Helper 3: Return Sigma(Z*) draws for heter-cov models
+#
+# Returns a 4D array [npred, nvar, nvar, ndraws_out] where each slice
+# Sigma(Z*_i) is reconstructed from modified-Cholesky components:
+#   Sigma(Z*) = L(Z*)^{-1} D(Z*) L(Z*)^{-T}
+.calculate_sigma_z <- function(object, newdata, burn, r_verbose,
+                               hetercov_comps = NULL) {
+  if (!inherits(object, "bayesm.HART.HeterCov")) {
+    stop("type='SigmaZ' is only available for heteroscedastic covariance models.")
+  }
+  if (is.null(newdata$Z)) {
+    stop("Heter-cov predictions require newdata$Z.")
+  }
 
-# Helper 3: Add mu component
+  nvar         <- dim(object$betadraw)[2]
+  ndraws_total <- dim(object$betadraw)[3]
+  npred        <- nrow(newdata$Z)
+  kept_draws   <- if (burn > 0) (burn + 1):ndraws_total else seq_len(ndraws_total)
+
+  comps <- if (is.null(hetercov_comps))
+    .hetercov_components(object, newdata$Z, npred, nvar, ndraws_total, r_verbose)
+  else
+    hetercov_comps
+
+  sigma_arr <- array(0, dim = c(npred, nvar, nvar, length(kept_draws)))
+  for (out_idx in seq_along(kept_draws)) {
+    s <- kept_draws[out_idx]
+    for (i in seq_len(npred)) {
+      d_vec <- pmax(comps$d_arr[i, , s], .Machine$double.eps)
+      L <- diag(nvar)
+      if (comps$use_full && nvar > 1L) {
+        for (j in 2:nvar) {
+          L[j, seq_len(j - 1L)] <- -comps$phi_arr[i, j, seq_len(j - 1L), s]
+        }
+      }
+      A <- solve(L, diag(sqrt(d_vec), nvar))
+      sigma_arr[i, , , out_idx] <- A %*% t(A)
+    }
+  }
+  return(sigma_arr)
+}
+
+
+# Helper 4: Add mu component
 #
 # Two paths:
 #   (a) BART / linear with mixture: pull mu from object$nmix$compdraw[[r]][[1]]$mu

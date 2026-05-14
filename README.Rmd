@@ -115,8 +115,10 @@ print(results_df, digits = 3)
 
 Curious and want to learn more? Have a look at the `bayesm.HART` vignettes:
 
-- [`vignette("bayesm-HART")`](https://thomaswiemann.com/bayesm.HART/articles/bayesm-HART.html) provides a more detailed introduction 
-- ... more here come soon!
+- [`vignette("bayesm-HART")`](https://thomaswiemann.com/bayesm.HART/articles/bayesm-HART.html): Get started (hierarchical logit with HART)
+- [`vignette("bayesm-HART-linear")`](https://thomaswiemann.com/bayesm.HART/articles/bayesm-HART-linear.html): Hierarchical linear model
+- [`vignette("bayesm-HART-negbin")`](https://thomaswiemann.com/bayesm.HART/articles/bayesm-HART-negbin.html): Hierarchical negative binomial model
+- [`vignette("bayesm-HART-heteroskedastic-hart-bank")`](https://thomaswiemann.com/bayesm.HART/articles/bayesm-HART-heteroskedastic-hart-bank.html): Bank conjoint -- heteroskedastic HART
 
 ## Acknowledgements
 

@@ -24,6 +24,11 @@ struct MixBartState {
     arma::mat   delta_Z;        // nlgt x nvar
     Rcpp::List  oldcomp;        // mixture components (current draw)
     arma::vec   oldprob, ind;   // current mixture probs / labels
+
+    // ---------- MH correction for Sigma draw (ncomp == 1) ----------
+    arma::mat   rootpi_prev;    // D x D upper-tri rootpi from previous iter
+    int         sigma_mh_accept = 0;  // acceptance counter
+    int         sigma_mh_total  = 0;  // proposal counter
 };
 
 // One-time setup BEFORE the MCMC loop.  Allocates buffers and tree streams.

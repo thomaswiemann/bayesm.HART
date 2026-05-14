@@ -500,18 +500,30 @@ return(draws)
 #' @param newdata A list with element `Z`: an `npred x nz` matrix of covariate
 #'   values at which to predict.
 #' @param type Character. `"DeltaZ"` for the systematic component only, or
-#'   `"DeltaZ+mu"` to add the mixture component mean (BART models only).
+#'   `"DeltaZ+mu"` to add the mixture component mean (BART models only), or
+#'   `"SigmaZ"` for heteroscedastic covariance draws \eqn{\Sigma(Z)} when the
+#'   model was fit with `Prior$vartree`.
 #' @param burn Integer, number of initial MCMC draws to discard.
 #' @param r_verbose Logical, print progress updates?
 #' @param ... Additional arguments passed to `pwbart` for BART models.
 #'
-#' @return A 3D array `[npred, ncoef, ndraws_out]` of predicted betabar values.
+#' @return Depends on `type`:
+#'   - For `type %in% c("DeltaZ", "DeltaZ+mu")`: 3D array
+#'     `[npred, ncoef, ndraws_out]` of predicted betabar values.
+#'   - For `type = "SigmaZ"`: 4D array `[npred, ncoef, ncoef, ndraws_out]` of
+#'     covariance draws at each prediction unit.
 #' @export
 predict.rhierNegbinRw <- function(object, newdata = NULL,
                                     type = "DeltaZ+mu", burn = 0,
                                     r_verbose = TRUE, ...) {
-  ndraws_total <- .validate_predict_inputs(object, newdata, type, burn, nsim = 1)
+  valid_types <- c("DeltaZ", "DeltaZ+mu", "SigmaZ")
+  ndraws_total <- .validate_predict_inputs(object, newdata, type, burn, nsim = 1,
+                                           valid_types = valid_types)
   kept_draws_indices <- if (burn > 0) (burn + 1):ndraws_total else 1:ndraws_total
+
+  if (type == "SigmaZ") {
+    return(.calculate_sigma_z(object, newdata, burn, r_verbose))
+  }
 
   result <- .calculate_delta_z(object, newdata, burn, r_verbose, ...)
 

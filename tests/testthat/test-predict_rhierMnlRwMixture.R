@@ -243,6 +243,20 @@ test_that("predict works for model with nz=0", {
 
 })
 
+test_that("predict SigmaZ errors for non-heter MNL fits", {
+  set.seed(909)
+  sim_data_linear <- sim_hier_mnl(
+    nlgt = 20, nT = 6, p = 3, nz = 2, nXa = 1, nXd = 0, const = TRUE,
+    beta_func_type = "linear"
+  )
+  fit_linear <- run_model_for_pred_test(sim_data_linear, R = 30, useBART = FALSE)
+
+  expect_error(
+    predict(fit_linear, newdata = list(Z = sim_data_linear$Z), type = "SigmaZ", r_verbose = FALSE),
+    "only available for heteroscedastic covariance models"
+  )
+})
+
 test_that("predict method with type = 'posterior_probs' works", {
 
   # --- Setup Mock Data ---

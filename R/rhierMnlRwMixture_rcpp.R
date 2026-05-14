@@ -725,7 +725,7 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
 #' @param object A fitted rhierMnlRwMixture object.
 #' @param newdata Optional list containing data for prediction. Structure depends
 #'   on `type`:
-#'   - For `type %in% c("DeltaZ", "DeltaZ+mu")`: Requires `newdata$Z`, a matrix
+#'   - For `type %in% c("DeltaZ", "DeltaZ+mu", "SigmaZ")`: Requires `newdata$Z`, a matrix
 #'     with `npred` rows for prediction units (if model was fit with Z).
 #'   - For `type = "posterior_probs"`: Requires `newdata$nlgtdata`, a list of
 #'     length `nlgt` (original number of units). Each element `\\[[i]]` must
@@ -743,6 +743,9 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
 #'     (based on `newdata$Z` or the overall mixture if no Z was used). Probabilities
 #'     are averaged over `nsim` draws from the heterogeneity mixture distribution
 #'     per posterior draw.
+#'   - `"SigmaZ"`: Draws of the heteroscedastic covariance matrix \eqn{\Sigma(Z)}.
+#'     Available only for models fit with `Prior$vartree` (class marker
+#'     `"bayesm.HART.HeterCov"`).
 #' @param burn Integer, number of initial MCMC draws to discard.
 #' @param nsim Integer, number of draws from the heterogeneity mixture distribution
 #'   per posterior draw for `type = "prior_probs"`.
@@ -752,6 +755,8 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
 #' @return Depends on `type`:
 #'   - For `type %in% c("DeltaZ", "DeltaZ+mu")`: 3D array `[npred, nvar, ndraws_out]`
 #'     of predicted expected part-worths.
+#'   - For `type = "SigmaZ"`: 4D array `[npred, nvar, nvar, ndraws_out]` of
+#'     covariance draws at each prediction unit.
 #'   - For `type = "posterior_probs"`: List of length `nlgt`. Each element `\\[[i]]`
 #'     is a 3D array `[T_i, p, ndraws_out]` of posterior predictive choice probabilities
 #'     for unit `i`.
@@ -763,7 +768,7 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
 predict.rhierMnlRwMixture <- function(object, newdata = NULL,
                                       type = "DeltaZ+mu", burn = 0, nsim = 10,
                                       r_verbose = TRUE, ...) {
-  mnl_types    <- c("DeltaZ", "DeltaZ+mu", "posterior_probs", "prior_probs")
+  mnl_types    <- c("DeltaZ", "DeltaZ+mu", "posterior_probs", "prior_probs", "SigmaZ")
   ndraws_total <- .validate_predict_inputs(object, newdata, type, burn, nsim,
                                            valid_types = mnl_types)
   kept_draws_indices <- if (burn > 0) (burn + 1):ndraws_total else 1:ndraws_total
@@ -774,16 +779,20 @@ predict.rhierMnlRwMixture <- function(object, newdata = NULL,
 
   # Heter-cov: evaluate every BART / varBART / phi-BART ensemble at newdata$Z
   # exactly ONCE, then share the result with both .calculate_delta_z and
-  # (when type == "prior_probs") .predict_prior_probs.
+  # (when type == "prior_probs") .predict_prior_probs / .calculate_sigma_z.
   hetercov_comps <- NULL
   if (inherits(object, "bayesm.HART.HeterCov") &&
-      type %in% c("DeltaZ", "DeltaZ+mu", "prior_probs")) {
+      type %in% c("DeltaZ", "DeltaZ+mu", "prior_probs", "SigmaZ")) {
     if (is.null(newdata$Z))
       stop("Heter-cov predictions require newdata$Z.")
     nvar  <- dim(object$betadraw)[2]
     npred <- nrow(newdata$Z)
     hetercov_comps <- .hetercov_components(object, newdata$Z, npred, nvar,
                                            ndraws_total, r_verbose)
+  }
+  if (type == "SigmaZ") {
+    return(.calculate_sigma_z(object, newdata, burn, r_verbose,
+                              hetercov_comps = hetercov_comps))
   }
 
   delta_z <- .calculate_delta_z(object, newdata, burn, r_verbose,

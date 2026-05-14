@@ -6,7 +6,7 @@
 #   * end-to-end execution via the user wrapper,
 #   * class assignment and return-slot shape,
 #   * sign restrictions are honored under heter-cov (positivity preserved),
-#   * predict.* dispatch on "rhierMnlRwMixtureHeterCov" for all four types.
+#   * predict.* dispatch on "rhierMnlRwMixtureHeterCov" for all five types.
 #
 # Recovery accuracy is exercised by the longer dev/smoke-heter-mnl*.R scripts.
 
@@ -219,7 +219,7 @@ test_that("Phase 2 (vartree + phitree) runs end-to-end and returns jagged phi_mo
   }
 })
 
-test_that("predict.rhierMnlRwMixtureHeterCov dispatches for all four types", {
+test_that("predict.rhierMnlRwMixtureHeterCov dispatches for all five types", {
   sim <- make_small_sim()
   Prior <- list(ncomp = 1L,
                 bart    = list(num_trees = 5L),
@@ -273,6 +273,19 @@ test_that("predict.rhierMnlRwMixtureHeterCov dispatches for all four types", {
   for (i in seq_len(npred)) {
     sums <- apply(prp[[i]], c(1, 3), sum)
     expect_equal(as.numeric(sums), rep(1, length(sums)), tolerance = 1e-8)
+  }
+
+  # SigmaZ: covariance draws [npred, nvar, nvar, ndraws_kept]
+  pred_sigma <- predict(fit, newdata = newdata, type = "SigmaZ", burn = 5L,
+                        r_verbose = FALSE)
+  expect_equal(dim(pred_sigma), c(npred, sim$nvar, sim$nvar, 15L))
+  expect_true(all(is.finite(pred_sigma)))
+  for (i in seq_len(npred)) {
+    for (s in 1:15) {
+      expect_equal(pred_sigma[i, , , s], t(pred_sigma[i, , , s]),
+                   tolerance = 1e-8, ignore_attr = TRUE)
+      expect_true(all(diag(pred_sigma[i, , , s]) > 0))
+    }
   }
 })
 

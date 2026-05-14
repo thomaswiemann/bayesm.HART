@@ -56,6 +56,67 @@ void mixbart_draw_iter(MixBartState& s,
         s.oldcomp = mgout["comps"];
         s.oldprob = as<vec>(mgout["p"]);
         s.ind = as<vec>(mgout["z"]);
+
+        // ----------------------------------------------------------------
+        // MH correction for the Sigma draw (ncomp == 1 only).
+        //
+        // rmixGibbs draws (mu_new, Sigma_new) from the IW conjugate update
+        // using residuals theta_i - Delta*(Z_i).  In the (Sigma, delta)
+        // parameterization, the exact full conditional for Sigma includes a
+        // cross term from Sigma^{1/2} appearing in the mean Delta(Z_i).
+        // The IW draw ignores this.  We correct with an MH accept/reject.
+        //
+        // The log MH ratio is:
+        //   log alpha = -sum_i a_i^T b_i - 0.5 * sum_i ||b_i||^2
+        // where:
+        //   L_new  = rootpi_new^T   (lower-tri Cholesky of Sigma_new^{-1})
+        //   L_old  = rootpi_old^T
+        //   M      = L_new * L_old^{-1}
+        //   b_i    = (M - I) * delta_i
+        //   a_i    = L_new * epsilon_i
+        //   epsilon_i = theta_i - mu_new - Delta*_old(Z_i)
+        //
+        // On reject: keep mu_new, revert rootpi to rootpi_prev.
+        // ----------------------------------------------------------------
+        if (s.oldcomp.size() == 1 && s.rootpi_prev.n_rows > 0) {
+            List comp0 = s.oldcomp[0];
+            vec  mu_new     = as<vec>(comp0[0]);
+            mat  rootpi_new = trimatu(as<mat>(comp0[1]));
+
+            // M = L_new * L_old^{-1} where L = rootpi^T (lower-tri).
+            // M^T = L_old^{-T} * L_new^T = rootpi_old^{-1} * rootpi_new
+            mat Mt = solve(trimatu(s.rootpi_prev), rootpi_new);
+            mat MmI = Mt.t() - eye<mat>(s.nvar, s.nvar);  // M - I
+
+            double log_alpha = 0.0;
+            for (int i = 0; i < s.nlgt; i++) {
+                vec delta_i(s.nvar), eps_i(s.nvar);
+                for (int d = 0; d < s.nvar; d++) {
+                    delta_i(d) = s.bart_models[d].f(i);
+                    eps_i(d)   = oldbetas(i, d) - mu_new(d) - s.delta_Z(i, d);
+                }
+                vec b_i = MmI * delta_i;
+                vec a_i = rootpi_new.t() * eps_i;  // L_new * eps_i
+                log_alpha -= dot(a_i, b_i) + 0.5 * dot(b_i, b_i);
+            }
+
+            s.sigma_mh_total++;
+            if (log(R::runif(0.0, 1.0)) > std::min(0.0, log_alpha)) {
+                // Reject Sigma_new: keep mu_new, revert rootpi.
+                List comp_reverted = List::create(
+                    Named("mu") = mu_new,
+                    Named("rooti") = wrap(s.rootpi_prev));
+                s.oldcomp[0] = comp_reverted;
+            } else {
+                s.sigma_mh_accept++;
+            }
+        }
+
+        // Store current rootpi for next iteration's MH comparison.
+        if (s.oldcomp.size() == 1) {
+            List comp0 = s.oldcomp[0];
+            s.rootpi_prev = trimatu(as<mat>(comp0[1]));
+        }
     }
     
     if (s.sparse && rep == s.burn + 1) {
@@ -103,6 +164,8 @@ Rcpp::List mixbart_pack(MixBartState& s) {
     return List::create(
         Named("bart_models") = pack_bart_list_(s.nvar, s.bart_models, tss),
         Named("varcount") = s.varcount,
-        Named("varprob") = s.varprob
+        Named("varprob") = s.varprob,
+        Named("sigma_mh_accept_rate") = s.sigma_mh_total > 0
+            ? (double)s.sigma_mh_accept / s.sigma_mh_total : NA_REAL
     );
 }

@@ -210,6 +210,19 @@ test_that("predict.rhierNegbinRw dispatches via marker class for heter-cov", {
     expect_equal(diff_arr[i, , ], mu_kept, tolerance = 1e-8,
                  ignore_attr = TRUE)
   }
+
+  # SigmaZ: covariance draws [npred, ncoef, ncoef, ndraws_kept]
+  pred_sigma <- predict(fit, newdata = newdata, type = "SigmaZ", burn = 5L,
+                        r_verbose = FALSE)
+  expect_equal(dim(pred_sigma), c(npred, ncoef, ncoef, 15L))
+  expect_true(all(is.finite(pred_sigma)))
+  for (i in seq_len(npred)) {
+    for (s in 1:15) {
+      expect_equal(pred_sigma[i, , , s], t(pred_sigma[i, , , s]),
+                   tolerance = 1e-8, ignore_attr = TRUE)
+      expect_true(all(diag(pred_sigma[i, , , s]) > 0))
+    }
+  }
 })
 
 # --- lambda auto-calibration --------------------------------------------------
