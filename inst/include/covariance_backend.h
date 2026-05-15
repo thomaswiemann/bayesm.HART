@@ -21,6 +21,7 @@ struct BackendPackPayload {
 // Contract:
 //   precision_root(i) returns upper-tri R_i with R_i * R_i^T = Sigma_i^{-1}.
 //   prior_mean(i) returns m_i such that theta_i | . ~ N(m_i, Sigma_i).
+//   Returned references remain valid until the next draw_iteration() call.
 //
 // Implementations:
 //   GlobalCovarianceBackend   - mixture-of-normals + optional BART/linear delta
@@ -34,10 +35,10 @@ public:
     virtual void draw_iteration(int rep) = 0;
 
     // Upper-tri R_i with R_i R_i^T = Sigma_i^{-1}.
-    virtual arma::mat precision_root(int i) const = 0;
+    virtual arma::mat const& precision_root(int i) const = 0;
 
     // Prior mean m_i for unit i.
-    virtual arma::vec prior_mean(int i) const = 0;
+    virtual arma::vec const& prior_mean(int i) const = 0;
 
     // Per-keep serialization.
     virtual void store(int mkeep) = 0;

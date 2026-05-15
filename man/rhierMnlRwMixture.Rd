@@ -21,12 +21,11 @@ Should NOT contain an intercept and should be centered.
 
 \item{Prior}{A list containing prior parameters:
 \itemize{
-\item \code{ncomp}: Number of mixture components (required).
-\item \code{a} (optional): \verb{ncomp x 1} vector of Dirichlet prior parameters for mixture weights \code{pvec} (default: \code{rep(5, ncomp)}).
+\item \code{ncomp} (required): Number of components. Must be 1.
 \item \code{deltabar} (optional): \verb{nz * nvar x 1} prior mean for \code{vec(Delta)} (default: 0). Ignored if HART is used.
 \item \code{Ad} (optional): Prior precision matrix for \code{vec(Delta)} (default: \code{0.01 * I}). Ignored if HART is used.
-\item \code{mubar} (optional): \verb{nvar x 1} prior mean vector for mixture component means (default: 0 if unrestricted, 2 if restricted).
-\item \code{Amu} (optional): Prior precision for mixture component means (default: 0.01 if unrestricted, 0.1 if restricted).
+\item \code{mubar} (optional): \verb{nvar x 1} prior mean vector for the normal prior (default: 0 if unrestricted, 2 if restricted).
+\item \code{Amu} (optional): Prior precision for the normal prior (default: 0.01 if unrestricted, 0.1 if restricted).
 \item \code{nu} (optional): Degrees of freedom for IW prior on component \code{Sigma} (default: \code{nvar+3} if unrestricted, \code{nvar+15} if restricted).
 \item \code{V} (optional): Location matrix for IW prior on component \code{Sigma} (default: \code{nu * I} or scaled based on restriction).
 \item \code{SignRes} (optional): \verb{nvar x 1} vector of sign restrictions. Must contain values of 0, -1, or 1. The value 0 means no restriction, -1 ensures the coefficient is negative, and 1 ensures the coefficient is positive. For example, \code{SignRes = c(0,1,-1)} means the first coefficient is unconstrained, the second will be positive, and the third will be negative. Default: \code{rep(0, nvar)}.
@@ -51,14 +50,11 @@ A list containing:
 \itemize{
 \item \code{Deltadraw}: If \code{Z} provided and \code{bart=NULL}, \verb{(R/keep) x (nz * nvar)} matrix of \code{vec(Delta)} draws.
 \item \code{betadraw}: \verb{nlgt x nvar x (R/keep)} array of unit-level \code{beta_i} draws.
-\item \code{nmix}: List containing mixture draws with components (omitted when \code{vartree} is supplied):
-\itemize{
-\item \code{probdraw}: \verb{(R/keep) x ncomp} matrix of mixture component probabilities.
-\item \code{zdraw}: \verb{(R/keep) x nlgt} matrix of component assignments for each unit.
-\item \code{compdraw}: \code{(R/keep)} list of \code{ncomp} lists. \code{compdraw[[r]][[j]] = list(mu, rooti)} contains the draw of \eqn{\mu_j} and \eqn{\Sigma_j^{-1/2}} for component \code{j} at kept draw \code{r}.
-}
+\item \code{nmix}: Legacy list containing prior draws (omitted when \code{vartree} is supplied).
 \item \code{loglike}: \verb{(R/keep) x 1} vector of log-likelihood values at kept draws.
 \item \code{SignRes}: \verb{nvar x 1} vector of sign restrictions used.
+\item \code{acceptrbeta}: Metropolis acceptance rate (percent) for the unit-level
+MNL random-walk updates of \code{beta_i}.
 \item \code{bart_models}: If HART used, list of length \code{nvar} containing tree structures and related parameters for the mean trees \eqn{\delta_j(\cdot)}.
 \item \code{var_models} (only with \code{vartree}): list of length \code{nvar} of variance-tree ensembles for \eqn{d_j(\cdot)} (product of trees with \eqn{\chi^{-2}} leaves).
 \item \code{phi_models} (only with \code{vartree} + \code{phitree}): jagged list of length \code{nvar}. \code{phi_models[[1]]} is \code{NULL}; for \code{j > 1}, \code{phi_models[[j]]} is a list of length \code{j-1} containing the sum-of-trees ensemble for \eqn{\phi_{jk}(\cdot)}.
@@ -66,10 +62,11 @@ A list containing:
 }
 }
 \description{
-\code{rhierMnlRwMixture} implements an MCMC algorithm for a Bayesian multinomial
+\code{rhierMnlRwMixture} implements an MCMC algorithm for a Bayesian hierarchical multinomial
 logit model with a Hierarchical Additive Regression Trees (HART) prior. HART
 is a hierarchical nonparametric prior that allows for flexible modeling of the
 representative consumer as a function of potentially many observed characteristics.
+\code{Prior$bart} allows for modeling the conditional mean of the normal prior.
 }
 \details{
 \subsection{Model Specification}{
@@ -92,10 +89,9 @@ With \code{ncomp = 1} (currently required), the unobserved heterogeneity compone
 
 \subsection{Prior Specifications}{
 \itemize{
-\item \strong{Mixture weights}: \eqn{pvec \sim Dirichlet(a)}
 \item \strong{Linear model}: \eqn{\delta = vec(\Delta) \sim N(deltabar, A_d^{-1})}
-\item \strong{Mixture component means}: \eqn{\mu_j \sim N(mubar, \Sigma_j \otimes Amu^{-1})} (covariance scaled by \eqn{\Sigma_j})
-\item \strong{Mixture component covariance}: \eqn{\Sigma_j \sim IW(\nu, V)}
+\item \strong{Component means}: \eqn{\mu_1 \sim N(mubar, \Sigma_1 \otimes Amu^{-1})} (covariance scaled by \eqn{\Sigma_1})
+\item \strong{Component covariance}: \eqn{\Sigma_1 \sim IW(\nu, V)}
 \item \strong{HART model}: A sum-of-trees prior is placed on each factor of the scaled sum-of-trees model (see HART details below).
 }
 }
@@ -128,7 +124,7 @@ consumer using a scaled vector of \code{nvar} sum-of-trees models.
 
 Wiemann (2025) treats \eqn{\Sigma} as global with an inverse-Wishart prior, used as a fixed factor-model loading \eqn{\Sigma^{1/2}}. When \code{Prior$vartree} is supplied, the package replaces this with unit-specific
 \deqn{\Sigma(Z_i)^{-1} = L(Z_i)^\top D(Z_i)^{-1} L(Z_i)}
-where \eqn{L(Z_i)} is unit lower-triangular with \eqn{L_{jk} = -\phi_{jk}(Z_i)} for \eqn{k < j} and \eqn{D(Z_i) = \mathrm{diag}(d_1(Z_i), \ldots, d_D(Z_i))}, \eqn{d_j > 0}. Each \eqn{d_j(\cdot)} is modeled as a product of trees with \eqn{\chi^{-2}} leaves (Pratola et al.); each \eqn{\phi_{jk}(\cdot)} (when \code{Prior$phitree} is supplied) is modeled as a sum of trees with \eqn{N(0, \tau^2)} leaves. Only the single-component path (\code{ncomp = 1}) is supported in this mode.
+where \eqn{L(Z_i)} is unit lower-triangular with \eqn{L_{jk} = -\phi_{jk}(Z_i)} for \eqn{k < j} and \eqn{D(Z_i) = \mathrm{diag}(d_1(Z_i), \ldots, d_D(Z_i))}, \eqn{d_j > 0}. Each \eqn{d_j(\cdot)} is modeled as a product of trees with \eqn{\chi^{-2}} leaves (Pratola et al., 2020); each \eqn{\phi_{jk}(\cdot)} (when \code{Prior$phitree} is supplied) is modeled as a sum of trees with \eqn{N(0, \tau^2)} leaves. Only the single-component path (\code{ncomp = 1}) is supported in this mode.
 
 \strong{\code{Prior$vartree} parameters} (defaults shown):
 \itemize{
@@ -148,8 +144,6 @@ where \eqn{L(Z_i)} is unit lower-triangular with \eqn{L_{jk} = -\phi_{jk}(Z_i)} 
 }
 
 When this extension is active, the returned object additionally inherits class \code{"rhierMnlRwMixtureHeterCov"} and contains slots \code{var_models}, \code{phi_models} (jagged, lower-triangular; \code{NULL} if \code{nvar == 1}), and \code{mu_draw} (single-component posterior mean draws). \code{predict()} dispatches on this class to evaluate \eqn{\Sigma(Z^*)} at new \eqn{Z^*}.
-
-Sign restrictions are fully compatible with this extension. Under \code{SignRes != 0}, the variance/phi trees model \eqn{\Sigma(Z_i)} on the unconstrained scale \eqn{\beta^*_i = \log|\beta_i|/SignRes} (exactly as in the standard MNL HART path), and the post-loop transform \eqn{\beta_i = SignRes \cdot \exp(\beta^*_i)} is applied unconditionally to every kept draw.
 }
 
 \subsection{Sign Restrictions}{
@@ -157,19 +151,20 @@ Sign restrictions are fully compatible with this extension. Under \code{SignRes 
 If \code{SignRes[k]} is non-zero, the k-th coefficient \eqn{\beta_{ik}} is modeled as
 \deqn{\beta_{ik} = SignRes[k] \cdot \exp(\beta^*_{ik}).}
 The \code{betadraw} output contains the draws for \eqn{\beta_{ik}} (with the restriction applied).
-The \code{nmix} output contains draws for the \emph{unrestricted} mixture components.
+The \code{nmix} output contains draws for the \emph{unrestricted} prior covariance and mean.
 
 \strong{Note:} Care should be taken when selecting priors on any sign restricted coefficients.
 }
 }
 \note{
-Currently, the mixture component is not implemented. Please use
-\code{ncomp = 1} in the Prior specification.
+Currently, only \code{ncomp = 1} is supported.
 }
 \references{
 Chipman, Hugh A., Edward I. George, and Robert E. McCulloch (2010). "BART: Bayesian Additive Regression Trees." Annals of Applied Statistics 4.1.
 
 Linero, Antonio R. (2018). "Bayesian regression trees for high-dimensional prediction and variable selection." Journal of the American Statistical Association 113.522, pp. 626-636.
+
+Pratola, M. T., Chipman, H. A., George, E. I., and McCulloch, R. E. (2020). "Heteroscedastic BART via Multiplicative Regression Trees." Journal of Computational and Graphical Statistics 29.2, pp. 405-417.
 
 Rossi, Peter E., Greg M. Allenby, and Robert McCulloch (2009). Bayesian Statistics and Marketing. Reprint. Wiley Series in Probability and Statistics. Chichester: Wiley.
 

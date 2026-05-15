@@ -23,6 +23,12 @@ HeterCovBackend::HeterCovBackend(
         pstd_oldbetas_cols_[j] = std_oldbetas_.colptr(j);
     Zt_ = Z.t();
     pZt_ = Zt_.memptr();
+    rootpi_cache_.resize(nreg_);
+    prior_mean_cache_.resize(nreg_);
+    for (int i = 0; i < nreg_; i++) {
+        rootpi_cache_[i].set_size(nvar_, nvar_);
+        prior_mean_cache_[i].set_size(nvar_);
+    }
 }
 
 void HeterCovBackend::draw_iteration(int rep) {
@@ -30,15 +36,22 @@ void HeterCovBackend::draw_iteration(int rep) {
                        pZt_, pstd_oldbetas_cols_,
                        bart_params_, var_params_, phi_params_,
                        rep, gen_);
+
+    // Cache per-unit kernels once per iteration for reference-based access
+    // from the unified sampler driver.
+    for (int i = 0; i < nreg_; i++) {
+        cov::cov_eval ev{hcs_.var_models, hcs_.phi_models, (size_t)i};
+        rootpi_cache_[i] = cov::rootpi(ev);
+        prior_mean_cache_[i] = hcs_.mu_post + hcs_.delta_Z.row(i).t();
+    }
 }
 
-mat HeterCovBackend::precision_root(int i) const {
-    cov::cov_eval ev{hcs_.var_models, hcs_.phi_models, (size_t)i};
-    return cov::rootpi(ev);
+mat const& HeterCovBackend::precision_root(int i) const {
+    return rootpi_cache_[i];
 }
 
-vec HeterCovBackend::prior_mean(int i) const {
-    return hcs_.mu_post + hcs_.delta_Z.row(i).t();
+vec const& HeterCovBackend::prior_mean(int i) const {
+    return prior_mean_cache_[i];
 }
 
 void HeterCovBackend::store(int mkeep) {

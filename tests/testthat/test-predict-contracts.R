@@ -87,3 +87,191 @@ test_that("posterior_probs helper preserves simplex rows", {
   }
 })
 
+test_that("MNL predictive dispatcher matches predict() prior/posterior modes", {
+  set.seed(20260515)
+  sim <- sim_hier_mnl(
+    nlgt = 20, nT = 4, p = 3, nz = 2, nXa = 1, nXd = 0, const = TRUE,
+    beta_func_type = "linear"
+  )
+  prior <- list(ncomp = 1L, bart = list(num_trees = 5L))
+  mcmc <- list(R = 12L, keep = 1L, nprint = 0L)
+  capture.output({
+    fit <- rhierMnlRwMixture(Data = sim, Prior = prior, Mcmc = mcmc, r_verbose = FALSE)
+  })
+
+  newdata_post <- list(p = sim$p, nlgtdata = sim$lgtdata)
+  out_pred <- predict(fit, newdata = newdata_post, mode = "posterior",
+                      type = "choice_probs", burn = 1L, r_verbose = FALSE)
+  out_dispatch <- bayesm.HART:::.predictive_dispatch_mnl(
+    fit, newdata_post, mode = "posterior", type = "choice_probs",
+    burn = 1L, nsim = 2L, r_verbose = FALSE
+  )
+  expect_equal(out_pred, out_dispatch, tolerance = 1e-10, ignore_attr = TRUE)
+
+  X_template <- sim$lgtdata[[1]]$X
+  newdata_prior <- list(
+    Z = sim$Z, p = sim$p,
+    X = replicate(nrow(sim$Z), X_template, simplify = FALSE)
+  )
+  set.seed(20260516)
+  out_pred_prior <- predict(fit, newdata = newdata_prior, mode = "prior",
+                            type = "choice_probs", burn = 1L, nsim = 2L, r_verbose = FALSE)
+  set.seed(20260516)
+  out_dispatch_prior <- bayesm.HART:::.predictive_dispatch_mnl(
+    fit, newdata_prior, mode = "prior", type = "choice_probs",
+    burn = 1L, nsim = 2L, r_verbose = FALSE
+  )
+  expect_equal(out_pred_prior, out_dispatch_prior, tolerance = 1e-10, ignore_attr = TRUE)
+})
+
+test_that("MNL unified mode/type contract works via predict()", {
+  set.seed(20260525)
+  sim <- sim_hier_mnl(
+    nlgt = 16, nT = 3, p = 3, nz = 2, nXa = 1, nXd = 0, const = TRUE,
+    beta_func_type = "linear"
+  )
+  prior <- list(ncomp = 1L, bart = list(num_trees = 5L))
+  mcmc <- list(R = 12L, keep = 1L, nprint = 0L)
+  capture.output({
+    fit <- rhierMnlRwMixture(Data = sim, Prior = prior, Mcmc = mcmc, r_verbose = FALSE)
+  })
+
+  newdata_post <- list(p = sim$p, nlgtdata = sim$lgtdata)
+  out_mode <- predict(fit, newdata = newdata_post, mode = "posterior",
+                      type = "choice_probs", burn = 1L, r_verbose = FALSE)
+  out_direct <- bayesm.HART:::.predictive_dispatch(
+    fit, newdata_post, mode = "posterior", type = "choice_probs",
+    burn = 1L, nsim = 2L, r_verbose = FALSE
+  )
+  expect_equal(out_mode, out_direct, tolerance = 1e-10, ignore_attr = TRUE)
+})
+
+test_that("Linear predictive dispatcher matches predict() in posterior mode", {
+  set.seed(20260517)
+  sim <- sim_hier_linear(
+    nreg = 12, nobs = 6, nvar = 2, nz = 2,
+    const = TRUE, het_observed = "linear"
+  )
+  prior <- list(ncomp = 1L)
+  mcmc <- list(R = 14L, keep = 1L, nprint = 0L)
+  capture.output({
+    fit <- rhierLinearMixture(
+      Data = list(regdata = sim$regdata, Z = sim$Z),
+      Prior = prior, Mcmc = mcmc, r_verbose = FALSE
+    )
+  })
+
+  newdata_post <- list(regdata = lapply(sim$regdata, function(u) list(X = u$X)))
+  set.seed(20260518)
+  out_pred <- predict(fit, newdata = newdata_post, mode = "posterior",
+                      burn = 2L, r_verbose = FALSE)
+  set.seed(20260518)
+  out_dispatch <- bayesm.HART:::.predictive_dispatch(
+    fit, newdata_post, mode = "posterior", type = "response",
+    burn = 2L, nsim = 1L, r_verbose = FALSE
+  )
+  expect_equal(out_pred, out_dispatch, tolerance = 1e-10, ignore_attr = TRUE)
+  expect_length(out_dispatch, length(sim$regdata))
+  expect_equal(ncol(out_dispatch[[1]]), dim(fit$betadraw)[3] - 2L)
+})
+
+test_that("Linear prior predictive response path is reproducible and shaped", {
+  set.seed(20260519)
+  sim <- sim_hier_linear(
+    nreg = 10, nobs = 5, nvar = 1, nz = 2,
+    const = TRUE, het_observed = "linear"
+  )
+  prior <- list(ncomp = 1L)
+  mcmc <- list(R = 12L, keep = 1L, nprint = 0L)
+  capture.output({
+    fit <- rhierLinearMixture(
+      Data = list(regdata = sim$regdata, Z = sim$Z),
+      Prior = prior, Mcmc = mcmc, r_verbose = FALSE
+    )
+  })
+
+  npred <- 4L
+  new_Z <- sim$Z[seq_len(npred), , drop = FALSE]
+  X_template <- sim$regdata[[1]]$X
+  newdata_prior <- list(
+    Z = new_Z,
+    X = replicate(npred, X_template, simplify = FALSE)
+  )
+
+  set.seed(20260520)
+  out1 <- predict(fit, newdata = newdata_prior, mode = "prior",
+                  burn = 1L, nsim = 3L, r_verbose = FALSE)
+  set.seed(20260520)
+  out2 <- bayesm.HART:::.predictive_dispatch(
+    fit, newdata_prior, mode = "prior", type = "response",
+    burn = 1L, nsim = 3L, r_verbose = FALSE
+  )
+  expect_equal(out1, out2, tolerance = 1e-10, ignore_attr = TRUE)
+  expect_length(out1, npred)
+  expect_equal(dim(out1[[1]]), c(nrow(X_template), dim(fit$betadraw)[3] - 1L))
+})
+
+test_that("NegBin predictive dispatcher matches predict() in posterior mode", {
+  set.seed(20260521)
+  sim <- sim_hier_negbin(
+    nreg = 10, nobs = 8, nvar = 1, nz = 2,
+    const = TRUE, het_observed = "linear"
+  )
+  prior <- list(ncomp = 1L)
+  mcmc <- list(R = 14L, keep = 1L, nprint = 0L)
+  capture.output({
+    fit <- rhierNegbinRw(
+      Data = list(regdata = sim$regdata, hessdata = sim$hessdata, Z = sim$Z),
+      Prior = prior, Mcmc = mcmc, r_verbose = FALSE
+    )
+  })
+
+  newdata_post <- list(regdata = lapply(sim$regdata, function(u) list(X = u$X)))
+  set.seed(20260522)
+  out_pred <- predict(fit, newdata = newdata_post, mode = "posterior",
+                      burn = 2L, r_verbose = FALSE)
+  set.seed(20260522)
+  out_dispatch <- bayesm.HART:::.predictive_dispatch(
+    fit, newdata_post, mode = "posterior", type = "response",
+    burn = 2L, nsim = 1L, r_verbose = FALSE
+  )
+  expect_equal(out_pred, out_dispatch, tolerance = 1e-10, ignore_attr = TRUE)
+  expect_length(out_dispatch, length(sim$regdata))
+  expect_equal(ncol(out_dispatch[[1]]), dim(fit$betadraw)[3] - 2L)
+})
+
+test_that("NegBin prior predictive response path is reproducible and shaped", {
+  set.seed(20260523)
+  sim <- sim_hier_negbin(
+    nreg = 8, nobs = 6, nvar = 1, nz = 2,
+    const = TRUE, het_observed = "linear"
+  )
+  prior <- list(ncomp = 1L)
+  mcmc <- list(R = 12L, keep = 1L, nprint = 0L)
+  capture.output({
+    fit <- rhierNegbinRw(
+      Data = list(regdata = sim$regdata, hessdata = sim$hessdata, Z = sim$Z),
+      Prior = prior, Mcmc = mcmc, r_verbose = FALSE
+    )
+  })
+
+  npred <- 4L
+  new_Z <- sim$Z[seq_len(npred), , drop = FALSE]
+  X_template <- sim$regdata[[1]]$X
+  newdata_prior <- list(
+    Z = new_Z,
+    X = replicate(npred, X_template, simplify = FALSE)
+  )
+
+  set.seed(20260524)
+  out1 <- predict(fit, newdata = newdata_prior, mode = "prior",
+                  burn = 1L, nsim = 3L, r_verbose = FALSE)
+  set.seed(20260524)
+  out2 <- bayesm.HART:::.predictive_dispatch(
+    fit, newdata_prior, mode = "prior", type = "response",
+    burn = 1L, nsim = 3L, r_verbose = FALSE
+  )
+  expect_equal(out1, out2, tolerance = 1e-10, ignore_attr = TRUE)
+  expect_length(out1, npred)
+  expect_equal(dim(out1[[1]]), c(nrow(X_template), dim(fit$betadraw)[3] - 1L))
+})

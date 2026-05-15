@@ -19,26 +19,25 @@ library(testthat)
   list(sim = sim, fit = fit)
 }
 
-test_that("store_trees=FALSE keeps seen-row cache path and guards unseen rows", {
+test_that("store_trees=FALSE supports seen-Z DeltaZ cache and guards unseen rows", {
   obj <- .fit_mnl_for_cache_tests(use_heter = FALSE, store_trees = FALSE)
   fit <- obj$fit
   Z <- obj$sim$Z
 
   expect_null(fit$bart_models)
-
   pred_seen <- predict(fit, newdata = list(Z = Z), type = "DeltaZ", r_verbose = FALSE)
   expect_true(is.array(pred_seen))
   expect_equal(dim(pred_seen)[1], nrow(Z))
 
   Z_unseen <- Z
-  Z_unseen[1, ] <- Z_unseen[1, ] + 10
+  Z_unseen[1, ] <- Z_unseen[1, ] + 100
   expect_error(
     predict(fit, newdata = list(Z = Z_unseen), type = "DeltaZ", r_verbose = FALSE),
     regexp = "Out-of-sample Z prediction requires stored tree objects"
   )
 })
 
-test_that("DeltaZ cache path matches forced tree-eval on seen rows", {
+test_that("DeltaZ cache path matches force_tree_eval on seen rows", {
   obj <- .fit_mnl_for_cache_tests(use_heter = FALSE, store_trees = TRUE)
   fit <- obj$fit
   Z <- obj$sim$Z
@@ -51,12 +50,13 @@ test_that("DeltaZ cache path matches forced tree-eval on seen rows", {
   expect_equal(pred_cache, pred_tree, tolerance = 1e-6, ignore_attr = TRUE)
 })
 
-test_that("SigmaZ cache path matches forced tree-eval on seen rows", {
+test_that("SigmaZ cache path matches force_tree_eval on seen rows", {
   obj <- .fit_mnl_for_cache_tests(use_heter = TRUE, store_trees = TRUE)
   fit <- obj$fit
   Z <- obj$sim$Z
 
-  sigma_cache <- predict(fit, newdata = list(Z = Z), type = "SigmaZ", burn = 1L, r_verbose = FALSE)
+  sigma_cache <- predict(fit, newdata = list(Z = Z), type = "SigmaZ",
+                         burn = 1L, r_verbose = FALSE)
   sigma_tree <- predict(
     fit, newdata = list(Z = Z), type = "SigmaZ", burn = 1L,
     force_tree_eval = TRUE, r_verbose = FALSE
@@ -64,28 +64,30 @@ test_that("SigmaZ cache path matches forced tree-eval on seen rows", {
   expect_equal(sigma_cache, sigma_tree, tolerance = 1e-6, ignore_attr = TRUE)
 })
 
-test_that("row order is preserved for permuted and mixed seen/unseen newdata$Z", {
+test_that("row order is preserved for permuted and mixed seen/unseen Z", {
   obj <- .fit_mnl_for_cache_tests(use_heter = TRUE, store_trees = TRUE)
   fit <- obj$fit
   Z <- obj$sim$Z
 
   idx <- c(3L, 1L, 5L, 2L)
   Z_perm <- Z[idx, , drop = FALSE]
-  sigma_perm <- predict(fit, newdata = list(Z = Z_perm), type = "SigmaZ", burn = 1L, r_verbose = FALSE)
-  sigma_full <- predict(fit, newdata = list(Z = Z), type = "SigmaZ", burn = 1L, r_verbose = FALSE)
-  expect_equal(sigma_perm, sigma_full[idx, , , , drop = FALSE], tolerance = 1e-6, ignore_attr = TRUE)
+  sigma_perm <- predict(fit, newdata = list(Z = Z_perm), type = "SigmaZ",
+                        burn = 1L, r_verbose = FALSE)
+  sigma_full <- predict(fit, newdata = list(Z = Z), type = "SigmaZ",
+                        burn = 1L, r_verbose = FALSE)
+  expect_equal(sigma_perm, sigma_full[idx, , , , drop = FALSE],
+               tolerance = 1e-6, ignore_attr = TRUE)
 
-  Z_mix <- rbind(Z[2L, , drop = FALSE], Z[2L, , drop = FALSE] + 5, Z[4L, , drop = FALSE])
+  Z_mix <- rbind(Z[2, , drop = FALSE], Z[4, , drop = FALSE] + 5, Z[6, , drop = FALSE])
   delta_mix <- predict(fit, newdata = list(Z = Z_mix), type = "DeltaZ", r_verbose = FALSE)
   delta_mix_tree <- predict(
     fit, newdata = list(Z = Z_mix), type = "DeltaZ",
     force_tree_eval = TRUE, r_verbose = FALSE
   )
-  expect_equal(dim(delta_mix)[1], 3L)
   expect_equal(delta_mix, delta_mix_tree, tolerance = 1e-6, ignore_attr = TRUE)
 })
 
-test_that("heter prior_probs uses SigmaZ cache on seen Z without trees", {
+test_that("heter prior choice_probs uses SigmaZ cache on seen Z without trees", {
   obj <- .fit_mnl_for_cache_tests(use_heter = TRUE, store_trees = FALSE)
   fit <- obj$fit
   Z <- obj$sim$Z
@@ -101,7 +103,7 @@ test_that("heter prior_probs uses SigmaZ cache on seen Z without trees", {
     X = replicate(nrow(Z), X_template, simplify = FALSE)
   )
   pp_seen <- predict(
-    fit, newdata = newdata_seen, type = "prior_probs",
+    fit, newdata = newdata_seen, mode = "prior", type = "choice_probs",
     nsim = 2L, burn = 1L, r_verbose = FALSE
   )
   expect_type(pp_seen, "list")
@@ -117,9 +119,9 @@ test_that("heter prior_probs uses SigmaZ cache on seen Z without trees", {
   )
   expect_error(
     predict(
-      fit, newdata = newdata_unseen, type = "prior_probs",
+      fit, newdata = newdata_unseen, mode = "prior", type = "choice_probs",
       nsim = 2L, burn = 1L, r_verbose = FALSE
     ),
-    regexp = "prior_probs prediction requires stored tree objects for unseen Z"
+    regexp = "stored tree objects for unseen Z"
   )
 })

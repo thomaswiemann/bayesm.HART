@@ -62,7 +62,6 @@ List rmixGibbs( mat const& y,  mat const& Bbar, mat const& A, double nu, mat con
   // (mu, Sigma) updates via `sigma_gibbs` while reusing the label/prob draws.
 vec drawLabelsFromComps(mat const& y, vec const& p, List comps);
 vec drawPFromLabels(vec const& a, vec const& z);
-List rmixGibbs_BART(mat const& y, mat const& Bbar, mat const& A, double nu, mat const& V, vec const& a, vec const& p, vec const& z);
 
 //SUPPORT FUNCTIONS (contained in utilityFunctions.cpp and trunNorm.cpp)-----------------------------------------------------------
 

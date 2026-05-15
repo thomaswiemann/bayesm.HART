@@ -257,7 +257,7 @@ test_that("predict SigmaZ errors for non-heter MNL fits", {
   )
 })
 
-test_that("predict method with type = 'posterior_probs' works", {
+test_that("predict method with posterior choice_probs works", {
 
   # --- Setup Mock Data ---
   set.seed(1001)
@@ -301,7 +301,8 @@ test_that("predict method with type = 'posterior_probs' works", {
   )
 
   # --- Test Case 1: Basic Functionality (T_i = 1) ---
-  pred_t1 <- predict(mock_object, newdata = mock_newdata_t1, type = "posterior_probs", r_verbose=FALSE)
+  pred_t1 <- predict(mock_object, newdata = mock_newdata_t1,
+                     mode = "posterior", type = "choice_probs", r_verbose=FALSE)
   
   # Check output structure
   expect_type(pred_t1, "list")
@@ -327,7 +328,8 @@ test_that("predict method with type = 'posterior_probs' works", {
                info = "Probabilities do not sum to 1 for unit 2, draw 5 (T=1)")
 
   # --- Test Case 2: Multi-Observation Functionality (T_i > 1) ---
-  pred_t2 <- predict(mock_object_t2, newdata = mock_newdata_t2, type = "posterior_probs", r_verbose=FALSE)
+  pred_t2 <- predict(mock_object_t2, newdata = mock_newdata_t2,
+                     mode = "posterior", type = "choice_probs", r_verbose=FALSE)
   
   # Check output structure
   expect_type(pred_t2, "list")
@@ -358,16 +360,17 @@ test_that("predict method with type = 'posterior_probs' works", {
   mock_newdata_t1_with_Z$Z <- matrix(0, nrow=nlgt_test, ncol=1) # Add dummy Z
   
   expect_no_error({ 
-      pred_t1_Z <- predict(mock_object, newdata = mock_newdata_t1_with_Z, type = "posterior_probs", r_verbose=FALSE) 
-  }, message="Predicting with type='posterior_probs' and present Z failed.")
+      pred_t1_Z <- predict(mock_object, newdata = mock_newdata_t1_with_Z,
+                           mode = "posterior", type = "choice_probs", r_verbose=FALSE) 
+  }, message="Predicting with posterior choice_probs and present Z failed.")
   
   # Compare results with and without Z
   expect_identical(pred_t1, pred_t1_Z, 
-                   info="Result differs when newdata$Z is present for type='posterior_probs'")
+                   info="Result differs when newdata$Z is present for posterior choice_probs")
 
 }) 
 
-test_that("predict method with type = 'prior_probs' works", {
+test_that("predict method with prior choice_probs works", {
 
   # --- Setup --- 
   set.seed(1101)
@@ -466,7 +469,9 @@ test_that("predict method with type = 'prior_probs' works", {
   # --- Core Functionality Tests --- 
   
   # Test 2.1: Basic Execution (Linear, with Z)
-  pred_lin_Z <- predict(fit_lin_Z, newdata = newdata_Z, type = "prior_probs", nsim = 1, r_verbose=FALSE)
+  pred_lin_Z <- predict(fit_lin_Z, newdata = newdata_Z,
+                        mode = "prior", type = "choice_probs",
+                        nsim = 1, r_verbose=FALSE)
   expect_type(pred_lin_Z, "list")
   expect_length(pred_lin_Z, npred_test)
   expect_true(is.array(pred_lin_Z[[1]]), info = "pred_lin_Z[[1]] is not array")
@@ -474,21 +479,27 @@ test_that("predict method with type = 'prior_probs' works", {
   expect_equal(dim(pred_lin_Z[[npred_test]]), c(nT2_test, p_test, ndraws_out))
   
   # Test 2.2: Basic Execution (BART, with Z)
-  pred_bart_Z <- predict(fit_bart_Z, newdata = newdata_Z, type = "prior_probs", nsim = 1, r_verbose=FALSE)
+  pred_bart_Z <- predict(fit_bart_Z, newdata = newdata_Z,
+                         mode = "prior", type = "choice_probs",
+                         nsim = 1, r_verbose=FALSE)
   expect_type(pred_bart_Z, "list")
   expect_length(pred_bart_Z, npred_test)
   expect_true(is.array(pred_bart_Z[[1]]), info = "pred_bart_Z[[1]] is not array")
   expect_equal(dim(pred_bart_Z[[1]]), c(nT2_test, p_test, ndraws_out))
   
   # Test 2.3: Basic Execution (Linear, without Z)
-  pred_lin_noZ <- predict(fit_lin_noZ, newdata = newdata_noZ, type = "prior_probs", nsim = 1, r_verbose=FALSE)
+  pred_lin_noZ <- predict(fit_lin_noZ, newdata = newdata_noZ,
+                          mode = "prior", type = "choice_probs",
+                          nsim = 1, r_verbose=FALSE)
   expect_type(pred_lin_noZ, "list")
   expect_length(pred_lin_noZ, 1)
   expect_true(is.array(pred_lin_noZ[[1]]), info = "pred_lin_noZ[[1]] is not array")
   expect_equal(dim(pred_lin_noZ[[1]]), c(nT2_test, p_test, ndraws_out))
   
   # Test 2.4: Basic Execution (BART, without Z)
-  pred_bart_noZ <- predict(fit_bart_noZ, newdata = newdata_noZ, type = "prior_probs", nsim = 1, r_verbose=FALSE)
+  pred_bart_noZ <- predict(fit_bart_noZ, newdata = newdata_noZ,
+                           mode = "prior", type = "choice_probs",
+                           nsim = 1, r_verbose=FALSE)
   expect_type(pred_bart_noZ, "list")
   expect_length(pred_bart_noZ, 1)
   expect_true(is.array(pred_bart_noZ[[1]]), info = "pred_bart_noZ[[1]] is not array")
@@ -498,9 +509,13 @@ test_that("predict method with type = 'prior_probs' works", {
   
   # Test 3.1: nsim > 1 produces different results
   set.seed(1104)
-  pred_nsim1 <- predict(fit_lin_Z, newdata = newdata_Z, type = "prior_probs", nsim = 1, r_verbose=FALSE)
+  pred_nsim1 <- predict(fit_lin_Z, newdata = newdata_Z,
+                        mode = "prior", type = "choice_probs",
+                        nsim = 1, r_verbose=FALSE)
   set.seed(1104) # Reset seed
-  pred_nsim5 <- predict(fit_lin_Z, newdata = newdata_Z, type = "prior_probs", nsim = 5, r_verbose=FALSE)
+  pred_nsim5 <- predict(fit_lin_Z, newdata = newdata_Z,
+                        mode = "prior", type = "choice_probs",
+                        nsim = 5, r_verbose=FALSE)
   
   expect_type(pred_nsim5, "list")
   expect_length(pred_nsim5, npred_test)
@@ -512,14 +527,18 @@ test_that("predict method with type = 'prior_probs' works", {
   # --- Edge Case Tests --- 
 
   # Test 5.1: npred = 1 (with Z)
-  pred_npred1 <- predict(fit_lin_Z, newdata = newdata_Z_npred1, type = "prior_probs", nsim = 1, r_verbose=FALSE)
+  pred_npred1 <- predict(fit_lin_Z, newdata = newdata_Z_npred1,
+                         mode = "prior", type = "choice_probs",
+                         nsim = 1, r_verbose=FALSE)
   expect_type(pred_npred1, "list")
   expect_length(pred_npred1, 1)
   expect_true(is.array(pred_npred1[[1]]), info = "pred_npred1[[1]] is not array")
   expect_equal(dim(pred_npred1[[1]]), c(nT2_test, p_test, ndraws_out))
 
   # Test 5.2: T_i = 1 (single observation per unit)
-  pred_T1 <- predict(fit_lin_Z, newdata = newdata_Z_T1, type = "prior_probs", nsim = 1, r_verbose=FALSE)
+  pred_T1 <- predict(fit_lin_Z, newdata = newdata_Z_T1,
+                     mode = "prior", type = "choice_probs",
+                     nsim = 1, r_verbose=FALSE)
   expect_type(pred_T1, "list")
   expect_length(pred_T1, npred_test)
   expect_true(is.array(pred_T1[[1]]), info = "pred_T1[[1]] is not array")

@@ -12,7 +12,11 @@ vignette: |
 
 ## Introduction
   
-This vignette estimates a hierarchical linear model with HART priors using the `bayesm.HART` package, applied to the `orangeJuice` scanner panel dataset from `bayesm`. The HART prior specifies the *representative store* as a flexible, non-parametric function of observed store demographics via a sum-of-trees model $\Delta(Z_i)$, in contrast to the conventional linear specification $\Delta^\top Z_i$.
+This vignette estimates a hierarchical linear model with HART priors
+using `bayesm.HART`, applied to the `orangeJuice` scanner panel dataset
+from `bayesm`. The HART prior specifies the *representative store* as a
+sum-of-trees function of observed demographics, `Delta(Z_i)`, whereas
+the conventional specification uses the linear form `Delta^\\top Z_i`.
 
 ## Orange Juice Scanner Panel Data
 
@@ -23,22 +27,9 @@ The `orangeJuice` dataset contains weekly store-level scanner data for 83 stores
 # Load dependencies
 library(bayesm.HART)
 library(bayesm)
-#> 
-#> Attaching package: 'bayesm'
-#> The following objects are masked from 'package:bayesm.HART':
-#> 
-#>     rhierLinearMixture, rhierMnlRwMixture, rhierNegbinRw
 # Data wrangling and plotting utilities
 library(tidyr)
 library(dplyr)
-#> 
-#> Attaching package: 'dplyr'
-#> The following objects are masked from 'package:stats':
-#> 
-#>     filter, lag
-#> The following objects are masked from 'package:base':
-#> 
-#>     intersect, setdiff, setequal, union
 library(ggplot2)
 
 # Load orange juice scanner panel data
@@ -82,21 +73,46 @@ burn <- 250
 keep <- 1
 Mcmc <- list(R = R, keep = keep)
 
-out_hart <- bayesm.HART::rhierLinearMixture(
-  Data = Data, Mcmc = Mcmc,
-  Prior = list(
-    ncomp = 1,
-    bart = list(num_trees = 20) # new HART prior parameters
-  )
+model_cache_file <- file.path(
+  vignette_cache_dir,
+  sprintf("oj-linear-R%s-keep%s.rds", R, keep)
 )
 
-out_lin <- bayesm.HART::rhierLinearMixture(
-  Data = Data, Mcmc = Mcmc,
-  Prior = list(ncomp = 1)
-)
+model_cache_ok <- FALSE
+if (file.exists(model_cache_file)) {
+  model_cache <- tryCatch(readRDS(model_cache_file), error = function(e) NULL)
+  model_cache_ok <- !is.null(model_cache) &&
+    !is.null(model_cache$out_hart) && !is.null(model_cache$out_lin)
+  if (model_cache_ok) {
+    out_hart <- model_cache$out_hart
+    out_lin  <- model_cache$out_lin
+    cat("Loaded cached model draws from:", model_cache_file, "\n")
+  }
+}
+
+if (!model_cache_ok) {
+  out_hart <- bayesm.HART::rhierLinearMixture(
+    Data = Data, Mcmc = Mcmc,
+    Prior = list(
+      ncomp = 1,
+      bart = list(num_trees = 20) # new HART prior parameters
+    )
+  )
+
+  out_lin <- bayesm.HART::rhierLinearMixture(
+    Data = Data, Mcmc = Mcmc,
+    Prior = list(ncomp = 1)
+  )
+
+  saveRDS(
+    list(out_hart = out_hart, out_lin = out_lin, generated_at = Sys.time()),
+    model_cache_file
+  )
+  cat("Saved model draws cache to:", model_cache_file, "\n")
+}
 ```
 
-We check convergence by plotting the log-likelihood over MCMC iterations.
+We use the log-likelihood trace as a basic MCMC diagnostic.
 
 
 ```r
@@ -217,13 +233,16 @@ summary_results <- data.frame(
 
 print(summary_results, digits = 3)
 #>    Model Store  Mean    SD
-#> 1 Linear    25 -1.83 0.169
-#> 2 Linear    79 -3.62 0.327
-#> 3   HART    25 -1.84 0.169
-#> 4   HART    79 -3.55 0.312
+#> 1 Linear    25 -1.84 0.167
+#> 2 Linear    79 -3.61 0.320
+#> 3   HART    25 -1.85 0.166
+#> 4   HART    79 -3.54 0.304
 ```
 
-Both models produce similar individual-level elasticity estimates. With approximately 117 weekly observations per store, the individual-level posterior is dominated by each store's own data rather than the hierarchical prior.
+Both models produce similar individual-level elasticity estimates for the
+selected stores. With about 117 weekly observations per store, the
+individual likelihood contributes most of the posterior information at
+the store level in this application.
 
 ## Posterior Inference on Store Segment Coefficients
 
@@ -232,8 +251,8 @@ The models differ in how they characterize the expected coefficient $\Delta(Z)$ 
 
 ```r
 # We predict for all stores
-DeltaZ_hat_hart <- predict(out_hart, newdata = Data, type = "DeltaZ+mu", burn = burn)
-DeltaZ_hat_lin <- predict(out_lin, newdata = Data, type = "DeltaZ+mu", burn = burn)
+DeltaZ_hat_hart <- predict(out_hart, newdata = list(Z = Z), type = "DeltaZ+mu", burn = burnin_draws)
+DeltaZ_hat_lin <- predict(out_lin, newdata = list(Z = Z), type = "DeltaZ+mu", burn = burnin_draws)
 ```
 
 
@@ -316,11 +335,11 @@ deltaZ_summary <- data.frame(
 
 print(deltaZ_summary, digits = 3)
 #>                                         Segment Linear_Mean Linear_SD HART_Mean
-#> 1       Segment 1 (High Income, High Education)       -2.37     0.313     -2.44
-#> 2 Segment 2 (Low Income, High Ethnic Diversity)       -3.48     0.414     -3.21
+#> 1       Segment 1 (High Income, High Education)       -2.37     0.305     -2.45
+#> 2 Segment 2 (Low Income, High Ethnic Diversity)       -3.50     0.412     -3.20
 #>   HART_SD
-#> 1   0.233
-#> 2   0.268
+#> 1   0.227
+#> 2   0.263
 
 # Calculate differences between segments
 cat("\nDifferences between segments:\n")
@@ -328,13 +347,15 @@ cat("\nDifferences between segments:\n")
 #> Differences between segments:
 cat("Linear approach difference:", 
     deltaZ_summary$Linear_Mean[2] - deltaZ_summary$Linear_Mean[1], "\n")
-#> Linear approach difference: -1.109251
+#> Linear approach difference: -1.127546
 cat("HART approach difference:", 
     deltaZ_summary$HART_Mean[2] - deltaZ_summary$HART_Mean[1], "\n")
-#> HART approach difference: -0.7700829
+#> HART approach difference: -0.750117
 ```
 
-The linear approach is constrained to a linear function of demographics, while the HART model can capture nonlinearities and interactions in how store characteristics relate to price sensitivity.
+The linear specification restricts segment means to an affine function
+of demographics. HART allows nonlinear and interaction structure in
+`Z` through `Delta(Z)`.
 
 ## References
 

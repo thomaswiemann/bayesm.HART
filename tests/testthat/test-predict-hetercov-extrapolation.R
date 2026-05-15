@@ -77,7 +77,7 @@ test_that("predict.rhierMnlRwMixture extrapolates over Z* outside training suppo
     fit <- rhierMnlRwMixture(Data = Data, Prior = Prior, Mcmc = Mcmc, r_verbose = FALSE)
   })
   Z_star <- .make_extrapolation_Z(Z)
-  # Focus on Sigma(Z*) / delta_Z(Z*) extrapolation; prior_probs / posterior_probs
+  # Focus on Sigma(Z*) / delta_Z(Z*) extrapolation; predictive choice_probs
   # need an additional `X` list keyed to the new units and are covered by the
   # dedicated test-rhierMnlRwMixture-hetercov.R predict.* dispatch tests.
   for (tp in c("DeltaZ", "DeltaZ+mu")) {

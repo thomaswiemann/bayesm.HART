@@ -18,26 +18,32 @@ NegbinThetaUpdaterAdapter::NegbinThetaUpdaterAdapter(
     oldlpostbeta_.zeros(nreg_);
     clpostbeta_.zeros(nreg_);
     alphadraw_.zeros(R / keep);
+    A_work_.set_size(nvar_, nvar_);
+    U_work_.set_size(nvar_, nvar_);
+    eye_work_.eye(nvar_, nvar_);
+    oldbeta_work_.set_size(nvar_);
+    betac_work_.set_size(nvar_);
 }
 
 void NegbinThetaUpdaterAdapter::update_unit(
     int i, mat const& rootpi_i, vec const& prior_mean_i)
 {
-    mat Vbetainv_reg = rootpi_i * trans(rootpi_i);
-    mat betacvar = sbeta_ * solve(regdata_[i].hess + Vbetainv_reg, eye(nvar_, nvar_));
-    mat betaroot = trans(chol(betacvar));
-    vec betac = vectorise(oldbetas_(i, span::all)) + betaroot * vec(rnorm(nvar_));
+    A_work_ = regdata_[i].hess + rootpi_i * trans(rootpi_i);
+    U_work_ = sbeta_ * solve(A_work_, eye_work_);
+    U_work_ = trans(chol(U_work_));
+    oldbeta_work_ = vectorise(oldbetas_(i, span::all));
+    betac_work_ = oldbeta_work_ + U_work_ * as<vec>(rnorm(nvar_));
 
-    oldlpostbeta_[i] = lpostbeta(alpha_, trans(oldbetas_(i, span::all)),
+    oldlpostbeta_[i] = lpostbeta(alpha_, oldbeta_work_,
                                   regdata_[i].X, regdata_[i].y, prior_mean_i, rootpi_i);
-    clpostbeta_[i]   = lpostbeta(alpha_, betac,
+    clpostbeta_[i]   = lpostbeta(alpha_, betac_work_,
                                   regdata_[i].X, regdata_[i].y, prior_mean_i, rootpi_i);
     double ldiff = clpostbeta_[i] - oldlpostbeta_[i];
     double acc = exp(ldiff);
     if (acc > 1) acc = 1;
     double unif = (acc < 1) ? runif(1)[0] : 0;
     if (unif <= acc) {
-        oldbetas_(i, span::all) = trans(betac);
+        oldbetas_(i, span::all) = trans(betac_work_);
         nacceptbeta_++;
     }
 }

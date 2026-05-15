@@ -20,6 +20,11 @@ public:
     double a_prior_, b_prior_;
     bool fixalpha_;
     arma::vec alphadraw_;
+    arma::mat A_work_;
+    arma::mat U_work_;
+    arma::mat eye_work_;
+    arma::vec oldbeta_work_;
+    arma::vec betac_work_;
     int nreg_, nvar_, R_, keep_;
 
     NegbinThetaUpdaterAdapter(

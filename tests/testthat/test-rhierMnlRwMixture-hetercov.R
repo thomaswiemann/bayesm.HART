@@ -258,14 +258,14 @@ test_that("predict.rhierMnlRwMixtureHeterCov dispatches for all five types", {
                  ignore_attr = TRUE)
   }
 
-  # posterior_probs: list of npred-by-... arrays for the original units
-  pp <- predict(fit, newdata = newdata, type = "posterior_probs", burn = 5L,
+  # posterior choice_probs: list of npred-by-... arrays for the original units
+  pp <- predict(fit, newdata = newdata, mode = "posterior", type = "choice_probs", burn = 5L,
                 r_verbose = FALSE)
   expect_length(pp, nrow(sim$Z))
   expect_equal(dim(pp[[1]])[2:3], c(sim$p, 15L))
 
-  # prior_probs: averaged over nsim draws of eta = mu + Sigma(Z*)^{1/2} z
-  prp <- predict(fit, newdata = newdata, type = "prior_probs", burn = 5L,
+  # prior choice_probs: averaged over nsim draws of eta = mu + Sigma(Z*)^{1/2} z
+  prp <- predict(fit, newdata = newdata, mode = "prior", type = "choice_probs", burn = 5L,
                  nsim = 3L, r_verbose = FALSE)
   expect_length(prp, npred)
   expect_equal(dim(prp[[1]])[2:3], c(sim$p, 15L))

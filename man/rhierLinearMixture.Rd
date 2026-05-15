@@ -2,7 +2,7 @@
 % Please edit documentation in R/rhierLinearMixture.R
 \name{rhierLinearMixture}
 \alias{rhierLinearMixture}
-\title{Bayesian Hierarchical Linear Model with Normal Mixture and HART Prior}
+\title{Bayesian Hierarchical Linear Model with HART Prior}
 \usage{
 rhierLinearMixture(Data, Prior, Mcmc, r_verbose = TRUE)
 }
@@ -20,14 +20,13 @@ rhierLinearMixture(Data, Prior, Mcmc, r_verbose = TRUE)
 
 \item{Prior}{A list containing prior parameters:
 \itemize{
-\item \code{ncomp} (required): Number of normal mixture components.
+\item \code{ncomp} (required): Number of components. Must be 1.
 \item \code{nu.e} (optional): Degrees of freedom for error variance prior (default: 3).
 \item \code{ssq} (optional): Scale for error variance prior, \verb{nreg x 1} vector (default: var(y_i)).
-\item \code{mubar} (optional): \verb{1 x nvar} prior mean for mixture component means (default: 0).
-\item \code{Amu} (optional): \verb{1 x 1} prior precision for mixture component means (default: 0.01).
-\item \code{nu} (optional): Degrees of freedom for IW prior on mixture component covariances (default: nvar + 3).
+\item \code{mubar} (optional): \verb{1 x nvar} prior mean vector for the normal prior (default: 0).
+\item \code{Amu} (optional): \verb{1 x 1} prior precision for the normal prior (default: 0.01).
+\item \code{nu} (optional): Degrees of freedom for IW prior on the normal prior covariance (default: nvar + 3).
 \item \code{V} (optional): \verb{nvar x nvar} location matrix for IW prior (default: nu * I).
-\item \code{a} (optional): \verb{ncomp x 1} Dirichlet prior parameters (default: rep(5, ncomp)).
 \item \code{Ad} (optional): Prior precision for vec(Delta) (default: 0.01 * I). Only used when \code{drawdelta = TRUE} and \code{useBART = FALSE}.
 \item \code{deltabar} (optional): Prior mean for vec(Delta) (default: 0). Only used when \code{drawdelta = TRUE} and \code{useBART = FALSE}.
 \item \code{bart} (optional): List of HART prior parameters. See Details.
@@ -59,7 +58,7 @@ A list of class \code{"rhierLinearMixture"} containing:
 \item \code{betadraw}: \verb{nreg x nvar x (R/keep)} array of unit-level beta draws.
 \item \code{taudraw}: \verb{(R/keep) x nreg} matrix of error variance draws.
 \item \code{loglike}: \verb{(R/keep) x 1} vector of log-likelihoods.
-\item \code{nmix}: List with \code{probdraw}, \code{zdraw}, \code{compdraw} (omitted under heter-cov).
+\item \code{nmix}: Legacy list containing prior draws (omitted under heter-cov).
 \item If \code{drawdelta} and non-BART: \code{Deltadraw}.
 \item If BART: \code{bart_models}, \code{varcount}, \code{varprob}.
 \item If heter-cov (additional class \code{"rhierLinearMixtureHeterCov"}):
@@ -68,10 +67,11 @@ A list of class \code{"rhierLinearMixture"} containing:
 }
 }
 \description{
-\code{rhierLinearMixture} implements a Gibbs sampler for a Bayesian hierarchical
-linear regression model with a mixture of normals prior on the unit-level
-coefficients. Supports both standard linear hierarchical prior and HART
-(sum-of-trees) prior. Structurally symmetric to \code{rhierMnlRwMixture}.
+\code{rhierLinearMixture} implements an MCMC algorithm for a Bayesian hierarchical
+linear regression model with a Hierarchical Additive Regression Trees (HART) prior. HART
+is a hierarchical nonparametric prior that allows for flexible modeling of the
+representative unit as a function of potentially many observed characteristics.
+\code{Prior$bart} allows for modeling the conditional mean of the normal prior.
 }
 \details{
 \subsection{Model Specification}{
@@ -79,64 +79,30 @@ coefficients. Supports both standard linear hierarchical prior and HART
 \eqn{y_i = X_i \beta_i + \epsilon_i}, \eqn{\epsilon_i \sim N(0, \tau_i I)}
 
 The unit-level coefficients are modeled as:
-\deqn{\beta_i = \Delta(Z_i) + u_i}
-where \eqn{u_i \sim N(\mu_{k_i}, \Sigma_{k_i})} with \eqn{k_i} drawn from
-a mixture of normals with \code{ncomp} components.
+\eqn{\beta_i = Z_i \Delta + u_i} \cr
+\eqn{u_i \sim N(0, \Sigma_i)} \cr
 }
 
 \subsection{HART Prior Details}{
 
-If \code{Prior$bart} is a list, \eqn{\Delta(Z_i)} is modeled via a sum-of-trees (BART) prior.
-Parameters (with defaults):
-\itemize{
-\item \code{num_trees}: Number of trees (default: 200).
-\item \code{power}, \code{base}: Tree structure prior parameters (default: 2, 0.95).
-\item \code{tau}: Terminal leaf coefficient prior variance (default: 1/sqrt(num_trees)).
-\item \code{numcut}: Number of cutpoints (default: 100).
-\item \code{sparse}: Use Dirichlet HART for sparsity (default: FALSE).
-\item \code{theta}, \code{omega}, \code{a}, \code{b}, \code{rho}, \code{aug}, \code{burn}: Dirichlet HART parameters.
-}
+If \code{Prior$bart} is a list, \eqn{\Delta(Z_i)} is modeled via a sum-of-trees (BART) prior
+instead of a linear hierarchical specification. See \code{rhierMnlRwMixture} for complete
+details and hyperparameter definitions.
 }
 
 \subsection{Heteroscedastic Covariance \eqn{\Sigma(Z_i)} (experimental extension)}{
 
-When \code{Prior$vartree} is supplied, the homoscedastic mixture-of-normals
-covariance \eqn{\Sigma_{k_i}} is replaced with a unit-specific
-\deqn{\Sigma(Z_i)^{-1} = L(Z_i)^\top D(Z_i)^{-1} L(Z_i)}
-where \eqn{L(Z_i)} is unit lower-triangular with \eqn{L_{jk} = -\phi_{jk}(Z_i)}
-for \eqn{k < j} and \eqn{D(Z_i) = \mathrm{diag}(d_1(Z_i), \ldots, d_{nvar}(Z_i))},
-\eqn{d_j > 0}. Each \eqn{d_j(\cdot)} is modeled as a product of trees with
-\eqn{\chi^{-2}} leaves; each \eqn{\phi_{jk}(\cdot)} (when \code{Prior$phitree} is
-supplied or auto-promoted) is modeled as a sum of trees with
-\eqn{N(0, \tau^2)} leaves. Only the single-component path (\code{ncomp = 1}) is
-supported in this mode. Per-unit \eqn{\beta_i} are drawn from the conjugate
-Gaussian posterior using \eqn{\Sigma(Z_i)^{-1}} as the prior precision.
-
-\strong{\code{Prior$vartree} parameters} (defaults shown):
-\itemize{
-\item \code{num_trees} (40): Number of trees per dimension.
-\item \code{nu} (10), \code{lambda} (auto-calibrated from per-unit OLS): \eqn{\chi^{-2}}
-prior parameters.
-\item \code{power} (2), \code{base} (0.95), \code{numcut} (100): Tree-structure prior parameters.
-\item DART hyperparameters (\code{sparse}, \code{a}, \code{b}, \code{rho}, \code{theta}, \code{omega}, \code{aug},
-\code{burn}): same meaning as \code{Prior$bart}.
-}
-
-\strong{\code{Prior$phitree} parameters} (defaults shown):
-\itemize{
-\item \code{num_trees} (40): Number of trees per \eqn{(j,k)} pair.
-\item \code{tau} (1/sqrt(num_trees)): Prior standard deviation of leaf parameters.
-\item \code{power} (2), \code{base} (0.95), \code{numcut} (100): Tree-structure prior parameters.
-\item \code{nmin} (2), \code{ess_min} (5): Leaf-admissibility floors.
-\item DART hyperparameters: same meaning as \code{Prior$bart}.
-}
+When \code{Prior$vartree} is supplied, the homoscedastic prior covariance \eqn{\Sigma} is
+replaced with a unit-specific modified Cholesky decomposition where the components
+are modeled as tree ensembles. See \code{rhierMnlRwMixture} for complete details.
 
 When this extension is active, the returned object additionally inherits
-classes \code{"rhierLinearMixtureHeterCov"} and \code{"bayesm.HART.HeterCov"} and
-contains slots \code{var_models}, \code{phi_models} (jagged, lower-triangular; \code{NULL}
-if \code{nvar == 1}), and \code{mu_draw}. \code{predict()} dispatches on these classes to
-evaluate \eqn{\Sigma(Z^*)} at any new \eqn{Z^*}.
+classes \code{"rhierLinearMixtureHeterCov"} and \code{"bayesm.HART.HeterCov"}. \code{predict()}
+dispatches on these classes to evaluate \eqn{\Sigma(Z^*)} at any new \eqn{Z^*}.
 }
+}
+\note{
+Currently, only \code{ncomp = 1} is supported.
 }
 \examples{
 \donttest{

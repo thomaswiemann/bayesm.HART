@@ -88,14 +88,24 @@
 # phi_{jk}(.) trees.  Returns NULL `tau` if user supplied; otherwise auto-sets to
 # 1/sqrt(num_trees) per the standard BART convention.
 # ------------------------------------------------------------------------------
-.parse_phi_params <- function(prior_phitree, nz) {
+.parse_phi_params <- function(prior_phitree, nz, nu, nvar) {
   num_phi_trees <- ifelse(is.null(prior_phitree$num_trees), 40L,
                           as.integer(prior_phitree$num_trees))
+  
+  # Exact tau calibration matching Inverse-Wishart(nu)
+  if (nvar > 1) {
+    i_vec <- 2:nvar
+    V_phi_bar <- (2 / (nvar * (nvar - 1))) * sum((i_vec - 1) / (nu - nvar + i_vec - 2))
+    tau_default <- sqrt(V_phi_bar / num_phi_trees)
+  } else {
+    tau_default <- 1.0 / sqrt(num_phi_trees)
+  }
+
   list(
     num_trees = num_phi_trees,
     power     = ifelse(is.null(prior_phitree$power),   2.0,                   prior_phitree$power),
     base      = ifelse(is.null(prior_phitree$base),    0.95,                  prior_phitree$base),
-    tau       = ifelse(is.null(prior_phitree$tau),     1.0/sqrt(num_phi_trees),prior_phitree$tau),
+    tau       = ifelse(is.null(prior_phitree$tau),     tau_default,           prior_phitree$tau),
     numcut    = ifelse(is.null(prior_phitree$numcut),  100L,                  prior_phitree$numcut),
     sparse    = ifelse(is.null(prior_phitree$sparse),  FALSE,                 prior_phitree$sparse),
     theta     = ifelse(is.null(prior_phitree$theta),   0.0,                   prior_phitree$theta),

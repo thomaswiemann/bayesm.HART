@@ -45,6 +45,10 @@ GlobalCovarianceBackend::GlobalCovarianceBackend(
         Zt_ = Z_.t();
         pZt_ = Zt_.memptr();
     }
+    unit_prior_mean_cache_.resize(nreg_);
+    for (int i = 0; i < nreg_; i++) {
+        unit_prior_mean_cache_[i].set_size(nvar_);
+    }
 }
 
 void GlobalCovarianceBackend::draw_iteration(int rep) {
@@ -73,18 +77,25 @@ void GlobalCovarianceBackend::draw_iteration(int rep) {
         ind_     = as<vec>(mgout["z"]);
     }
     refresh_component_cache();
+
+    // Build per-unit prior means once per iteration so the driver can consume
+    // const references without per-unit allocation/copy overhead.
+    for (int i = 0; i < nreg_; i++) {
+        int k = static_cast<int>(ind_[i]) - 1;
+        unit_prior_mean_cache_[i] = comp_mu_cache_[k];
+        if (drawdelta_) {
+            unit_prior_mean_cache_[i] += delta_Z_.row(i).t();
+        }
+    }
 }
 
-mat GlobalCovarianceBackend::precision_root(int i) const {
+mat const& GlobalCovarianceBackend::precision_root(int i) const {
     int k = static_cast<int>(ind_[i]) - 1;
     return comp_root_cache_[k];
 }
 
-vec GlobalCovarianceBackend::prior_mean(int i) const {
-    int k = static_cast<int>(ind_[i]) - 1;
-    vec mu_k = comp_mu_cache_[k];
-    if (drawdelta_) return mu_k + delta_Z_.row(i).t();
-    return mu_k;
+vec const& GlobalCovarianceBackend::prior_mean(int i) const {
+    return unit_prior_mean_cache_[i];
 }
 
 void GlobalCovarianceBackend::store(int mkeep) {

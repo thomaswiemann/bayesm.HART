@@ -9,29 +9,52 @@
   newdata = NULL,
   type = "DeltaZ+mu",
   burn = 0,
+  mode = "coefficients",
+  nsim = 10,
   r_verbose = TRUE,
+  force_tree_eval = FALSE,
   ...
 )
 }
 \arguments{
 \item{object}{A fitted \code{rhierNegbinRw} object.}
 
-\item{newdata}{A list with element \code{Z}: an \verb{npred x nz} matrix of covariate
-values at which to predict.}
+\item{newdata}{A list whose required fields depend on \code{mode}:
+\itemize{
+\item For \code{mode = "coefficients"}: requires \code{newdata$Z} (if the model was fit with Z).
+\item For \code{mode = "posterior"}: requires \code{newdata$regdata}, a list with per-unit design
+matrices \code{X} matching the fitted units.
+\item For \code{mode = "prior"}: requires \code{newdata$X}, a list of design matrices for prediction
+units, and \code{newdata$Z} when the model was fit with Z.
+}}
 
-\item{type}{Character. \code{"DeltaZ"} for the systematic component only, or
-\code{"DeltaZ+mu"} to add the mixture component mean (BART models only).}
+\item{type}{Character; interpretation depends on \code{mode}:
+\itemize{
+\item For \code{mode = "coefficients"}: one of \code{"DeltaZ"}, \code{"DeltaZ+mu"}, \code{"SigmaZ"}.
+\item For \code{mode \%in\% c("prior","posterior")}: must be \code{"response"}.
+}}
 
 \item{burn}{Integer, number of initial MCMC draws to discard.}
+
+\item{mode}{Prediction mode: \code{"coefficients"} (default), \code{"posterior"}, or \code{"prior"}.}
+
+\item{nsim}{Integer, number of Monte Carlo draws for prior predictive response mixing.}
 
 \item{r_verbose}{Logical, print progress updates?}
 
 \item{...}{Additional arguments passed to \code{pwbart} for BART models.}
 }
 \value{
-A 3D array \verb{[npred, ncoef, ndraws_out]} of predicted betabar values.
+Depends on \code{mode} / \code{type}:
+\itemize{
+\item For \code{mode = "coefficients"}, \code{type \%in\% c("DeltaZ", "DeltaZ+mu")}: 3D array
+\verb{[npred, ncoef, ndraws_out]} of predicted betabar values.
+\item For \code{mode = "coefficients"}, \code{type = "SigmaZ"}: 4D array \verb{[npred, ncoef, ncoef, ndraws_out]} of
+covariance draws at each prediction unit.
+\item For \code{mode \%in\% c("prior","posterior")}, \code{type = "response"}: list of matrices
+with simulated count draws per unit (\verb{nobs_i x ndraws_out}).
+}
 }
 \description{
-Computes posterior draws of the systematic component Delta(Z) for new or
-existing covariate values.
+Computes coefficient-level or predictive count-response draws.
 }

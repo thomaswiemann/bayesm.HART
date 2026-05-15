@@ -1,11 +1,13 @@
-#' Bayesian Hierarchical Negative Binomial Model with Normal Mixture and HART Prior
+#' Bayesian Hierarchical Negative Binomial Model with HART Prior
 #' @description
 #' `rhierNegbinRw` implements an MCMC algorithm for a Bayesian hierarchical
-#' negative binomial regression model with a mixture of normals prior on the
-#' unit-level coefficients. Per-unit \eqn{\beta_i} are drawn via Random Walk
-#' Metropolis-Hastings; the dispersion \eqn{\alpha} is drawn on the log scale.
-#' Supports both standard linear hierarchical prior and HART (sum-of-trees) prior.
-#' Structurally symmetric to `rhierLinearMixture` and `rhierMnlRwMixture`.
+#' negative binomial regression model with a Hierarchical Additive Regression Trees (HART) prior. HART 
+#' is a hierarchical nonparametric prior that allows for flexible modeling of the 
+#' representative unit as a function of potentially many observed characteristics.
+#' Per-unit \eqn{\beta_i} are drawn via Random Walk Metropolis-Hastings; the dispersion \eqn{\alpha} is drawn on the log scale.
+#' \code{Prior$bart} allows for modeling the conditional mean of the normal prior.
+#' 
+#' @note Currently, only \code{ncomp = 1} is supported.
 #'
 #' @param Data A list containing:
 #'   - `regdata`: A list of length `nreg`. Each element `regdata[[i]]` must be a list with:
@@ -14,14 +16,13 @@
 #'   - `Z` (optional): `nreg x nz` matrix of unit-level covariates. If omitted,
 #'     `drawdelta` is set to FALSE and no second-stage covariates are used.
 #' @param Prior A list containing prior parameters:
-#'   - `ncomp` (required): Number of normal mixture components.
-#'   - `nu` (optional): Degrees of freedom for IW prior on mixture component covariances (default: nvar + 3).
+#'   - `ncomp` (required): Number of components. Must be 1.
+#'   - `nu` (optional): Degrees of freedom for IW prior on the normal prior covariance (default: nvar + 3).
 #'   - `V` (optional): `nvar x nvar` location matrix for IW prior (default: nu * I).
 #'   - `a` (optional): Shape parameter for gamma prior on alpha (default: 0.5). Note: This differs from `rhierLinearMixture` where `a` is the Dirichlet prior.
 #'   - `b` (optional): Rate parameter for gamma prior on alpha (default: 0.1).
-#'   - `mubar` (optional): `1 x nvar` prior mean for mixture component means (default: 0).
-#'   - `Amu` (optional): `1 x 1` prior precision for mixture component means (default: 0.01).
-#'   - `a_mix` (optional): `ncomp x 1` Dirichlet prior parameters for mixture weights (default: rep(5, ncomp)). Named `a_mix` here to avoid collision with the gamma prior shape parameter `a`.
+#'   - `mubar` (optional): `1 x nvar` prior mean vector for the normal prior (default: 0).
+#'   - `Amu` (optional): `1 x 1` prior precision for the normal prior (default: 0.01).
 #'   - `Ad` (optional): `nvar*nz x nvar*nz` prior precision for vec(Delta) (default: 0.01 * I). Only used when `drawdelta = TRUE` and `useBART = FALSE`.
 #'   - `deltabar` (optional): `nvar*nz` prior mean for vec(Delta) (default: 0). Only used when `drawdelta = TRUE` and `useBART = FALSE`.
 #'   - `bart` (optional): List of HART prior parameters. See `rhierLinearMixture` for details.
@@ -54,43 +55,29 @@
 #' \eqn{\ln(\lambda_i) = X_i \beta_i}
 #'
 #' The unit-level coefficients are modeled as:
-#' \deqn{\beta_i = \Delta(Z_i) + u_i}
-#' where \eqn{u_i \sim N(\mu_{k_i}, \Sigma_{k_i})} with \eqn{k_i} drawn from
-#' a mixture of normals with `ncomp` components.
+#'   \eqn{\beta_i = Z_i \Delta + u_i} \cr
+#'   \eqn{u_i \sim N(0, \Sigma_i)} \cr
+#'   Note: This documentation describes `ncomp = 1` behavior as higher-order components are not supported. \cr
 #'
 #' ## HART Prior Details
-#' Same as `rhierLinearMixture`. If `Prior$bart` is a list, \eqn{\Delta(Z_i)} is
-#' modeled via a sum-of-trees (BART) prior instead of a linear hierarchical
-#' specification.
+#' If `Prior$bart` is a list, \eqn{\Delta(Z_i)} is modeled via a sum-of-trees (BART) prior
+#' instead of a linear hierarchical specification. See `rhierMnlRwMixture` for complete 
+#' details and hyperparameter definitions.
 #'
 #' ## Heteroscedastic Covariance \eqn{\Sigma(Z_i)} (experimental extension)
-#'
-#' Same modified-Cholesky construction as `rhierLinearMixture`. When
-#' `Prior$vartree` is supplied, the homoscedastic mixture covariance
-#' \eqn{\Sigma_{k_i}} is replaced with a unit-specific
-#' \deqn{\Sigma(Z_i)^{-1} = L(Z_i)^\top D(Z_i)^{-1} L(Z_i)}
-#' where \eqn{d_j(\cdot)} is a product-of-trees ensemble with \eqn{\chi^{-2}}
-#' leaves and \eqn{\phi_{jk}(\cdot)} is a sum-of-trees ensemble with
-#' \eqn{N(0, \tau^2)} leaves. Per-unit \eqn{\beta_i} are drawn via a
-#' Random-Walk Metropolis-Hastings step that uses \eqn{\Sigma(Z_i)^{-1}} as
-#' the prior precision. Only the single-component path (`ncomp = 1`) is
-#' supported in this mode.
-#'
-#' Hyperparameters for `Prior$vartree` and `Prior$phitree` mirror those
-#' documented in `rhierLinearMixture`. The `lambda` parameter of `vartree`
-#' is auto-calibrated from per-unit MLE \eqn{\hat\beta_i} when not supplied.
+#' When `Prior$vartree` is supplied, the homoscedastic prior covariance \eqn{\Sigma} is
+#' replaced with a unit-specific modified Cholesky decomposition where the components
+#' are modeled as tree ensembles. See `rhierMnlRwMixture` for complete details.
 #'
 #' When this extension is active, the returned object additionally inherits
-#' classes `"rhierNegbinRwHeterCov"` and `"bayesm.HART.HeterCov"` and
-#' contains slots `var_models`, `phi_models` (jagged, lower-triangular; `NULL`
-#' if `nvar == 1`), and `mu_draw`. `predict()` dispatches on these classes to
-#' evaluate \eqn{\Sigma(Z^*)} at any new \eqn{Z^*}.
+#' classes `"rhierNegbinRwHeterCov"` and `"bayesm.HART.HeterCov"`. `predict()` 
+#' dispatches on these classes to evaluate \eqn{\Sigma(Z^*)} at any new \eqn{Z^*}.
 #'
 #' @return A list of class `"rhierNegbinRw"` containing:
 #'   - `betadraw`: `nreg x nvar x (R/keep)` array of unit-level beta draws.
 #'   - `alphadraw`: `(R/keep) x 1` vector of overdispersion draws.
 #'   - `loglike`: `(R/keep) x 1` vector of log-likelihoods.
-#'   - `nmix`: List with `probdraw`, `zdraw`, `compdraw` (omitted under heter-cov).
+#'   - `nmix`: Legacy list containing prior draws (omitted under heter-cov).
 #'   - `acceptrbeta`, `acceptralpha`: Metropolis acceptance rates (percent).
 #'   - If `drawdelta` and non-BART: `Deltadraw`.
 #'   - If BART: `bart_models`, `varcount`, `varprob`.
@@ -100,7 +87,7 @@
 #'
 #' @seealso [predict.rhierNegbinRw()], [marginal_effects.rhierNegbinRw()]
 #'
-#' @author Sridhar Narayanan, Peter Rossi (original bayesm code), Thomas Wiemann (HART + mixture modifications).
+#' @author Sridhar Narayanan, Peter Rossi (original bayesm code), Thomas Wiemann (HART modifications).
 #'
 #' @examples
 #' \donttest{
@@ -231,7 +218,7 @@ nvar=ncol(Xpooled)
 if(missing(Prior)) {
     pandterm("Requires Prior list argument (at least ncomp)")
 }
-if(is.null(Prior$ncomp)) {pandterm("Requires Prior element ncomp (num of mixture components)")}
+if(is.null(Prior$ncomp)) {pandterm("Requires Prior element ncomp")}
    else {ncomp=Prior$ncomp}
 if(ncomp != 1) {pandterm("Only ncomp = 1 is currently supported")}
 if(is.null(Prior[["nu"]])) {nu=nvar+BayesmConstant.nuInc} else {nu=Prior[["nu"]]}
@@ -410,7 +397,7 @@ for (i in 1:nreg) {
 # Heter-cov hyperparameter setup (Beta_init now available for lambda calibration).
 if (useHeterCov) {
   var_params <- .parse_var_params(Prior$vartree, Beta_init, nz)
-  if (useFullCov) phi_params <- .parse_phi_params(Prior$phitree, nz)
+  if (useFullCov) phi_params <- .parse_phi_params(Prior$phitree, nz, nu, nvar)
   if (r_verbose)
     .print_heter_cov_summary(useFullCov, var_params, phi_params,
                              lambda_user_supplied = !is.null(Prior$vartree$lambda),
@@ -457,7 +444,7 @@ if (drawdelta && useBART) {
 
 ###################################################################
 # Wayne Taylor 12/01/2014
-# Modified by Thomas Wiemann 2025 -- mixture-of-normals support
+# Modified by Thomas Wiemann 2025 -- HART support
 ###################################################################
 if (fixalpha) {alpha=Mcmc$alpha}
 draws=rhierNegbinRw_rcpp_loop(regdata, hess_i, Z, Beta, deltabar,
@@ -495,26 +482,7 @@ if (useHeterCov) {
   class(draws) <- "rhierNegbinRw"
 }
 
-cache <- attr(draws, "hart_cache", exact = TRUE)
-if (is.null(cache)) cache <- list()
-if (!is.null(z_map)) {
-  cache$Z_unique <- z_map$Z_unique
-  cache$z_index <- z_map$z_index
-  cache$z_key <- z_map$z_key
-}
-if (!is.null(draws$DeltaZ_unique_draws)) {
-  cache$DeltaZ_unique_draws <- draws$DeltaZ_unique_draws
-  draws$DeltaZ_unique_draws <- NULL
-}
-if (!is.null(draws$SigmaZ_unique_draws_flat) && !is.null(cache$Z_unique)) {
-  ndraws <- dim(draws$betadraw)[3]
-  nvar_fit <- dim(draws$betadraw)[2]
-  n_unique <- nrow(cache$Z_unique)
-  cache$SigmaZ_unique_draws <- array(draws$SigmaZ_unique_draws_flat,
-    dim = c(n_unique, nvar_fit, nvar_fit, ndraws))
-  draws$SigmaZ_unique_draws_flat <- NULL
-}
-if (length(cache) > 0L) attr(draws, "hart_cache") <- cache
+draws <- .assemble_hart_cache(draws, z_map)
 
 return(draws)
 }
@@ -525,46 +493,57 @@ return(draws)
 
 #' Predict Method for rhierNegbinRw Objects
 #'
-#' Computes posterior draws of the systematic component Delta(Z) for new or
-#' existing covariate values.
+#' Computes coefficient-level or predictive count-response draws.
 #'
 #' @param object A fitted `rhierNegbinRw` object.
-#' @param newdata A list with element `Z`: an `npred x nz` matrix of covariate
-#'   values at which to predict.
-#' @param type Character. `"DeltaZ"` for the systematic component only, or
-#'   `"DeltaZ+mu"` to add the mixture component mean (BART models only), or
-#'   `"SigmaZ"` for heteroscedastic covariance draws \eqn{\Sigma(Z)} when the
-#'   model was fit with `Prior$vartree`.
+#' @param newdata A list whose required fields depend on `mode`:
+#'   - For `mode = "coefficients"`: requires `newdata$Z` (if the model was fit with Z).
+#'   - For `mode = "posterior"`: requires `newdata$regdata`, a list with per-unit design
+#'     matrices `X` matching the fitted units.
+#'   - For `mode = "prior"`: requires `newdata$X`, a list of design matrices for prediction
+#'     units, and `newdata$Z` when the model was fit with Z.
+#' @param type Character; interpretation depends on `mode`:
+#'   - For `mode = "coefficients"`: one of `"DeltaZ"`, `"DeltaZ+mu"`, `"SigmaZ"`.
+#'   - For `mode %in% c("prior","posterior")`: must be `"response"`.
+#' @param mode Prediction mode: `"coefficients"` (default), `"posterior"`, or `"prior"`.
 #' @param burn Integer, number of initial MCMC draws to discard.
+#' @param nsim Integer, number of Monte Carlo draws for prior predictive response mixing.
 #' @param r_verbose Logical, print progress updates?
 #' @param ... Additional arguments passed to `pwbart` for BART models.
 #'
-#' @return Depends on `type`:
-#'   - For `type %in% c("DeltaZ", "DeltaZ+mu")`: 3D array
+#' @return Depends on `mode` / `type`:
+#'   - For `mode = "coefficients"`, `type %in% c("DeltaZ", "DeltaZ+mu")`: 3D array
 #'     `[npred, ncoef, ndraws_out]` of predicted betabar values.
-#'   - For `type = "SigmaZ"`: 4D array `[npred, ncoef, ncoef, ndraws_out]` of
+#'   - For `mode = "coefficients"`, `type = "SigmaZ"`: 4D array `[npred, ncoef, ncoef, ndraws_out]` of
 #'     covariance draws at each prediction unit.
+#'   - For `mode %in% c("prior","posterior")`, `type = "response"`: list of matrices
+#'     with simulated count draws per unit (`nobs_i x ndraws_out`).
 #' @export
 predict.rhierNegbinRw <- function(object, newdata = NULL,
                                     type = "DeltaZ+mu", burn = 0,
+                                    mode = "coefficients", nsim = 10,
                                     r_verbose = TRUE,
                                     force_tree_eval = FALSE, ...) {
+  mode <- .resolve_predict_mode(mode)
+  if (mode %in% c("prior", "posterior")) {
+    if (type %in% c("DeltaZ", "DeltaZ+mu", "SigmaZ")) {
+      type <- "response"
+    }
+    if (!identical(type, "response")) {
+      stop("For rhierNegbinRw predictive modes, use type='response'.")
+    }
+    return(.predictive_dispatch(
+      object, newdata, mode = mode, type = type,
+      burn = burn, nsim = nsim, r_verbose = r_verbose,
+      force_tree_eval = force_tree_eval, ...
+    ))
+  }
+
   valid_types <- c("DeltaZ", "DeltaZ+mu", "SigmaZ")
-  ndraws_total <- .validate_predict_inputs(object, newdata, type, burn, nsim = 1,
-                                           valid_types = valid_types)
-  kept_draws_indices <- if (burn > 0) (burn + 1):ndraws_total else 1:ndraws_total
-
-  if (type == "SigmaZ") {
-    return(.calculate_sigma_z(object, newdata, burn, r_verbose,
-                              force_tree_eval = force_tree_eval))
-  }
-
-  result <- .calculate_delta_z(object, newdata, burn, r_verbose,
-                               force_tree_eval = force_tree_eval, ...)
-
-  if (type == "DeltaZ+mu") {
-    result <- .add_mu_component(result, object, kept_draws_indices)
-  }
-
-  return(result)
+  .validate_predict_inputs(object, newdata, type, burn, nsim = 1,
+                           valid_types = valid_types)
+  .predict_structural_common(
+    object, newdata, type, burn, r_verbose,
+    force_tree_eval = force_tree_eval, ...
+  )
 }

@@ -20,6 +20,9 @@ public:
     arma::vec oldll_;
     int nacceptbeta_;
     double s_;
+    arma::mat hess_plus_prec_work_;
+    arma::mat incroot_work_;
+    arma::mat eye_work_;
     int nlgt_, nvar_, R_;
 
     MnlThetaUpdaterAdapter(

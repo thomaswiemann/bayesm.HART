@@ -1,41 +1,48 @@
----
-output: github_document
----
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
-
-
 # bayesm.HART
 
+`bayesm.HART` implements MCMC routines for hierarchical models with
+Hierarchical Additive Regression Trees (HART) priors, as developed in
+Wiemann (2025).
 
-`bayesm.HART` implements the MCMC sampling routine for the Hierarchical Additive Regression Trees (HART) logit model proposed in Wiemann (2025). 
+In the hierarchical logit specification, HART models the representative
+consumer as a flexible function of observed characteristics. This
+generalizes conventional hierarchical specifications that use a linear
+projection on a small set of characteristics. The same framework
+supports prediction for new consumers and posterior updating for
+consumers with accumulating choice histories.
 
- The HART logit model flexibly leverages potentially many observed consumer characteristics and thus generalizes existing hierarchical models that exclusively model the representative consumer as a linear function of a select few characteristics. HART's combination of a flexible nonparametric prior within the hierarchical model provides a coherent framework for (Bayes-) optimal managerial decisions that adapt to the firm's familiarity with the consumer: first, HART flexibly leverages observed characteristics for granular predictions about new consumers; second, their individual-level preference estimates adapt optimally as a consumer's choices accumulate.
+See the corresponding working paper [Personalization with
+HART](https://thomaswiemann.com/assets/pdfs/jmp_wiemann.pdf) for further
+discussion and details.
 
-See the corresponding working paper [Personalization with HART](https://thomaswiemann.com/assets/pdfs/jmp_wiemann.pdf) for further discussion and details.
-
-The `bayesm.HART` package builds on the excellent ([and highly popular](https://cranlogs.r-pkg.org/downloads/total/last-month/bayesm,BART)) `bayesm` and `BART` packages. The syntax for estimating the HART logit model mirrors the syntax of the `bayesm` package. Researchers with existing `bayesm` code will only need to adapt the `Prior` argument to get started--see the code snippet below.
+`bayesm.HART` builds on `bayesm` and `BART`. The syntax for estimating
+the HART logit model mirrors `bayesm` syntax. In many existing `bayesm`
+workflows, the main change is the `Prior` specification.
 
 ## Installation
 
-Install the latest development version from GitHub (requires [devtools](https://github.com/r-lib/devtools) package):
+Install the latest development version from GitHub (requires
+[devtools](https://github.com/r-lib/devtools) package):
 
-
-```r
+``` r
 if (!require("devtools")) {
   install.packages("devtools")
 }
 devtools::install_github("thomaswiemann/bayesm.HART", dependencies = TRUE)
 ```
 
-
 ## Example
 
-The following example applies the HART logit model to the canonical conjoint dataset of Allenby and Ginter (1995) on credit card design. The first code block loads the data and formats it into the list structure required by `rhierMnlRwMixture`. It also specifies the MCMC hyperparameters. The syntax for this codeblock is identical for the `bayesm` and `bayesm.HART` packages.
+The following example applies the HART logit model to the Allenby and
+Ginter (1995) bank conjoint dataset. The first code block loads the
+data, formats the list structure required by `rhierMnlRwMixture`, and
+sets MCMC hyperparameters. This setup syntax is the same in `bayesm` and
+`bayesm.HART`.
 
-
-```r
+``` r
 # Load bayesm.HART for the sampler; load bayesm for the bank data
 library(bayesm.HART)
 library(bayesm)
@@ -64,32 +71,36 @@ Data <- list(lgtdata = lgtdata, Z = Z, p = 2)
 Mcmc <- list(R = 2000, keep = 2, nprint = 500)
 ```
 
-To fit the HART logit model using a Metropolis-within-Gibbs sampler, call the `rhierMnlRwMixture` routine. The key difference between conventional calls to linear hierarchical specifications based on `bayesm` is the use of the additional `Prior` argument `bart`. For simplicity, the code below specifies a HART model with only 50 trees per factor, leaving all other hyperparameters at their defaults. See also `?rhierMnlRwMixture` for details. 
+To fit the HART logit model, call `rhierMnlRwMixture`. Relative to a
+linear hierarchical specification, the main change is adding the `bart`
+entry in `Prior`. For illustration, the code below uses 50 trees per
+factor and leaves other hyperparameters at defaults. See
+`?rhierMnlRwMixture` for details.
 
-
-```r
+``` r
 # Fit the HART logit model
-out <- bayesm.HART::rhierMnlRwMixture(
-    Data = Data, Mcmc = Mcmc, 
-    Prior = list(
-      ncomp = 1, 
-      bart = list(num_trees = 50) # new HART prior parameters
-      ),
-    r_verbose = F # suppress R print output (optional)
-)
-#>  MCMC Iteration (est time to end - min) 
-#>  500 (2.4)
-#>  1000 (1.6)
-#>  1500 (0.8)
-#>  2000 (0.0)
-#>  Total Time Elapsed: 3.13
+if (!model_cache_ok) {
+  out <- bayesm.HART::rhierMnlRwMixture(
+      Data = Data, Mcmc = Mcmc, 
+      Prior = list(
+        ncomp = 1, 
+        bart = list(num_trees = 50) # new HART prior parameters
+        ),
+      r_verbose = F # suppress R print output (optional)
+  )
+  saveRDS(list(out = out, generated_at = Sys.time()), model_cache_file)
+}
 ```
-With the MCMC draws from the fitted model, we can characterize the posterior estimates for any quantity of interest. A key object is the *representative respondent*, which represents the expected part-worths for a respondent conditional on their characteristics. The following code computes the posterior mean and standard deviation of these expected part-worths for three credit card attributes.
 
+With posterior draws from the fitted model, we can summarize any
+estimand. A central object is the *representative respondent*, i.e.,
+expected part-worths conditional on respondent characteristics. The
+following code computes posterior means and standard deviations for
+three credit card attributes.
 
-```r
-DeltaZ_hat <- predict(out, newdata = Data, type = "DeltaZ+mu", 
-                      burn = 250, r_verbose=F)
+``` r
+DeltaZ_hat <- predict(out, newdata = list(Z = Z), type = "DeltaZ+mu", 
+                      burn = 250, r_verbose = FALSE)
 
 posterior_mean <- apply(DeltaZ_hat, 2, mean)
 posterior_sd <- apply(DeltaZ_hat, 2, sd)
@@ -113,41 +124,59 @@ colnames(results_df) <- c("Interest Low Fixed", "Annual Fee Low", "Bank Out-of-S
 # Print the data frame to the console
 print(results_df, digits = 3)
 #>                Interest Low Fixed Annual Fee Low Bank Out-of-State
-#> Posterior Mean              5.059           4.40             -3.83
-#> Posterior SD                0.953           1.03              1.06
+#> Posterior Mean              5.047          4.152            -3.378
+#> Posterior SD                0.902          0.901             0.989
 ```
-
 
 ## Learn More about `bayesm.HART`
 
-Curious and want to learn more? Have a look at the `bayesm.HART` vignettes:
+See the `bayesm.HART` vignettes:
 
-- [`vignette("bayesm-HART")`](https://thomaswiemann.com/bayesm.HART/articles/bayesm-HART.html): Get started (hierarchical logit with HART)
-- [`vignette("bayesm-HART-linear")`](https://thomaswiemann.com/bayesm.HART/articles/bayesm-HART-linear.html): Hierarchical linear model
-- [`vignette("bayesm-HART-negbin")`](https://thomaswiemann.com/bayesm.HART/articles/bayesm-HART-negbin.html): Hierarchical negative binomial model
-- [`vignette("bayesm-HART-heteroskedastic-hart-bank")`](https://thomaswiemann.com/bayesm.HART/articles/bayesm-HART-heteroskedastic-hart-bank.html): Bank conjoint -- heteroskedastic HART
+- [`vignette("bayesm-HART")`](https://thomaswiemann.com/bayesm.HART/articles/bayesm-HART.html):
+  Get started (hierarchical logit with HART)
+- [`vignette("bayesm-HART-linear")`](https://thomaswiemann.com/bayesm.HART/articles/bayesm-HART-linear.html):
+  Hierarchical linear model
+- [`vignette("bayesm-HART-negbin")`](https://thomaswiemann.com/bayesm.HART/articles/bayesm-HART-negbin.html):
+  Hierarchical negative binomial model
+- [`vignette("bayesm-HART-heteroskedastic-hart-bank")`](https://thomaswiemann.com/bayesm.HART/articles/bayesm-HART-heteroskedastic-hart-bank.html):
+  Bank conjoint – heteroskedastic HART
 
 ## Acknowledgements
 
-`bayesm.HART` originated as a fork of the `bayesm` and `BART`
-packages. Its current implementation heavily leverages the codebase and
+`bayesm.HART` originated as a fork of the `bayesm` and `BART` packages.
+Its current implementation heavily leverages the codebase and
 foundational work from both packages. I gratefully acknowledge the
 contributions of their respective authors:
 
-*  [**`bayesm`**](https://cran.r-project.org/web/packages/bayesm/index.html): Peter Rossi
-*   [**`BART`**](https://cran.r-project.org/web/packages/BART/index.html): Robert McCulloch, Rodney Sparapani, Robert Gramacy, Matthew Pratola, Charles Spanbauer, Martyn Plummer, Nicky Best, Kate Cowles, Karen Vines
-
+- [**`bayesm`**](https://cran.r-project.org/web/packages/bayesm/index.html):
+  Peter Rossi
+- [**`BART`**](https://cran.r-project.org/web/packages/BART/index.html):
+  Robert McCulloch, Rodney Sparapani, Robert Gramacy, Matthew Pratola,
+  Charles Spanbauer, Martyn Plummer, Nicky Best, Kate Cowles, Karen
+  Vines
 
 ## References
 
-Allenby, Greg M. and James L. Ginter (1995). “Using Extremes to Design Products and Segment Markets.” Journal of Marketing Research 32.4, pp. 392–403.
+Allenby, Greg M. and James L. Ginter (1995). “Using Extremes to Design
+Products and Segment Markets.” Journal of Marketing Research 32.4,
+pp. 392–403.
 
-Chipman, Hugh A., Edward I. George, and Robert E. McCulloch (2010). “BART: Bayesian Additive Regression Trees.” Annals of Applied Statistics 4.1.
+Chipman, Hugh A., Edward I. George, and Robert E. McCulloch (2010).
+“BART: Bayesian Additive Regression Trees.” Annals of Applied Statistics
+4.1.
 
-Rossi, Peter E., Greg M. Allenby, and Robert McCulloch (2009). Bayesian Statistics and Marketing. Reprint. Wiley Series in Probability and Statistics. Chichester: Wiley.
+Rossi, Peter E., Greg M. Allenby, and Robert McCulloch (2009). Bayesian
+Statistics and Marketing. Reprint. Wiley Series in Probability and
+Statistics. Chichester: Wiley.
 
-Rossi, Peter (2023). bayesm: Bayesian Inference for Marketing/Micro-Econometrics. Comprehensive R Archive Network.
+Rossi, Peter (2023). bayesm: Bayesian Inference for
+Marketing/Micro-Econometrics. Comprehensive R Archive Network.
 
-Sparapani, Rodney, Charles Spanbauer, and Robert McCulloch (2021). “Nonparametric Machine Learning and Efficient Computation with Bayesian Additive Regression Trees: The BART R Package.” Journal of Statistical Software 97, pp. 1–66.
+Sparapani, Rodney, Charles Spanbauer, and Robert McCulloch (2021).
+“Nonparametric Machine Learning and Efficient Computation with Bayesian
+Additive Regression Trees: The BART R Package.” Journal of Statistical
+Software 97, pp. 1–66.
 
-Wiemann, Thomas (2025). "[Personalization with HART](https://thomaswiemann.com/assets/pdfs/jmp_wiemann.pdf)." Working paper.
+Wiemann, Thomas (2025). “[Personalization with
+HART](https://thomaswiemann.com/assets/pdfs/jmp_wiemann.pdf).” Working
+paper.

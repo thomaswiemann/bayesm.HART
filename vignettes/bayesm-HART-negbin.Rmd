@@ -12,7 +12,12 @@ vignette: |
 
 ## Introduction
   
-This vignette estimates a hierarchical negative binomial model with HART priors using the `bayesm.HART` package, applied to the `detailing` pharmaceutical panel dataset from `bayesm`. The HART prior specifies the *representative physician* as a flexible, non-parametric function of observed physician characteristics via a sum-of-trees model $\Delta(Z_i)$, in contrast to the conventional linear specification $\Delta^\top Z_i$.
+This vignette estimates a hierarchical negative binomial model with HART
+priors using `bayesm.HART`, applied to the `detailing` pharmaceutical
+panel dataset from `bayesm`. The HART prior specifies the
+*representative physician* as a sum-of-trees function of observed
+characteristics, `Delta(Z_i)`, whereas the conventional specification
+uses the linear form `Delta^\\top Z_i`.
 
 ## Pharmaceutical Detailing Data
 
@@ -23,22 +28,9 @@ The `detailing` dataset contains a balanced panel of 1,000 physicians observed o
 # Load dependencies
 library(bayesm.HART)
 library(bayesm)
-#> 
-#> Attaching package: 'bayesm'
-#> The following objects are masked from 'package:bayesm.HART':
-#> 
-#>     rhierLinearMixture, rhierMnlRwMixture, rhierNegbinRw
 # Data wrangling and plotting utilities
 library(tidyr)
 library(dplyr)
-#> 
-#> Attaching package: 'dplyr'
-#> The following objects are masked from 'package:stats':
-#> 
-#>     filter, lag
-#> The following objects are masked from 'package:base':
-#> 
-#>     intersect, setdiff, setequal, union
 library(ggplot2)
 
 # Load pharmaceutical detailing data
@@ -79,23 +71,48 @@ burn <- 1000
 keep <- 1
 Mcmc <- list(R = R, keep = keep)
 
-out_hart <- bayesm.HART::rhierNegbinRw(
-  Data = Data, Mcmc = Mcmc,
-  Prior = list(
-    ncomp = 1,
-    bart = list(num_trees = 20) # new HART prior parameters
-  ),
-  r_verbose = FALSE
+model_cache_file <- file.path(
+  vignette_cache_dir,
+  sprintf("detailing-negbin-R%s-keep%s.rds", R, keep)
 )
 
-out_lin <- bayesm.HART::rhierNegbinRw(
-  Data = Data, Mcmc = Mcmc,
-  Prior = list(ncomp = 1),
-  r_verbose = FALSE
-)
+model_cache_ok <- FALSE
+if (file.exists(model_cache_file)) {
+  model_cache <- tryCatch(readRDS(model_cache_file), error = function(e) NULL)
+  model_cache_ok <- !is.null(model_cache) &&
+    !is.null(model_cache$out_hart) && !is.null(model_cache$out_lin)
+  if (model_cache_ok) {
+    out_hart <- model_cache$out_hart
+    out_lin  <- model_cache$out_lin
+    cat("Loaded cached model draws from:", model_cache_file, "\n")
+  }
+}
+
+if (!model_cache_ok) {
+  out_hart <- bayesm.HART::rhierNegbinRw(
+    Data = Data, Mcmc = Mcmc,
+    Prior = list(
+      ncomp = 1,
+      bart = list(num_trees = 20) # new HART prior parameters
+    ),
+    r_verbose = FALSE
+  )
+
+  out_lin <- bayesm.HART::rhierNegbinRw(
+    Data = Data, Mcmc = Mcmc,
+    Prior = list(ncomp = 1),
+    r_verbose = FALSE
+  )
+
+  saveRDS(
+    list(out_hart = out_hart, out_lin = out_lin, generated_at = Sys.time()),
+    model_cache_file
+  )
+  cat("Saved model draws cache to:", model_cache_file, "\n")
+}
 ```
 
-We check convergence by plotting the log-likelihood over MCMC iterations.
+We use the log-likelihood trace as a basic MCMC diagnostic.
 
 
 ```r
@@ -215,14 +232,17 @@ summary_results <- data.frame(
 )
 
 print(summary_results, digits = 3)
-#>    Model Physician    Mean     SD
-#> 1 Linear       840 0.00804 0.1219
-#> 2 Linear       888 0.01589 0.0769
-#> 3   HART       840 0.04243 0.1242
-#> 4   HART       888 0.02002 0.0767
+#>    Model Physician     Mean     SD
+#> 1 Linear       840 -0.00713 0.1242
+#> 2 Linear       888  0.01337 0.0791
+#> 3   HART       840  0.02199 0.1263
+#> 4   HART       888  0.01213 0.0791
 ```
 
-Both models produce similar individual-level estimates for these physicians. With 23 monthly observations per physician, the individual-level posterior is dominated by the physician's own data rather than the hierarchical prior.
+Both models produce similar individual-level estimates for the selected
+physicians. With 23 monthly observations per physician, the individual
+likelihood contributes most of the posterior information at the
+physician level in this application.
 
 ## Posterior Inference on Physician Segment Coefficients
 
@@ -231,8 +251,8 @@ The models differ in how they characterize the expected coefficient $\Delta(Z)$ 
 
 ```r
 # We predict for all physicians
-DeltaZ_hat_hart <- predict(out_hart, newdata = Data, type = "DeltaZ+mu", burn = burn)
-DeltaZ_hat_lin <- predict(out_lin, newdata = Data, type = "DeltaZ+mu", burn = burn)
+DeltaZ_hat_hart <- predict(out_hart, newdata = list(Z = Z), type = "DeltaZ+mu", burn = burnin_draws)
+DeltaZ_hat_lin <- predict(out_lin, newdata = list(Z = Z), type = "DeltaZ+mu", burn = burnin_draws)
 ```
 
 
@@ -316,11 +336,11 @@ deltaZ_summary <- data.frame(
 
 print(deltaZ_summary, digits = 3)
 #>                                    Segment Linear_Mean Linear_SD HART_Mean
-#> 1               Segment 1 (GP, No Samples)      0.0190    0.0115    0.0342
-#> 2 Segment 2 (Specialist, Moderate Samples)      0.0163    0.0195    0.0255
+#> 1               Segment 1 (GP, No Samples)     0.03234    0.0117    0.0548
+#> 2 Segment 2 (Specialist, Moderate Samples)     0.00941    0.0201    0.0224
 #>   HART_SD
 #> 1  0.0171
-#> 2  0.0284
+#> 2  0.0297
 
 # Calculate differences between segments
 cat("\nDifferences between segments:\n")
@@ -328,13 +348,17 @@ cat("\nDifferences between segments:\n")
 #> Differences between segments:
 cat("Linear approach difference:", 
     deltaZ_summary$Linear_Mean[2] - deltaZ_summary$Linear_Mean[1], "\n")
-#> Linear approach difference: -0.002788167
+#> Linear approach difference: -0.02292841
 cat("HART approach difference:", 
     deltaZ_summary$HART_Mean[2] - deltaZ_summary$HART_Mean[1], "\n")
-#> HART approach difference: -0.008672027
+#> HART approach difference: -0.03242228
 ```
 
-The HART segment-level predictions align with the individual-level posteriors above. The linear approach is constrained to a linear function of demographics, while the HART model can capture nonlinearities and interactions.
+For the selected physicians, segment-level posterior locations are
+consistent with the corresponding individual-level posteriors shown
+above. The linear specification restricts segment means to an affine
+function of demographics, while HART allows nonlinear and interaction
+structure in `Z` through `Delta(Z)`.
 
 ## References
 

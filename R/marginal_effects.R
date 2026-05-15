@@ -91,6 +91,7 @@ marginal_effects <- function(object, z_values, Z, burn = 0, verbose = TRUE,
     # Get posterior draws of betabar
     # Result dim: [npred x ncoef x ndraws_use]
     betabar_draws <- predict(object, newdata = list(Z = Z_counterfactual),
+                           mode = "coefficients",
                            type = predict_type, burn = burn,
                            r_verbose = verbose)
 

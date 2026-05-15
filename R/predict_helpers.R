@@ -23,8 +23,8 @@
   if (burn < 0 || burn >= ndraws_total) {
     stop(paste0("burn must be >= 0 and < ndraws_total (", ndraws_total, ")."))
   }
-  if (type == "prior_probs" && nsim <= 0) {
-    stop("nsim must be > 0 for type='prior_probs'.")
+  if (startsWith(type, "prior_") && nsim <= 0) {
+    stop("nsim must be > 0 for prior predictive mode.")
   }
 
   return(ndraws_total)
@@ -234,7 +234,7 @@
 # Evaluate every BART / varBART / phi-BART ensemble in `object` at newdata
 # locations Z.  Returns a list of (npred x nvar x ndraws_total) arrays plus a
 # (npred x nvar x nvar x ndraws_total) phi_arr (or NULL if diagonal-only).
-# Centralized so that .delta_z_hetercov() and the heter-cov prior_probs path
+# Centralized so that .delta_z_hetercov() and the heter-cov prior choice_probs path
 # can share a single tree-evaluation pass.
 .hetercov_components <- function(object, Z, npred, nvar, ndraws_total,
                                  r_verbose) {

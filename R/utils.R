@@ -92,7 +92,42 @@ calculate_mnl_probs_from_beta <- function(X_i, beta_is, p) {
 
   list(
     Z_unique = Z_unique,
-    z_index = as.integer(z_index),
-    z_key = z_key
+    z_index  = as.integer(z_index),
+    z_key    = z_key,
+    z_counts = as.integer(tabulate(z_index, nbins = nrow(Z_unique)))
   )
+}
+
+# Shared cache assembly: moves DeltaZ/SigmaZ draws from the raw C++ output
+# into the hart_cache attribute, reshapes SigmaZ flat → 4D, and attaches
+# z_map metadata.  Called identically by all three R wrappers.
+#
+# NOTE: modifies `draws` in-place (NULLs out raw flat fields) and returns it.
+.assemble_hart_cache <- function(draws, z_map) {
+  cache <- attr(draws, "hart_cache", exact = TRUE)
+  if (is.null(cache)) cache <- list()
+
+  if (!is.null(z_map)) {
+    cache$Z_unique <- z_map$Z_unique
+    cache$z_index  <- z_map$z_index
+    cache$z_key    <- z_map$z_key
+    cache$z_counts <- z_map$z_counts
+  }
+
+  if (!is.null(draws$DeltaZ_unique_draws)) {
+    cache$DeltaZ_unique_draws <- draws$DeltaZ_unique_draws
+    draws$DeltaZ_unique_draws <- NULL
+  }
+
+  if (!is.null(draws$SigmaZ_unique_draws_flat) && !is.null(cache$Z_unique)) {
+    ndraws   <- dim(draws$betadraw)[3]
+    nvar_fit <- dim(draws$betadraw)[2]
+    n_unique <- nrow(cache$Z_unique)
+    cache$SigmaZ_unique_draws <- array(draws$SigmaZ_unique_draws_flat,
+      dim = c(n_unique, nvar_fit, nvar_fit, ndraws))
+    draws$SigmaZ_unique_draws_flat <- NULL
+  }
+
+  if (length(cache) > 0L) attr(draws, "hart_cache") <- cache
+  draws
 }

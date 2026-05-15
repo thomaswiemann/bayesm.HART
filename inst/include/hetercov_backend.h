@@ -17,6 +17,8 @@ public:
     arma::mat Zt_;
     double* pZt_;
     arn gen_;
+    std::vector<arma::mat> rootpi_cache_;
+    std::vector<arma::vec> prior_mean_cache_;
 
     arma::mat const& mubar_;
     arma::mat const& Amu_;
@@ -34,8 +36,8 @@ public:
         Rcpp::List const& phi_params);
 
     void draw_iteration(int rep) override;
-    arma::mat precision_root(int i) const override;
-    arma::vec prior_mean(int i) const override;
+    arma::mat const& precision_root(int i) const override;
+    arma::vec const& prior_mean(int i) const override;
     void store(int mkeep) override;
     BackendPackPayload pack() override;
     BackendCapabilities capabilities() const override;

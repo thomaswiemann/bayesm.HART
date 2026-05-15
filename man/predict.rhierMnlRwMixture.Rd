@@ -10,7 +10,9 @@
   type = "DeltaZ+mu",
   burn = 0,
   nsim = 10,
+  mode = "coefficients",
   r_verbose = TRUE,
+  force_tree_eval = FALSE,
   ...
 )
 }
@@ -18,35 +20,43 @@
 \item{object}{A fitted rhierMnlRwMixture object.}
 
 \item{newdata}{Optional list containing data for prediction. Structure depends
-on \code{type}:
+on \code{mode} and \code{type}:
 \itemize{
-\item For \code{type \%in\% c("DeltaZ", "DeltaZ+mu")}: Requires \code{newdata$Z}, a matrix
-with \code{npred} rows for prediction units (if model was fit with Z).
-\item For \code{type = "posterior_probs"}: Requires \code{newdata$nlgtdata}, a list of
-length \code{nlgt} (original number of units). Each element \verb{\\\[[i]]} must
-contain \verb{$X}, the design matrix \verb{(T_i*p) x nvar} for unit \code{i}. Also
-requires \code{newdata$p}, the number of alternatives.
-\item For \code{type = "prior_probs"}: Requires \code{newdata$Z} (if model fit with Z,
-determining \code{npred}), \code{newdata$p}, and \code{newdata$X} (a list of length
-\code{npred}, each element \verb{\\\[[i]]} having the design matrix \verb{(T_i*p) x nvar}).
+\item For \code{mode = "coefficients"} with \code{type \%in\% c("DeltaZ", "DeltaZ+mu", "SigmaZ")}:
+requires \code{newdata$Z}, a matrix with \code{npred} rows for prediction units
+(if model was fit with Z).
+\item For \code{mode = "posterior"} with \code{type = "choice_probs"}: requires
+\code{newdata$nlgtdata}, a list of length \code{nlgt} (original number of units).
+Each element \verb{\\\[[i]]} must contain \verb{$X}, the design matrix \verb{(T_i*p) x nvar}
+for unit \code{i}. Also requires \code{newdata$p}, the number of alternatives.
+\item For \code{mode = "prior"} with \code{type = "choice_probs"}: requires \code{newdata$Z}
+(if model fit with Z, determining \code{npred}), \code{newdata$p}, and \code{newdata$X}
+(a list of length \code{npred}, each element \verb{\\\[[i]]} having design matrix
+\verb{(T_i*p) x nvar}).
 }}
 
-\item{type}{Type of prediction:
+\item{type}{Type of prediction within the selected \code{mode}:
 \itemize{
 \item \code{"DeltaZ"}: Expected part-worths of the representative consumer, \eqn{\Delta(Z)}.
-\item \code{"DeltaZ+mu"}: Expected part-worths plus the mean of the unobserved heterogeneity component, \eqn{\Delta(Z) + \mu_j}. Note: for mixtures (\code{ncomp > 1}), this uses the mean \eqn{\mu_1} from the first component.
-\item \code{"posterior_probs"}: Posterior predictive choice probabilities for the original
-estimation units using stored \code{betadraw}.
-\item \code{"prior_probs"}: Prior predictive choice probabilities for new prediction units
-(based on \code{newdata$Z} or the overall mixture if no Z was used). Probabilities
-are averaged over \code{nsim} draws from the heterogeneity mixture distribution
-per posterior draw.
+\item \code{"DeltaZ+mu"}: Expected part-worths plus the mean of the unobserved heterogeneity component, \eqn{\Delta(Z) + \mu_1}. The package supports only \code{ncomp = 1}.
+\item \code{"choice_probs"}: Predictive choice probabilities (use with
+\code{mode = "posterior"} or \code{mode = "prior"}).
+\item \code{"SigmaZ"}: Draws of the heteroscedastic covariance matrix \eqn{\Sigma(Z)}.
+Available only for models fit with \code{Prior$vartree} (class marker
+\code{"bayesm.HART.HeterCov"}).
 }}
 
 \item{burn}{Integer, number of initial MCMC draws to discard.}
 
-\item{nsim}{Integer, number of draws from the heterogeneity mixture distribution
-per posterior draw for \code{type = "prior_probs"}.}
+\item{nsim}{Integer, number of draws from the heterogeneity distribution
+per posterior draw for \code{mode = "prior"} and \code{type = "choice_probs"}.}
+
+\item{mode}{Prediction mode:
+\itemize{
+\item \code{"coefficients"}: coefficient-level outputs (\code{DeltaZ}, \code{DeltaZ+mu}, \code{SigmaZ}).
+\item \code{"posterior"}: posterior predictive output (\code{type = "choice_probs"}).
+\item \code{"prior"}: prior predictive output (\code{type = "choice_probs"}).
+}}
 
 \item{r_verbose}{Logical, print progress updates?}
 
@@ -58,10 +68,14 @@ Depends on \code{type}:
 \itemize{
 \item For \code{type \%in\% c("DeltaZ", "DeltaZ+mu")}: 3D array \verb{[npred, nvar, ndraws_out]}
 of predicted expected part-worths.
-\item For \code{type = "posterior_probs"}: List of length \code{nlgt}. Each element \verb{\\\[[i]]}
+\item For \code{type = "SigmaZ"}: 4D array \verb{[npred, nvar, nvar, ndraws_out]} of
+covariance draws at each prediction unit.
+\item For \verb{mode = "posterior", type = "choice_probs"}: List of length \code{nlgt}.
+Each element \verb{\\\[[i]]}
 is a 3D array \verb{[T_i, p, ndraws_out]} of posterior predictive choice probabilities
 for unit \code{i}.
-\item For \code{type = "prior_probs"}: List of length \code{npred}. Each element \verb{\\\[[i]]}
+\item For \verb{mode = "prior", type = "choice_probs"}: List of length \code{npred}.
+Each element \verb{\\\[[i]]}
 is a 3D array \verb{[T_i, p, ndraws_out]} of prior predictive choice
 probabilities for prediction unit \code{i}.
 }

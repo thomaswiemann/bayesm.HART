@@ -372,8 +372,14 @@ test_that("predict.rhierNegbinRw errors on invalid type", {
     Mcmc = list(R = 10, keep = 1, nprint = 0),
     r_verbose = FALSE
   )
-  expect_error(predict(out, newdata = list(Z = sim$Z), type = "prior_probs"),
-               "Invalid type")
+  expect_error(
+    predict(out, newdata = list(Z = sim$Z), type = "choice_probs"),
+    "Invalid type"
+  )
+  expect_error(
+    predict(out, newdata = list(Z = sim$Z), mode = "prior", type = "choice_probs"),
+    "type='response'"
+  )
   expect_error(
     predict(out, newdata = list(Z = sim$Z), type = "SigmaZ"),
     "only available for heteroscedastic covariance models"

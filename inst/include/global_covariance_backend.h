@@ -27,6 +27,7 @@ public:
     arma::mat Deltadraw_;
     std::vector<arma::vec> comp_mu_cache_;
     std::vector<arma::mat> comp_root_cache_;
+    std::vector<arma::vec> unit_prior_mean_cache_;
 
     arma::mat const& Z_;
     arma::mat const& mubar_;
@@ -50,8 +51,8 @@ public:
         int R, int keep, Rcpp::List const& bart_params);
 
     void draw_iteration(int rep) override;
-    arma::mat precision_root(int i) const override;
-    arma::vec prior_mean(int i) const override;
+    arma::mat const& precision_root(int i) const override;
+    arma::vec const& prior_mean(int i) const override;
     void store(int mkeep) override;
     BackendPackPayload pack() override;
     BackendCapabilities capabilities() const override;

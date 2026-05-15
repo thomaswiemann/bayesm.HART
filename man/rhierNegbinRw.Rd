@@ -2,7 +2,7 @@
 % Please edit documentation in R/rhierNegbinRw.R
 \name{rhierNegbinRw}
 \alias{rhierNegbinRw}
-\title{Bayesian Hierarchical Negative Binomial Model with Normal Mixture and HART Prior}
+\title{Bayesian Hierarchical Negative Binomial Model with HART Prior}
 \usage{
 rhierNegbinRw(Data, Prior, Mcmc, r_verbose = TRUE)
 }
@@ -20,14 +20,13 @@ rhierNegbinRw(Data, Prior, Mcmc, r_verbose = TRUE)
 
 \item{Prior}{A list containing prior parameters:
 \itemize{
-\item \code{ncomp} (required): Number of normal mixture components.
-\item \code{nu} (optional): Degrees of freedom for IW prior on mixture component covariances (default: nvar + 3).
+\item \code{ncomp} (required): Number of components. Must be 1.
+\item \code{nu} (optional): Degrees of freedom for IW prior on the normal prior covariance (default: nvar + 3).
 \item \code{V} (optional): \verb{nvar x nvar} location matrix for IW prior (default: nu * I).
 \item \code{a} (optional): Shape parameter for gamma prior on alpha (default: 0.5). Note: This differs from \code{rhierLinearMixture} where \code{a} is the Dirichlet prior.
 \item \code{b} (optional): Rate parameter for gamma prior on alpha (default: 0.1).
-\item \code{mubar} (optional): \verb{1 x nvar} prior mean for mixture component means (default: 0).
-\item \code{Amu} (optional): \verb{1 x 1} prior precision for mixture component means (default: 0.01).
-\item \code{a_mix} (optional): \verb{ncomp x 1} Dirichlet prior parameters for mixture weights (default: rep(5, ncomp)). Named \code{a_mix} here to avoid collision with the gamma prior shape parameter \code{a}.
+\item \code{mubar} (optional): \verb{1 x nvar} prior mean vector for the normal prior (default: 0).
+\item \code{Amu} (optional): \verb{1 x 1} prior precision for the normal prior (default: 0.01).
 \item \code{Ad} (optional): \verb{nvar*nz x nvar*nz} prior precision for vec(Delta) (default: 0.01 * I). Only used when \code{drawdelta = TRUE} and \code{useBART = FALSE}.
 \item \code{deltabar} (optional): \code{nvar*nz} prior mean for vec(Delta) (default: 0). Only used when \code{drawdelta = TRUE} and \code{useBART = FALSE}.
 \item \code{bart} (optional): List of HART prior parameters. See \code{rhierLinearMixture} for details.
@@ -64,7 +63,7 @@ A list of class \code{"rhierNegbinRw"} containing:
 \item \code{betadraw}: \verb{nreg x nvar x (R/keep)} array of unit-level beta draws.
 \item \code{alphadraw}: \verb{(R/keep) x 1} vector of overdispersion draws.
 \item \code{loglike}: \verb{(R/keep) x 1} vector of log-likelihoods.
-\item \code{nmix}: List with \code{probdraw}, \code{zdraw}, \code{compdraw} (omitted under heter-cov).
+\item \code{nmix}: Legacy list containing prior draws (omitted under heter-cov).
 \item \code{acceptrbeta}, \code{acceptralpha}: Metropolis acceptance rates (percent).
 \item If \code{drawdelta} and non-BART: \code{Deltadraw}.
 \item If BART: \code{bart_models}, \code{varcount}, \code{varprob}.
@@ -75,11 +74,11 @@ A list of class \code{"rhierNegbinRw"} containing:
 }
 \description{
 \code{rhierNegbinRw} implements an MCMC algorithm for a Bayesian hierarchical
-negative binomial regression model with a mixture of normals prior on the
-unit-level coefficients. Per-unit \eqn{\beta_i} are drawn via Random Walk
-Metropolis-Hastings; the dispersion \eqn{\alpha} is drawn on the log scale.
-Supports both standard linear hierarchical prior and HART (sum-of-trees) prior.
-Structurally symmetric to \code{rhierLinearMixture} and \code{rhierMnlRwMixture}.
+negative binomial regression model with a Hierarchical Additive Regression Trees (HART) prior. HART
+is a hierarchical nonparametric prior that allows for flexible modeling of the
+representative unit as a function of potentially many observed characteristics.
+Per-unit \eqn{\beta_i} are drawn via Random Walk Metropolis-Hastings; the dispersion \eqn{\alpha} is drawn on the log scale.
+\code{Prior$bart} allows for modeling the conditional mean of the normal prior.
 }
 \details{
 \subsection{Model Specification}{
@@ -88,41 +87,31 @@ Structurally symmetric to \code{rhierLinearMixture} and \code{rhierMnlRwMixture}
 \eqn{\ln(\lambda_i) = X_i \beta_i}
 
 The unit-level coefficients are modeled as:
-\deqn{\beta_i = \Delta(Z_i) + u_i}
-where \eqn{u_i \sim N(\mu_{k_i}, \Sigma_{k_i})} with \eqn{k_i} drawn from
-a mixture of normals with \code{ncomp} components.
+\eqn{\beta_i = Z_i \Delta + u_i} \cr
+\eqn{u_i \sim N(0, \Sigma_i)} \cr
+Note: This documentation describes \code{ncomp = 1} behavior as higher-order components are not supported. \cr
 }
 
 \subsection{HART Prior Details}{
 
-Same as \code{rhierLinearMixture}. If \code{Prior$bart} is a list, \eqn{\Delta(Z_i)} is
-modeled via a sum-of-trees (BART) prior instead of a linear hierarchical
-specification.
+If \code{Prior$bart} is a list, \eqn{\Delta(Z_i)} is modeled via a sum-of-trees (BART) prior
+instead of a linear hierarchical specification. See \code{rhierMnlRwMixture} for complete
+details and hyperparameter definitions.
 }
 
 \subsection{Heteroscedastic Covariance \eqn{\Sigma(Z_i)} (experimental extension)}{
 
-Same modified-Cholesky construction as \code{rhierLinearMixture}. When
-\code{Prior$vartree} is supplied, the homoscedastic mixture covariance
-\eqn{\Sigma_{k_i}} is replaced with a unit-specific
-\deqn{\Sigma(Z_i)^{-1} = L(Z_i)^\top D(Z_i)^{-1} L(Z_i)}
-where \eqn{d_j(\cdot)} is a product-of-trees ensemble with \eqn{\chi^{-2}}
-leaves and \eqn{\phi_{jk}(\cdot)} is a sum-of-trees ensemble with
-\eqn{N(0, \tau^2)} leaves. Per-unit \eqn{\beta_i} are drawn via a
-Random-Walk Metropolis-Hastings step that uses \eqn{\Sigma(Z_i)^{-1}} as
-the prior precision. Only the single-component path (\code{ncomp = 1}) is
-supported in this mode.
-
-Hyperparameters for \code{Prior$vartree} and \code{Prior$phitree} mirror those
-documented in \code{rhierLinearMixture}. The \code{lambda} parameter of \code{vartree}
-is auto-calibrated from per-unit MLE \eqn{\hat\beta_i} when not supplied.
+When \code{Prior$vartree} is supplied, the homoscedastic prior covariance \eqn{\Sigma} is
+replaced with a unit-specific modified Cholesky decomposition where the components
+are modeled as tree ensembles. See \code{rhierMnlRwMixture} for complete details.
 
 When this extension is active, the returned object additionally inherits
-classes \code{"rhierNegbinRwHeterCov"} and \code{"bayesm.HART.HeterCov"} and
-contains slots \code{var_models}, \code{phi_models} (jagged, lower-triangular; \code{NULL}
-if \code{nvar == 1}), and \code{mu_draw}. \code{predict()} dispatches on these classes to
-evaluate \eqn{\Sigma(Z^*)} at any new \eqn{Z^*}.
+classes \code{"rhierNegbinRwHeterCov"} and \code{"bayesm.HART.HeterCov"}. \code{predict()}
+dispatches on these classes to evaluate \eqn{\Sigma(Z^*)} at any new \eqn{Z^*}.
 }
+}
+\note{
+Currently, only \code{ncomp = 1} is supported.
 }
 \examples{
 \donttest{
@@ -147,5 +136,5 @@ str(fit, max.level = 1)
 \code{\link[=predict.rhierNegbinRw]{predict.rhierNegbinRw()}}, \code{\link[=marginal_effects.rhierNegbinRw]{marginal_effects.rhierNegbinRw()}}
 }
 \author{
-Sridhar Narayanan, Peter Rossi (original bayesm code), Thomas Wiemann (HART + mixture modifications).
+Sridhar Narayanan, Peter Rossi (original bayesm code), Thomas Wiemann (HART modifications).
 }

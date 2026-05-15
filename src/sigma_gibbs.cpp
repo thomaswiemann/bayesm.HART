@@ -71,12 +71,17 @@ void sigma_mu_block_gibbs(
     vec S_delta(D, fill::zeros);
     vec theta_bar(D, fill::zeros);
     if (n > 0) {
-        mat X = theta;
-        X.each_row() -= mu.t();
-        S = X.t() * X;
-        M = delta.t() * X;
-        S_delta  = sum(delta, 0).t();
-        theta_bar = mean(theta, 0).t();
+        vec x_i(D, fill::zeros);
+        vec d_i(D, fill::zeros);
+        for (uword i = 0; i < n; ++i) {
+            x_i = theta.row(i).t() - mu;
+            d_i = delta.row(i).t();
+            S += x_i * x_i.t();
+            M += d_i * x_i.t();
+            S_delta += d_i;
+            theta_bar += theta.row(i).t();
+        }
+        theta_bar /= static_cast<double>(n);
     }
     mat V = Psi + S;
 

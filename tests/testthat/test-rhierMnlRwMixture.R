@@ -557,10 +557,7 @@ test_that("Edge cases run without error", {
   # Minimal predictors (only 1 Xa, no const, no Xd)
   set.seed(611)
   sim_minpred <- sim_hier_mnl(nlgt = 50, nT = 5, p = 3, nz = 1, nXa = 1, nXd = 0, const = FALSE, seed = 612)
-  expect_warning(
-    run_quick_hmnl(sim_minpred, Prior_edge, Mcmc_edge),
-    regexp = "one-dimensional optimization by Nelder-Mead is unreliable"
-  )
+  expect_no_warning(run_quick_hmnl(sim_minpred, Prior_edge, Mcmc_edge))
 
   # Minimal Z (nz = 1)
   set.seed(613)

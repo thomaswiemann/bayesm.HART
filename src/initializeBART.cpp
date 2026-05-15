@@ -29,7 +29,7 @@ std::vector<bart> initializeBART(
 	std::vector<bart> models(p);
 
 	// Initialize each model
-	for (int i = 0; i < p; i++) {
+	for (size_t i = 0; i < p; i++) {
 		models[i] = bart(num_trees);
 		models[i].setprior(base, power, tau);
 		models[i].setdata(nz, nlgt, pZt, pstd_oldbetas_cols[i], numcut);
@@ -45,7 +45,6 @@ void update_stdoldbetas(mat const& oldbetas, std::vector<double*>& pstd_oldbetas
 	vec const& ind, List const& comps) {
 
 	// Get dimensions
-	int n = oldbetas.n_rows;
 	int p = oldbetas.n_cols;
 	int ncomp = comps.length();
 

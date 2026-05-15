@@ -104,7 +104,7 @@ RcppExport SEXP cpbart(
    double theta = Rcpp::as<double>(_itheta);
    double omega = Rcpp::as<double>(_iomega);
    Rcpp::IntegerVector _grp(_igrp);
-   int *grp = &_grp[0];
+   [[maybe_unused]] int *grp = &_grp[0];
    size_t nkeeptrain = Rcpp::as<int>(_inkeeptrain);
    size_t nkeeptest = Rcpp::as<int>(_inkeeptest);
 //   size_t nkeeptestme = Rcpp::as<int>(_inkeeptestme);
