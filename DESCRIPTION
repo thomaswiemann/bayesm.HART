@@ -26,5 +26,6 @@ Imports:
     rlang,
     dplyr,
     ggplot2,
-    vctrs
+    nnet,
+    stats
 VignetteBuilder: knitr

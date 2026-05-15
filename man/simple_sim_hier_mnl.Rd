@@ -27,7 +27,7 @@ simple_sim_hier_mnl(
 \item{target_var_betabar}{Numeric. Target variance for the \strong{first coefficient}
 of the observed component betabar_i = f(Z_i). Must be non-negative.
 The first coefficient will be centered to have mean zero. The remaining
-coefficients (2 to ncoef) are fixed constants \link{-1, 1, -1, 1}.
+coefficients (2 to ncoef) are fixed constants \code{c(-1, 1, -1, 1)}.
 Ignored if het_observed = "none".}
 
 \item{target_var_eps}{Numeric. Target variance for each coefficient in the

@@ -9,10 +9,13 @@ vignette: |
 ---
 
 ```{r, include = FALSE}
+vignette_cache_dir <- file.path(tools::R_user_dir("bayesm.HART", which = "cache"), "vignettes")
+dir.create(vignette_cache_dir, recursive = TRUE, showWarnings = FALSE)
+
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
-  fig.path = "figures/",
+  fig.path = "figures/mnl-",
   eval = TRUE
 )
 ```
@@ -21,7 +24,11 @@ knitr::opts_chunk$set(
   
 This vignette illustrates how to estimate a hierarchical logit model with HART priors using the `bayesm.HART` package. Following Application I in Wiemann (2025), the HART logit model is applied to the `bank` conjoint dataset of Allenby and Ginter (1995) on out-of-state credit card design.
 
-The key feature of the `bayesm.HART` package is the use of a Hierarchical Additive Regression Tree (HART) prior. This allows for a flexible, non-parametric specification of the *representative consumer* as a function of observed characteristics. This vignette contrasts the HART logit model with a conventional hierarchical logit model that specifies the representative consumer as a linear function of characteristics.
+`bayesm.HART` uses a Hierarchical Additive Regression Tree (HART) prior.
+This specifies the *representative consumer* as a nonparametric function
+of observed characteristics. This vignette contrasts that HART logit
+specification with a conventional hierarchical logit model where the
+representative consumer is linear in characteristics.
 
 The rest of the vignette proceeds as follows:
 1. Load and prepare data for use with `bayesm` and `bayesm.HART`
@@ -31,9 +38,15 @@ The rest of the vignette proceeds as follows:
 
 ## Conjoint Data of Allenby and Ginter (1995)
 
-To illustrate the HART logit model, we load the `bank` dataset included with the `bayesm` package and originally considered in Allenby and Ginter (1995). The dataset contains responses from 946 customers of a regional bank collected in a telephone conjoint on credit card attributes. The bank's main motivation stemmed from an effort to expand to customers in a new market ("out-of-state"). Each respondent offered between 13 and 17 responses to hypothetical choices between two credit cards that were identical in all considered attributes except for two that varied. In total, the dataset contains 14,799 binary responses as well as the respondents' age, income, and gender.
+We use the `bank` dataset in `bayesm`, originally analyzed by Allenby
+and Ginter (1995). The data include responses from 946 customers in a
+telephone conjoint on credit card attributes. Respondents were part of a
+new-market ("out-of-state") targeting exercise and each provided 13 to
+17 binary choice responses. The dataset contains 14,799 binary responses
+plus respondent age, income, and gender.
 
-The code snippet below prepares the data for use with `bayesm` and `bayesm.HART`. Both packages take the same data structure, allowing researchers familiar with the `bayesm` package to get started quickly.
+The code below prepares the data for `bayesm` and `bayesm.HART`. Both
+packages use the same data structure.
 ```{r setup}
 # Load dependencies
 library(bayesm.HART)
@@ -66,32 +79,62 @@ Data <- list(lgtdata = lgtdata, Z = Z, p = 2)
 
 ## MCMC Estimation
 
-We apply two demand models to the conjoint data: the HART logit model proposed by Wiemann (2025) and a conventional linear hierarchical logit model (e.g., Rossi et al., 2009). Both models are motivated by a latent utility model of consumer choice, where each respondent chooses the credit card profile that maximizes their utility. The only difference between the HART and linear hierarchical specifications is their model of preference heterogeneity. The linear approach models the relationship between a respondent's characteristics as a linear function $\Delta^\top Z_i$ while the HART model uses a sum-of-trees factor model $\Delta(Z_i)$ that allows for rich nonlinearities and interactions.
+We apply two models to the conjoint data: the HART logit model (Wiemann, 2025) and a conventional linear hierarchical logit model (Rossi et al., 2009). Both models are motivated by a latent utility model of consumer choice. The models differ only in how they capture preference heterogeneity: the linear approach models the relationship between a respondent's characteristics and their part-worths as a linear function $\Delta^\top Z_i$, while HART uses a flexible sum-of-trees factor model $\Delta(Z_i)$ to capture rich nonlinearities and interactions.
 
-The code snippet below specifies the MCMC hyperparameters. To speed up the code runtime, a short MCMC chain with only 5000 iterations is considered. Longer chains should be run in practice. We then sample from the posterior distribution of both models by calling `rhierMnlRwMixture`. The only difference in syntax is the additional prior argument `bart`. For simplicity, the code below specifies a HART model with only 20 trees per factor, leaving all other hyperparameters at their defaults. See also `?rhierMnlRwMixture` for details. 
+The code below sets MCMC hyperparameters and runs both samplers. For
+vignette runtime, we use 5,000 iterations (longer chains are recommended
+in practice). Both models are estimated with `rhierMnlRwMixture`; the
+HART specification adds the `bart` entry in `Prior`. We use 20 trees per
+factor and keep other hyperparameters at defaults.
 
-```{r fit-models, echo=FALSE,results='hide'}
-# MCMC parameters
+Because this walkthrough focuses on in-sample predictions at observed respondent covariates `Z`, we set `store_trees = FALSE` for HART to skip tree serialization during fitting and use the cached unique-`Z` prediction path. If you need out-of-sample predictions on unseen `Z*` or `mode = "prior"` with `type = "choice_probs"`, fit with `store_trees = TRUE`.
+
+```{r fit-models}
+# Specify MCMC parameters
 R <- 5000
 burn <- 250
 keep <- 1
 Mcmc <- list(R = R, keep = keep)
 
-out_hart <- bayesm.HART::rhierMnlRwMixture(
-  Data = Data, Mcmc = Mcmc, 
-  Prior = list(
-    ncomp = 1, 
-    bart = list(num_trees = 20) # new HART prior parameters
-  )
+model_cache_file <- file.path(
+  vignette_cache_dir,
+  sprintf("bank-get-started-R%s-keep%s.rds", R, keep)
 )
 
-out_lin <- bayesm::rhierMnlRwMixture(
-  Data = Data, Mcmc = Mcmc,
-  Prior = list(ncomp = 1)
-)
+model_cache_ok <- FALSE
+if (file.exists(model_cache_file)) {
+  model_cache <- tryCatch(readRDS(model_cache_file), error = function(e) NULL)
+  model_cache_ok <- !is.null(model_cache) &&
+    !is.null(model_cache$out_hart) && !is.null(model_cache$out_lin)
+  if (model_cache_ok) {
+    out_hart <- model_cache$out_hart
+    out_lin  <- model_cache$out_lin
+    cat("Loaded cached model draws from:", model_cache_file, "\n")
+  }
+}
+
+if (!model_cache_ok) {
+  # Fit HART Logit (cache-first prediction mode; no tree serialization)
+  out_hart <- bayesm.HART::rhierMnlRwMixture(
+    Data,
+    Prior = list(ncomp = 1, bart = list(num_trees = 20), store_trees = FALSE),
+    Mcmc
+  )
+
+  # Fit conventional Linear Hierarchical Logit
+  out_lin <- bayesm::rhierMnlRwMixture(Data, Prior = list(ncomp = 1), Mcmc)
+
+  saveRDS(
+    list(out_hart = out_hart, out_lin = out_lin, generated_at = Sys.time()),
+    model_cache_file
+  )
+  cat("Saved model draws cache to:", model_cache_file, "\n")
+}
 ```
 
-A simple way to check for convergence is to plot the log-likelihood over MCMC iterations. The plot below indicates convergence of both MCMC chains within just a few iterations.
+A simple diagnostic is the log-likelihood trace over MCMC iterations.
+In this run, both chains appear to mix after the burn-in cutoff in the
+traceplot below.
 
 ```{r mcmc-diagnostics,  fig.width=8,fig.height=5, fig.align='center', out.width="90%", dpi = 200, fig.cap="MCMC Traceplot of the Log Likelihood."}
 burnin_draws <- ceiling(burn / keep) 
@@ -115,9 +158,9 @@ ggplot(mcmc_data, aes(x = Iteration, y = LogLikelihood, color = Model)) +
 ```
 
 
-## Posterior Inference about Respondent-level Part-Worths
+## Posterior Inference on Respondent-level Part-Worths
 
-With the MCMC draws from both models, we can characterize the posterior estimates for individual-level coefficients, or part-worths. These coefficients represent respondent-specific preferences for each credit card attribute. To illustrate the differences between the HART and linear hierarchical approaches, we examine the posterior distributions for two respondents: Respondent 146 is an older woman with low income, while respondent 580 is a middle-aged man with moderate income. The comparison focuses on the out-of-state bank attribute, which represents a key design challenge for the bank's expansion strategy.
+With the MCMC draws complete, we characterize the posterior estimates for individual-level coefficients (part-worths). To illustrate the models, we examine the posterior distributions for two specific respondents: Respondent 146 (an older woman with low income) and Respondent 580 (a middle-aged man with moderate income). The comparison focuses on the out-of-state bank attribute, which represents a key design challenge for the bank's expansion strategy.
 
 ```{r individual-betas, fig.width=12, fig.height=6, fig.align='center', out.width="90%", dpi = 200, fig.cap="Posterior Distributions of Individual-level Part-Worths."}
 selected_resp <- c(146, 580)
@@ -200,21 +243,24 @@ summary_results <- data.frame(
 print(summary_results, digits = 3)
 ```
 
-The posterior distributions show that both models produce similar individual-level part-worth estimates for these two respondents. This similarity is expected and reflects a key feature of hierarchical models: when respondents have many choice profiles (as is the case here), their individual-level posterior estimates are primarily driven by their own choice data rather than the first-stage prior. Both respondents have between 13 and 17 choice profiles, providing substantial individual-level information that dominates the influence of the first-stage prior specification. 
+Both models produce similar individual-level part-worth estimates for these two respondents. This similarity is expected: when respondents have many choice profiles (here, between 13 and 17), their individual-level posterior estimates are primarily driven by their own choice data rather than the first-stage prior.
 
-The real differences between HART and linear hierarchical models emerge in settings with limited individual-level data, or when characterizing the representative consumer for new segments—precisely the scenario of central interest for the bank's expansion plans in Allenby and Ginter (1995). The next section explores these differences by examining the representative consumer estimates.
+Differences between HART and linear hierarchical models are typically
+more visible when individual-level data are limited and estimation
+depends more on the representative consumer. The next section compares
+representative-consumer posteriors for the selected segments.
 
 ## Posterior Inference on Consumer Segment Part-Worths
 
-As established in the previous section, the real differences between HART and linear hierarchical models emerge when characterizing the representative consumer for new segments—precisely the scenario of central interest for the bank's expansion plans. The model estimates how part-worths vary with demographics `Z`, where the term `Delta(Z)` represents the expected part-worth for a "representative" respondent with characteristics `Z`.
+The model estimates how part-worths vary with demographics $Z$, where $\Delta(Z)$ represents the expected part-worth for a "representative" respondent with characteristics $Z$.
 
-To illustrate these differences, we focus on two granularly-defined consumer segments. Segment 1 is defined as older female respondents with low income, while Segment 2 is defined as middle-aged male respondents with moderate income. These segments are selected because they allow for illustration of substantial differences between conventional linear and HART logit models. We can use the `predict` function to get the posterior draws for `Delta(Z)` for these selected segments.
+To illustrate the differences between the models, we predict preferences for two granularly-defined consumer segments. Segment 1 is defined as older female respondents with low income, while Segment 2 is defined as middle-aged male respondents with moderate income. We use the `predict` function to get the posterior draws of the expected part-worths for these selected segments.
 
 ```{r predict-deltaZ, message=FALSE, warning=FALSE}
-# We predict for all respondents
-DeltaZ_hat_hart <- predict(out_hart, newdata = Data, type = "DeltaZ+mu", burn = burn)
+# We predict for all respondents (seen Z rows -> cached fast path)
+DeltaZ_hat_hart <- predict(out_hart, newdata = list(Z = Z), type = "DeltaZ+mu", burn = burnin_draws)
 class(out_lin) <- "rhierMnlRwMixture" # allows bayesm model to use bayesm.HART methods 
-DeltaZ_hat_lin <- predict(out_lin, newdata = Data, type = "DeltaZ+mu", burn = burn)
+DeltaZ_hat_lin <- predict(out_lin, newdata = list(Z = Z), type = "DeltaZ+mu", burn = burnin_draws)
 ```
 
 ```{r representative-respondent, fig.width=12, fig.height=6, fig.align='center', out.width="90%", dpi = 200, fig.cap="Posterior Distributions of Expected Part-Worths."}
@@ -298,7 +344,107 @@ cat("HART approach difference:",
     deltaZ_summary$HART_Mean[2] - deltaZ_summary$HART_Mean[1], "\n")
 ```
 
-The posterior distributions reveal economically important differences between the HART and linear hierarchical approaches. The conventional linear approach finds only moderate differences in the expected part-worths between the two segments. In stark contrast, HART finds substantially different preferences for the two segments. Where the linear specification averages over any nonlinearities and interactions, the HART model captures richer heterogeneity. This enhanced ability to differentiate between consumer segments represents a key advantage of the HART approach when granular understanding of preference heterogeneity is required for targeting new market segments.
+```{r bart-variance-characterization}
+# Additional variance diagnostics for the selected out-of-state coefficient.
+post_ids <- (burnin_draws + 1):dim(out_hart$betadraw)[3]
+
+# 1) Respondent-level posterior variance of beta_i.
+resp_var <- data.frame(
+  Model = c("Linear", "Linear", "HART", "HART"),
+  Target = c("Respondent 146 beta", "Respondent 580 beta",
+             "Respondent 146 beta", "Respondent 580 beta"),
+  Variance = c(
+    var(out_lin$betadraw[146, coef_indx, post_ids]),
+    var(out_lin$betadraw[580, coef_indx, post_ids]),
+    var(out_hart$betadraw[146, coef_indx, post_ids]),
+    var(out_hart$betadraw[580, coef_indx, post_ids])
+  )
+)
+
+# 2) Segment-level posterior variance of Delta(Z)+mu.
+seg_var <- data.frame(
+  Model = c("Linear", "Linear", "HART", "HART"),
+  Target = c("Segment 1 Delta+mu", "Segment 2 Delta+mu",
+             "Segment 1 Delta+mu", "Segment 2 Delta+mu"),
+  Variance = c(
+    var(DeltaZ_hat_lin[146, coef_indx, ]),
+    var(DeltaZ_hat_lin[580, coef_indx, ]),
+    var(DeltaZ_hat_hart[146, coef_indx, ]),
+    var(DeltaZ_hat_hart[580, coef_indx, ])
+  )
+)
+
+# 3) Posterior variance of the implied random-effects covariance entry Sigma[k,k].
+sigma_entry_draws_hart <- sapply(out_hart$nmix$compdraw[post_ids], function(draw) {
+  rooti <- draw[[1]]$rooti
+  solve(crossprod(rooti))[coef_indx, coef_indx]
+})
+sigma_entry_draws_lin <- sapply(out_lin$nmix$compdraw[post_ids], function(draw) {
+  rooti <- draw[[1]]$rooti
+  solve(crossprod(rooti))[coef_indx, coef_indx]
+})
+
+sigma_var <- data.frame(
+  Model = c("Linear", "HART"),
+  Mean = c(mean(sigma_entry_draws_lin), mean(sigma_entry_draws_hart)),
+  Variance = c(var(sigma_entry_draws_lin), var(sigma_entry_draws_hart)),
+  SD = c(sd(sigma_entry_draws_lin), sd(sigma_entry_draws_hart)),
+  Q05 = c(quantile(sigma_entry_draws_lin, 0.05), quantile(sigma_entry_draws_hart, 0.05)),
+  Q95 = c(quantile(sigma_entry_draws_lin, 0.95), quantile(sigma_entry_draws_hart, 0.95))
+)
+
+print(resp_var, digits = 3)
+print(seg_var, digits = 3)
+print(sigma_var, digits = 3)
+
+if (!is.null(out_hart$acceptrbeta)) {
+  cat("\nHART MH acceptrbeta (%):", round(out_hart$acceptrbeta, 2), "\n")
+}
+```
+
+For the selected segments and focal coefficient, the posterior
+distributions differ across model specifications. In this vignette run,
+the HART posterior means for segment-level expected part-worths are more
+separated than the corresponding linear-model means. This pattern is
+consistent with the broader function class in HART, where
+`Delta(Z_i)` allows nonlinear and interaction structure in demographics.
+
+## Quantifying Explained Variance ($R^2$)
+
+To quantify explained demographic heterogeneity, we compute a Bayesian
+`R^2` measure. This is the fraction of latent preference heterogeneity
+explained by observed demographics `Z`.
+
+Because this is a hierarchical model, the "total" variance of the part-worths is mathematically decomposed into the variance of the predictions $\Delta(Z_i)$ across the population (the explained variance) and the unobserved structural heterogeneity $\Sigma_{kk}$ (the residual variance). By evaluating this at every MCMC iteration, we obtain a full posterior distribution for the $R^2$.
+
+```{r r-squared, fig.width=8, fig.height=5, fig.align='center', out.width="90%", dpi = 200, fig.cap="Posterior Distributions of Explained Variance ($R^2$) for Out-of-State Preferences."}
+smry_hart <- summary(out_hart, Z = Z, burn = burnin_draws, coefs = coef_indx)
+smry_lin  <- summary(out_lin, Z = Z, burn = burnin_draws, coefs = coef_indx)
+
+r2_data <- bind_rows(
+  data.frame(Model = "HART", R2 = smry_hart$r2$R2_draws[, 1]),
+  data.frame(Model = "Linear", R2 = smry_lin$r2$R2_draws[, 1])
+) %>%
+  mutate(Model = factor(Model, levels = c("Linear", "HART")))
+
+ggplot(r2_data, aes(x = R2, fill = Model)) +
+  geom_density(alpha = 0.6, color = "black") +
+  scale_fill_manual(values = c("Linear" = "red", "HART" = "blue")) +
+  scale_x_continuous(labels = scales::percent_format(accuracy = 1)) +
+  theme_classic(base_size = 16) +
+  labs(title = "Variance Explained by Demographics",
+       x = expression(R^2), y = "Density") +
+  theme(legend.title = element_blank(), legend.position = "top")
+
+cat("Posterior Mean R² (Linear):", round(smry_lin$r2$R2_mean * 100, 2), "%\n")
+cat("Posterior Mean R² (HART)  :", round(smry_hart$r2$R2_mean * 100, 2), "%\n")
+```
+
+The density plot summarizes posterior draws of explained variance for the
+focal coefficient under each specification. In this run, posterior `R^2`
+draws are shifted upward under HART relative to the linear
+specification, indicating higher explained heterogeneity for the same
+demographic inputs.
 
 ## References
 

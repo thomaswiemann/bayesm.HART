@@ -3,100 +3,36 @@
 #' Computes the posterior distribution of average marginal effects by
 #' varying a target covariate over a grid.
 #'
-#' @param object A fitted model object.
+#' @param object A fitted hierarchical model object (e.g.,
+#'   `rhierMnlRwMixture`, `rhierLinearMixture`, `rhierNegbinRw`).
+#' @param z_values A numeric matrix of grid values for the unit-level
+#'   covariates `Z`. Each row defines one counterfactual `Z*`. Columns that
+#'   are entirely `NA` are held at their training values; columns with no
+#'   `NA`s are swept to the supplied grid value.
+#' @param Z A numeric matrix of unit-level covariates from the training
+#'   sample (typically `Data$Z` from the original fit). Must have the same
+#'   number of columns as `z_values`.
+#' @param burn Non-negative integer. Number of initial MCMC draws to drop
+#'   before averaging (default `0`).
+#' @param verbose Logical. Print progress per grid point (default `TRUE`).
 #' @param ... Other arguments passed to methods.
 #'
-#' @details This is a generic function. The main implementation for this package
-#'   is `marginal_effects.rhierMnlRwMixture`.
+#' @details This is a generic function. Method implementations are provided
+#'   for `rhierMnlRwMixture`, `rhierLinearMixture`, and `rhierNegbinRw` (the
+#'   heter-cov subclasses inherit dispatch through their base classes).
 #'
-#' @return The result depends on the method implementation.
+#' @return An object of class `"marginal_effects"`; see
+#'   `summary.marginal_effects()` for downstream summarization.
 #' @export
-marginal_effects <- function(object, ...) {
+marginal_effects <- function(object, z_values, Z, burn = 0, verbose = TRUE,
+                             ...) {
   UseMethod("marginal_effects")
 }#MARGINAL_EFFECTS
 
-#' @rdname marginal_effects
-#' @method marginal_effects rhierMnlRwMixture
-#'
-#' @param object A fitted `rhierMnlRwMixture` object.
-#' @param z_values A numeric matrix where each row represents a specific grid
-#'   point for evaluation. Columns correspond to the covariates in the model's
-#'   original `Z` matrix. Non-NA values in a row fix the corresponding
-#'   covariate to that value for the grid point. NA values indicate that the
-#'   covariate should take its value from the corresponding row in the base `Z`
-#'   matrix provided.
-#' @param Z A numeric matrix representing the base population or context over
-#'   which the effects are averaged. It must have the same number of columns
-#'   as required by the model (`nz`). For each grid point (row) in `z_values`,
-#'   a counterfactual matrix is constructed based on `Z`, and the average
-#'   effect across the rows of this counterfactual matrix is calculated.
-#' @param burn Integer, the number of initial MCMC draws to discard.
-#' @param verbose Logical, whether to print progress messages.
-#' @param ... Additional arguments (currently ignored).
-#'
-#' @return A list object of class `"marginal_effects"` containing:
-#'   \item{z_values}{The user-provided matrix of grid points used for evaluation.}
-#'   \item{avg_betabar_draws}{A list where each element `[[i]]` is an
-#'     `ncoef x ndraws_use` matrix representing the posterior draws of the
-#'     average `betabar` (DeltaZ + mu), evaluated at the `i`-th grid point
-#'     (row of `z_values`) and averaged over the rows of the base `Z` matrix.}
-#'   \item{call}{The matched call to the function.}
-#'   \item{burn}{The number of burn-in draws discarded.}
-#' @export
-#' @examples
-#' # --- Simulate Data (requires bayesm.HART package) ---
-#' if (requireNamespace("bayesm.HART", quietly = TRUE)) {
-#'   sim_data <- bayesm.HART::sim_hier_mnl(nlgt = 50, nT = 10, p = 3, nz = 3, 
-#'                                     nXa = 1, nXd = 0, seed = 123)
-#'   Data <- list(p = sim_data$p, lgtdata = sim_data$lgtdata, Z = sim_data$Z)
-#'   ncoef <- sim_data$true_values$dimensions$ncoef
-#
-#'   # --- Fit Model (minimal run for example) ---
-#'   # Note: Use much larger R and keep for real analysis!
-#'   Prior <- list(ncomp = 1)
-#'   Mcmc <- list(R = 100, keep = 1)
-#'   # Use try() to avoid errors stopping the example build if model fails
-#'   fit <- try(bayesm.HART::rhierMnlRwMixture(Data = Data, Prior = Prior, Mcmc = Mcmc, 
-#'                                         r_verbose = FALSE), silent = TRUE)
-#
-#'   if (!inherits(fit, "try-error")) {
-#'     # --- Define Grid for Marginal Effects (vary Z1) ---
-#'     target_z_index <- 1
-#'     grid_z1 <- seq(min(Data$Z[, target_z_index]), 
-#'                    max(Data$Z[, target_z_index]), 
-#'                    length.out = 5)
-#'     z_grid <- matrix(NA, nrow = length(grid_z1), ncol = ncol(Data$Z))
-#'     z_grid[, target_z_index] <- grid_z1
-#
-#'     # --- Calculate Marginal Effects ---
-#'     mfx_result <- marginal_effects(fit, 
-#'                                      z_values = z_grid, 
-#'                                      Z = Data$Z, 
-#'                                      burn = 20, # Discard first 20 draws
-#'                                      verbose = FALSE)
-#
-#'     print(names(mfx_result))
-#'     print(dim(mfx_result$avg_betabar_draws[[1]])) # Check dimensions
-#
-#'     # --- Summarize Effects (see example for summary.marginal_effects) ---
-#'
-#'     # --- Plot Effects (see example for plot.summary.marginal_effects) ---
-#'   }
-#' }
-marginal_effects.rhierMnlRwMixture <- function(
-  object,
-  z_values,
-  Z,
-  burn = 0,
-  verbose = TRUE,
-  ...
-) {
-  # --- 1. Input Checks & Initial Setup ---
-  
-  # Validate object class
-  if (!inherits(object, "rhierMnlRwMixture")) {
-    stop("Input 'object' must be of class 'rhierMnlRwMixture'.")
-  }
+# --- Shared Implementation (internal) ---
+# Core grid-loop logic used by all model-specific marginal_effects methods.
+# @keywords internal
+.marginal_effects_impl <- function(object, z_values, Z, burn, verbose, ...) {
   # Validate Z
   if (missing(Z) || !is.matrix(Z) || !is.numeric(Z)) {
     stop("'Z' must be a numeric matrix.")
@@ -111,7 +47,6 @@ marginal_effects.rhierMnlRwMixture <- function(
       stop(paste0("Number of columns in 'z_values' (", ncol(z_values),
                   ") must match number of columns in 'Z' (", nz, ")."))
   }
-  nlgt <- nrow(Z)
   n_grid_points <- nrow(z_values)
   if (n_grid_points == 0) stop("'z_values' cannot have zero rows.")
 
@@ -126,71 +61,117 @@ marginal_effects.rhierMnlRwMixture <- function(
 
   # Identify columns specified with non-NA grid values
   non_na_col_indices <- which(colSums(is.na(z_values)) == 0)
-
-  # Ensure at least one column defines grid values
   if (length(non_na_col_indices) == 0) {
       stop("'z_values' must contain at least one non-NA column to define grid points.")
   }
 
   # Extract dimensions and handle burn-in
   if (is.null(object$betadraw)) stop("Invalid object: betadraw missing.")
-  ncoef <- dim(object$betadraw)[2]
   ndraws_total <- dim(object$betadraw)[3]
-  
+
   if (!is.numeric(burn) || length(burn) != 1 || burn < 0 || burn >= ndraws_total) {
       stop(paste0("burn must be a single non-negative integer less than the total number of draws (", ndraws_total, ")."))
   }#IF
-  ndraws_use <- ndraws_total - burn
 
-  # --- 2. Initialize Storage ---
+  # Determine predict type: include mu component when the model carries one
+  # (BART or linear models with nmix$compdraw, or heter-cov models with mu_draw).
+  has_mu <- !is.null(object$nmix) || !is.null(object$mu_draw)
+  predict_type <- if (has_mu) "DeltaZ+mu" else "DeltaZ"
+
+  # Initialize Storage
   avg_draws_list <- vector(mode = "list", length = n_grid_points)
 
-  # --- 3. Iterate Through Grid Points (Rows of z_values) ---
+  # Iterate Through Grid Points (Rows of z_values)
   for (i in 1:n_grid_points) {
     # Create counterfactual Z matrix
     Z_counterfactual <- Z
-
-    # Overwrite relevant columns with grid values using vector assignment
     grid_values_vec <- z_values[i, non_na_col_indices]
-    # Assign values; R recycles the single row of grid values down the columns
     Z_counterfactual[, non_na_col_indices] <- grid_values_vec
 
-    # Prepare list for predict()
-    newdata_counterfactual <- list(Z = Z_counterfactual)
-    
-    # Get posterior draws of betabar (DeltaZ+mu)
-    # Result dim: [nlgt x ncoef x ndraws_use]
-    betabar_draws <- predict(object, newdata = newdata_counterfactual, 
-                           type = "DeltaZ+mu", burn = burn, 
+    # Get posterior draws of betabar
+    # Result dim: [npred x ncoef x ndraws_use]
+    betabar_draws <- predict(object, newdata = list(Z = Z_counterfactual),
+                           mode = "coefficients",
+                           type = predict_type, burn = burn,
                            r_verbose = verbose)
-    
+
     # Calculate the mean over individuals (dim 1) for each draw
     # Result dim: [ncoef x ndraws_use]
     avg_betabar_draws_matrix <- apply(betabar_draws, c(2, 3), mean, na.rm = TRUE)
-    
+
     # Store the result
     avg_draws_list[[i]] <- avg_betabar_draws_matrix
-    
+
     # Optional progress indicator
     if (verbose && n_grid_points > 1) {
       cat("  Marginal effects progress:", i, "/", n_grid_points, "grid points calculated.", fill = TRUE)
       utils::flush.console()
     }#IF
   }#FOR i
-  
-  # --- 4. Package Results ---
+
+  # Package Results
   output <- list(
     z_values = z_values,
     avg_betabar_draws = avg_draws_list,
-    call = match.call(),
+    call = match.call(call = sys.call(-1)),
     burn = burn
   )
-  
-  # --- 5. Return Final List ---
   class(output) <- "marginal_effects"
   return(output)
+}#.MARGINAL_EFFECTS_IMPL
 
+# --- Model-Specific Dispatch Methods ---
+
+#' @rdname marginal_effects
+#' @method marginal_effects rhierMnlRwMixture
+#' @export
+marginal_effects.rhierMnlRwMixture <- function(
+  object,
+  z_values,
+  Z,
+  burn = 0,
+  verbose = TRUE,
+  ...
+) {
+  if (!inherits(object, "rhierMnlRwMixture")) {
+    stop("Input 'object' must be of class 'rhierMnlRwMixture'.")
+  }
+  .marginal_effects_impl(object, z_values, Z, burn, verbose, ...)
 }#MARGINAL_EFFECTS.RHIERMNLRWMIXTURE
+
+#' @rdname marginal_effects
+#' @method marginal_effects rhierLinearMixture
+#' @export
+marginal_effects.rhierLinearMixture <- function(
+  object,
+  z_values,
+  Z,
+  burn = 0,
+  verbose = TRUE,
+  ...
+) {
+  if (!inherits(object, "rhierLinearMixture")) {
+    stop("Input 'object' must be of class 'rhierLinearMixture'.")
+  }
+  .marginal_effects_impl(object, z_values, Z, burn, verbose, ...)
+}#MARGINAL_EFFECTS.RHIERLINEARMIXTURE
+
+#' @rdname marginal_effects
+#' @method marginal_effects rhierNegbinRw
+#' @export
+marginal_effects.rhierNegbinRw <- function(
+  object,
+  z_values,
+  Z,
+  burn = 0,
+  verbose = TRUE,
+  ...
+) {
+  if (!inherits(object, "rhierNegbinRw")) {
+    stop("Input 'object' must be of class 'rhierNegbinRw'.")
+  }
+  .marginal_effects_impl(object, z_values, Z, burn, verbose, ...)
+}#MARGINAL_EFFECTS.RHIERNEGBINRW
 
 
 # ==============================================================================
@@ -420,7 +401,8 @@ summary.marginal_effects <- function(
 #'   scale_linetype_manual scale_fill_manual labs theme_classic theme element_blank
 #'   waiver .data
 #' @importFrom dplyr bind_rows filter select rename
-#' @importFrom rlang list2 `!!!`
+#' @importFrom rlang list2 `!!!` `:=`
+#' @importFrom stats predict
 #' @export
 #' @examples
 #' # --- Full Example Sequence for Plotting ---

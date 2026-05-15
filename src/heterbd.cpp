@@ -43,15 +43,19 @@ bool heterbd(tree& x, xinfo& xi, dinfo& di, pinfo& pi, double *sigma,
 
       //--------------------------------------------------
       //compute alpha
+      // Birth guard: require both raw count nmin (default 5, mirrors original)
+      // and effective sample size ess_min (default 0.0, no-op).  See pinfo
+      // and discussions/2026-05-12-phibart-vs-heterbart.md.
       double alpha=0.0, lalpha=0.0;
       double lhl, lhr, lht;
-      if((nl>=5) && (nr>=5)) { //cludge?
+      if((nl>=pi.nmin) && (nr>=pi.nmin) &&
+         (bl>=pi.ess_min) && (br>=pi.ess_min)) {
          lhl = heterlh(bl,Ml,pi.tau);
          lhr = heterlh(br,Mr,pi.tau);
          lht = heterlh(bl+br,Ml+Mr,pi.tau);
-   
+
          alpha=1.0;
-         lalpha = log(pr) + (lhl+lhr-lht); 
+         lalpha = log(pr) + (lhl+lhr-lht);
          lalpha = std::min(0.0,lalpha);
       }
 

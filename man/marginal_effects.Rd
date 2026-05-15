@@ -3,87 +3,48 @@
 \name{marginal_effects}
 \alias{marginal_effects}
 \alias{marginal_effects.rhierMnlRwMixture}
+\alias{marginal_effects.rhierLinearMixture}
+\alias{marginal_effects.rhierNegbinRw}
 \title{Calculate Marginal Effects for Hierarchical Models}
 \usage{
-marginal_effects(object, ...)
+marginal_effects(object, z_values, Z, burn = 0, verbose = TRUE, ...)
 
 \method{marginal_effects}{rhierMnlRwMixture}(object, z_values, Z, burn = 0, verbose = TRUE, ...)
+
+\method{marginal_effects}{rhierLinearMixture}(object, z_values, Z, burn = 0, verbose = TRUE, ...)
+
+\method{marginal_effects}{rhierNegbinRw}(object, z_values, Z, burn = 0, verbose = TRUE, ...)
 }
 \arguments{
-\item{object}{A fitted \code{rhierMnlRwMixture} object.}
+\item{object}{A fitted hierarchical model object (e.g.,
+\code{rhierMnlRwMixture}, \code{rhierLinearMixture}, \code{rhierNegbinRw}).}
 
-\item{...}{Additional arguments (currently ignored).}
+\item{z_values}{A numeric matrix of grid values for the unit-level
+covariates \code{Z}. Each row defines one counterfactual \verb{Z*}. Columns that
+are entirely \code{NA} are held at their training values; columns with no
+\code{NA}s are swept to the supplied grid value.}
 
-\item{z_values}{A numeric matrix where each row represents a specific grid
-point for evaluation. Columns correspond to the covariates in the model's
-original \code{Z} matrix. Non-NA values in a row fix the corresponding
-covariate to that value for the grid point. NA values indicate that the
-covariate should take its value from the corresponding row in the base \code{Z}
-matrix provided.}
+\item{Z}{A numeric matrix of unit-level covariates from the training
+sample (typically \code{Data$Z} from the original fit). Must have the same
+number of columns as \code{z_values}.}
 
-\item{Z}{A numeric matrix representing the base population or context over
-which the effects are averaged. It must have the same number of columns
-as required by the model (\code{nz}). For each grid point (row) in \code{z_values},
-a counterfactual matrix is constructed based on \code{Z}, and the average
-effect across the rows of this counterfactual matrix is calculated.}
+\item{burn}{Non-negative integer. Number of initial MCMC draws to drop
+before averaging (default \code{0}).}
 
-\item{burn}{Integer, the number of initial MCMC draws to discard.}
+\item{verbose}{Logical. Print progress per grid point (default \code{TRUE}).}
 
-\item{verbose}{Logical, whether to print progress messages.}
+\item{...}{Other arguments passed to methods.}
 }
 \value{
-The result depends on the method implementation.
-
-A list object of class \code{"marginal_effects"} containing:
-\item{z_values}{The user-provided matrix of grid points used for evaluation.}
-\item{avg_betabar_draws}{A list where each element \verb{[[i]]} is an
-\verb{ncoef x ndraws_use} matrix representing the posterior draws of the
-average \code{betabar} (DeltaZ + mu), evaluated at the \code{i}-th grid point
-(row of \code{z_values}) and averaged over the rows of the base \code{Z} matrix.}
-\item{call}{The matched call to the function.}
-\item{burn}{The number of burn-in draws discarded.}
+An object of class \code{"marginal_effects"}; see
+\code{summary.marginal_effects()} for downstream summarization.
 }
 \description{
 Computes the posterior distribution of average marginal effects by
 varying a target covariate over a grid.
 }
 \details{
-This is a generic function. The main implementation for this package
-is \code{marginal_effects.rhierMnlRwMixture}.
-}
-\examples{
-# --- Simulate Data (requires bayesm.HART package) ---
-if (requireNamespace("bayesm.HART", quietly = TRUE)) {
-  sim_data <- bayesm.HART::sim_hier_mnl(nlgt = 50, nT = 10, p = 3, nz = 3, 
-                                    nXa = 1, nXd = 0, seed = 123)
-  Data <- list(p = sim_data$p, lgtdata = sim_data$lgtdata, Z = sim_data$Z)
-  ncoef <- sim_data$true_values$dimensions$ncoef
-  # --- Fit Model (minimal run for example) ---
-  # Note: Use much larger R and keep for real analysis!
-  Prior <- list(ncomp = 1)
-  Mcmc <- list(R = 100, keep = 1)
-  # Use try() to avoid errors stopping the example build if model fails
-  fit <- try(bayesm.HART::rhierMnlRwMixture(Data = Data, Prior = Prior, Mcmc = Mcmc, 
-                                        r_verbose = FALSE), silent = TRUE)
-  if (!inherits(fit, "try-error")) {
-    # --- Define Grid for Marginal Effects (vary Z1) ---
-    target_z_index <- 1
-    grid_z1 <- seq(min(Data$Z[, target_z_index]), 
-                   max(Data$Z[, target_z_index]), 
-                   length.out = 5)
-    z_grid <- matrix(NA, nrow = length(grid_z1), ncol = ncol(Data$Z))
-    z_grid[, target_z_index] <- grid_z1
-    # --- Calculate Marginal Effects ---
-    mfx_result <- marginal_effects(fit, 
-                                     z_values = z_grid, 
-                                     Z = Data$Z, 
-                                     burn = 20, # Discard first 20 draws
-                                     verbose = FALSE)
-    print(names(mfx_result))
-    print(dim(mfx_result$avg_betabar_draws[[1]])) # Check dimensions
-    # --- Summarize Effects (see example for summary.marginal_effects) ---
-
-    # --- Plot Effects (see example for plot.summary.marginal_effects) ---
-  }
-}
+This is a generic function. Method implementations are provided
+for \code{rhierMnlRwMixture}, \code{rhierLinearMixture}, and \code{rhierNegbinRw} (the
+heter-cov subclasses inherit dispatch through their base classes).
 }

@@ -238,7 +238,7 @@ test_that("Friedman function simulation works correctly", {
   coef_idx <- friedman_args$coef_index
 
   # Check the target coefficient matches internal calculation
-  expected_friedman_vals <- apply(Z_mat, 1, bayesm.HART:::.beta_Z_friedman)
+  expected_friedman_vals <- apply(Z_mat, 1, .beta_Z_friedman)
   expect_equal(betabar[, coef_idx], expected_friedman_vals)
 
   # Check that *other* coefficients are zero for betabar

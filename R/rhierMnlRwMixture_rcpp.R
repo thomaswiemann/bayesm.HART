@@ -1,12 +1,12 @@
 #' Bayesian Multinomial Logit Model with HART Prior
 #' @description
-#' `rhierMnlRwMixture` implements an MCMC algorithm for a Bayesian multinomial 
+#' `rhierMnlRwMixture` implements an MCMC algorithm for a Bayesian hierarchical multinomial 
 #' logit model with a Hierarchical Additive Regression Trees (HART) prior. HART 
 #' is a hierarchical nonparametric prior that allows for flexible modeling of the 
 #' representative consumer as a function of potentially many observed characteristics.
+#' \code{Prior$bart} allows for modeling the conditional mean of the normal prior.
 #' 
-#' @note Currently, the mixture component is not implemented. Please use 
-#' `ncomp = 1` in the Prior specification.
+#' @note Currently, only \code{ncomp = 1} is supported.
 #'
 #' @param Data A list containing:
 #'   - `p`: Number of choice alternatives (integer).
@@ -16,16 +16,17 @@
 #'   - `Z` (optional): `nlgt x nz` matrix of observed characteristics for each unit.
 #'     Should NOT contain an intercept and should be centered.
 #' @param Prior A list containing prior parameters:
-#'   - `ncomp`: Number of mixture components (required).
-#'   - `a` (optional): `ncomp x 1` vector of Dirichlet prior parameters for mixture weights `pvec` (default: `rep(5, ncomp)`).
+#'   - `ncomp` (required): Number of components. Must be 1.
 #'   - `deltabar` (optional): `nz * nvar x 1` prior mean for `vec(Delta)` (default: 0). Ignored if HART is used.
 #'   - `Ad` (optional): Prior precision matrix for `vec(Delta)` (default: `0.01 * I`). Ignored if HART is used.
-#'   - `mubar` (optional): `nvar x 1` prior mean vector for mixture component means (default: 0 if unrestricted, 2 if restricted).
-#'   - `Amu` (optional): Prior precision for mixture component means (default: 0.01 if unrestricted, 0.1 if restricted).
+#'   - `mubar` (optional): `nvar x 1` prior mean vector for the normal prior (default: 0 if unrestricted, 2 if restricted).
+#'   - `Amu` (optional): Prior precision for the normal prior (default: 0.01 if unrestricted, 0.1 if restricted).
 #'   - `nu` (optional): Degrees of freedom for IW prior on component `Sigma` (default: `nvar+3` if unrestricted, `nvar+15` if restricted).
 #'   - `V` (optional): Location matrix for IW prior on component `Sigma` (default: `nu * I` or scaled based on restriction).
 #'   - `SignRes` (optional): `nvar x 1` vector of sign restrictions. Must contain values of 0, -1, or 1. The value 0 means no restriction, -1 ensures the coefficient is negative, and 1 ensures the coefficient is positive. For example, `SignRes = c(0,1,-1)` means the first coefficient is unconstrained, the second will be positive, and the third will be negative. Default: `rep(0, nvar)`.
 #'   - `bart` (optional): List of parameters for the HART prior. If specified, this models the representative consumer \eqn{\Delta(Z)} as a scaled sum-of-trees factor model. See Details.
+#'   - `vartree` (optional, *experimental extension beyond Wiemann 2025*): List of parameters enabling heteroscedastic covariance \eqn{\Sigma(Z_i)} via product-of-trees variance models on the Modified Cholesky diagonal \eqn{d_j(\cdot)}. Requires `bart` to also be specified and `ncomp = 1`. Compatible with `SignRes` (see "Heteroscedastic Covariance" in Details). When `nvar > 1`, the package automatically promotes to the full-Cholesky structure described under `phitree` (diagonal-only \eqn{\Sigma(Z_i)} would force every conditional cross-correlation to zero, which is essentially never a believable posterior).
+#'   - `phitree` (optional, *experimental extension beyond Wiemann 2025*): List of parameters enabling sum-of-trees regression models on the Modified Cholesky off-diagonals \eqn{\phi_{jk}(\cdot)}. Requires `vartree`. Adds the full-Cholesky structure on top of the diagonal `vartree` model. Auto-enabled when `vartree` is supplied and `nvar > 1`.
 #' @param Mcmc A list containing MCMC parameters:
 #'   - `R`: Number of MCMC iterations (required).
 #'   - `keep` (optional): Thinning parameter (default: 1).
@@ -50,10 +51,9 @@
 #' \deqn{u_i \sim N(\mu_1, \Sigma_1)}
 #'
 #' ## Prior Specifications
-#' - **Mixture weights**: \eqn{pvec \sim Dirichlet(a)}
 #' - **Linear model**: \eqn{\delta = vec(\Delta) \sim N(deltabar, A_d^{-1})}
-#' - **Mixture component means**: \eqn{\mu_j \sim N(mubar, \Sigma_j \otimes Amu^{-1})} (covariance scaled by \eqn{\Sigma_j})
-#' - **Mixture component covariance**: \eqn{\Sigma_j \sim IW(\nu, V)}
+#' - **Component means**: \eqn{\mu_1 \sim N(mubar, \Sigma_1 \otimes Amu^{-1})} (covariance scaled by \eqn{\Sigma_1})
+#' - **Component covariance**: \eqn{\Sigma_1 \sim IW(\nu, V)}
 #' - **HART model**: A sum-of-trees prior is placed on each factor of the scaled sum-of-trees model (see HART details below).
 #'
 #' ## HART Prior Details
@@ -74,29 +74,54 @@
 #'   - `theta`: When used, sets Dirichlet concentration parameter without additional hyper-prior (default: 0.0).
 #'   - `burn`: Number of internal burn-in iterations for the Dirichlet HART sampler before variable selection is allowed (default: 100).
 #'
+#' ## Heteroscedastic Covariance \eqn{\Sigma(Z_i)} (experimental extension)
+#'
+#' Wiemann (2025) treats \eqn{\Sigma} as global with an inverse-Wishart prior, used as a fixed factor-model loading \eqn{\Sigma^{1/2}}. When `Prior$vartree` is supplied, the package replaces this with unit-specific
+#' \deqn{\Sigma(Z_i)^{-1} = L(Z_i)^\top D(Z_i)^{-1} L(Z_i)}
+#' where \eqn{L(Z_i)} is unit lower-triangular with \eqn{L_{jk} = -\phi_{jk}(Z_i)} for \eqn{k < j} and \eqn{D(Z_i) = \mathrm{diag}(d_1(Z_i), \ldots, d_D(Z_i))}, \eqn{d_j > 0}. Each \eqn{d_j(\cdot)} is modeled as a product of trees with \eqn{\chi^{-2}} leaves (Pratola et al., 2020); each \eqn{\phi_{jk}(\cdot)} (when `Prior$phitree` is supplied) is modeled as a sum of trees with \eqn{N(0, \tau^2)} leaves. Only the single-component path (`ncomp = 1`) is supported in this mode.
+#'
+#' **`Prior$vartree` parameters** (defaults shown):
+#'   - `num_trees` (40): Number of trees per dimension \eqn{m'}.
+#'   - `nu` (10), `lambda` (auto-calibrated from \eqn{\mathrm{var}(\theta_i)}): Baseline parameters of the \eqn{\chi^{-2}} prior. Pratola per-tree calibration is applied internally.
+#'   - `power` (2), `base` (0.95), `numcut` (100): Tree-structure prior parameters.
+#'   - DART hyperparameters (`sparse`, `a`, `b`, `rho`, `theta`, `omega`, `aug`, `burn`): same meaning as `Prior$bart`.
+#'
+#' **`Prior$phitree` parameters** (defaults shown):
+#'   - `num_trees` (40): Number of trees per \eqn{(j,k)} pair \eqn{m''}.
+#'   - `tau` (\eqn{1/\sqrt{m''}}): Prior standard deviation of leaf \eqn{\lambda_{jkh}}.
+#'   - `power` (2), `base` (0.95), `numcut` (100): Tree-structure prior parameters.
+#'   - `nmin` (2), `ess_min` (5): Leaf-admissibility floors. The default `ess_min = 5` requires the effective sample size \eqn{\sum_{i \in \ell} (\theta_i^{(k)} - \mu^{(k)})^2 / d_j(Z_i)} of each candidate leaf to exceed 5; `nmin = 2` is the corresponding raw-count floor.
+#'   - DART hyperparameters: same meaning as `Prior$bart`.
+#'
+#' When this extension is active, the returned object additionally inherits class `"rhierMnlRwMixtureHeterCov"` and contains slots `var_models`, `phi_models` (jagged, lower-triangular; `NULL` if `nvar == 1`), and `mu_draw` (single-component posterior mean draws). `predict()` dispatches on this class to evaluate \eqn{\Sigma(Z^*)} at new \eqn{Z^*}.
+#'
 #' ## Sign Restrictions
 #' If `SignRes[k]` is non-zero, the k-th coefficient \eqn{\beta_{ik}} is modeled as
 #' \deqn{\beta_{ik} = SignRes[k] \cdot \exp(\beta^*_{ik}).}
 #' The `betadraw` output contains the draws for \eqn{\beta_{ik}} (with the restriction applied).
-#' The `nmix` output contains draws for the *unrestricted* mixture components.
+#' The `nmix` output contains draws for the *unrestricted* prior covariance and mean.
 #' 
 #' **Note:** Care should be taken when selecting priors on any sign restricted coefficients.
 #'
 #' @return A list containing:
 #'   - `Deltadraw`: If `Z` provided and `bart=NULL`, `(R/keep) x (nz * nvar)` matrix of `vec(Delta)` draws.
 #'   - `betadraw`: `nlgt x nvar x (R/keep)` array of unit-level `beta_i` draws.
-#'   - `nmix`: List containing mixture draws with components:
-#'     - `probdraw`: `(R/keep) x ncomp` matrix of mixture component probabilities.
-#'     - `zdraw`: `(R/keep) x nlgt` matrix of component assignments for each unit.
-#'     - `compdraw`: `(R/keep)` list of `ncomp` lists. `compdraw[[r]][[j]] = list(mu, rooti)` contains the draw of \eqn{\mu_j} and \eqn{\Sigma_j^{-1/2}} for component `j` at kept draw `r`.
+#'   - `nmix`: Legacy list containing prior draws (omitted when `vartree` is supplied).
 #'   - `loglike`: `(R/keep) x 1` vector of log-likelihood values at kept draws.
 #'   - `SignRes`: `nvar x 1` vector of sign restrictions used.
-#'   - `bart_trees`: If HART used, list containing tree structures and related parameters.
+#'   - `acceptrbeta`: Metropolis acceptance rate (percent) for the unit-level
+#'     MNL random-walk updates of `beta_i`.
+#'   - `bart_models`: If HART used, list of length `nvar` containing tree structures and related parameters for the mean trees \eqn{\delta_j(\cdot)}.
+#'   - `var_models` (only with `vartree`): list of length `nvar` of variance-tree ensembles for \eqn{d_j(\cdot)} (product of trees with \eqn{\chi^{-2}} leaves).
+#'   - `phi_models` (only with `vartree` + `phitree`): jagged list of length `nvar`. `phi_models[[1]]` is `NULL`; for `j > 1`, `phi_models[[j]]` is a list of length `j-1` containing the sum-of-trees ensemble for \eqn{\phi_{jk}(\cdot)}.
+#'   - `mu_draw` (only with `vartree`): `(R/keep) x nvar` matrix of \eqn{\mu} draws (single-component path).
 #'
 #' @references
 #' Chipman, Hugh A., Edward I. George, and Robert E. McCulloch (2010). "BART: Bayesian Additive Regression Trees." Annals of Applied Statistics 4.1.
 #' 
 #' Linero, Antonio R. (2018). "Bayesian regression trees for high-dimensional prediction and variable selection." Journal of the American Statistical Association 113.522, pp. 626-636.
+#' 
+#' Pratola, M. T., Chipman, H. A., George, E. I., and McCulloch, R. E. (2020). "Heteroscedastic BART via Multiplicative Regression Trees." Journal of Computational and Graphical Statistics 29.2, pp. 405-417.
 #' 
 #' Rossi, Peter E., Greg M. Allenby, and Robert McCulloch (2009). Bayesian Statistics and Marketing. Reprint. Wiley Series in Probability and Statistics. Chichester: Wiley.
 #' 
@@ -112,7 +137,7 @@
 rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
   #
   # revision history:
-  #   12/04 changed by rossi to fix bug in drawdelta when there is zero/one unit in a mixture component
+  #   12/04 changed by rossi to fix bug in drawdelta when there is zero/one unit in a prior component
   #   09/05 added loglike output, changed to reflect new argument order in llmnl, mnlHess 
   #   12/05 changed weighting scheme to (1-w)logl_i + w*Lbar (normalized) 
   #   03/07 added classes
@@ -188,7 +213,8 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
   # check on prior
   #
   if(missing(Prior)) {pandterm("Requires Prior list argument (at least ncomp)")} 
-  if(is.null(Prior$ncomp)) {pandterm("Requires Prior element ncomp (num of mixture components)")} else {ncomp=Prior$ncomp}
+  if(is.null(Prior$ncomp)) {pandterm("Requires Prior element ncomp")} else {ncomp=Prior$ncomp}
+  if(ncomp != 1) {pandterm("Only ncomp = 1 is currently supported")}
   if(is.null(Prior$SignRes)) {SignRes=rep(0,nvar)} else {SignRes=Prior$SignRes}                     
   if(length(SignRes) != nvar) {pandterm("The length SignRes must be equal to the dimension of X")}
   if(sum(!(SignRes %in% c(-1,0,1))>0)) {pandterm("All elements of SignRes must be equal to -1, 0, or 1")}
@@ -224,33 +250,30 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
       V=Prior$V } }
   if(sum(dim(V)==c(nvar,nvar)) !=2) pandterm("Invalid V in prior")
   useBART <- ifelse(!is.null(Prior$bart) & drawdelta, TRUE, FALSE)
+  store_trees <- if (is.null(Prior$store_trees)) TRUE else isTRUE(Prior$store_trees)
   bart_params = Ad = deltabar = NULL # Set to NULL if unused
   if (useBART) {
     # Bart parameter defaults
-    bart_params <- list(
-      num_trees = ifelse(is.null(Prior$bart$num_trees), 200, 
-                         Prior$bart$num_trees),
-      power = ifelse(is.null(Prior$bart$power), 2.0, Prior$bart$power),
-      base = ifelse(is.null(Prior$bart$base), 0.95, Prior$bart$base),
-      tau = ifelse(is.null(Prior$bart$tau), 1.0 / sqrt( # Default calculation
-        ifelse(is.null(Prior$bart$num_trees), 200, Prior$bart$num_trees)
-      ), Prior$bart$tau), # Use provided tau if exists
-      numcut = ifelse(is.null(Prior$bart$numcut), 100, Prior$bart$numcut),
-      sparse = ifelse(is.null(Prior$bart$sparse), FALSE, Prior$bart$sparse),
-      theta = ifelse(is.null(Prior$bart$theta), 0.0, Prior$bart$theta),
-      omega = ifelse(is.null(Prior$bart$omega), 1.0, Prior$bart$omega),
-      a = ifelse(is.null(Prior$bart$a), 0.5, Prior$bart$a),
-      b = ifelse(is.null(Prior$bart$b), 1.0, Prior$bart$b),
-      rho = ifelse(is.null(Prior$bart$rho), nz, Prior$bart$rho),
-      aug = ifelse(is.null(Prior$bart$aug), FALSE, Prior$bart$aug),
-      burn = ifelse(is.null(Prior$bart$burn), 100, Prior$bart$burn)
-    )
+    bart_params <- .parse_bart_params(Prior$bart, nz)
+    bart_params$store_trees <- store_trees
   } else {
     if(is.null(Prior$Ad) & drawdelta) {Ad=BayesmConstant.A*diag(nvar*nz)} else {Ad=Prior$Ad}
     if(drawdelta) {if(ncol(Ad) != nvar*nz | nrow(Ad) != nvar*nz) {pandterm("Ad must be nvar*nz x nvar*nz")}}
     if(is.null(Prior$deltabar)& drawdelta) {deltabar=rep(0,nz*nvar)} else {deltabar=Prior$deltabar}
     if(drawdelta) {if(length(deltabar) != nz*nvar) {pandterm("deltabar must be of length nvar*nz")}}
   }
+  # ---------------------------------------------------------------------------
+  # Heteroscedastic covariance Sigma(Z_i) via modified-Cholesky tree ensembles.
+  # Additive extension beyond Wiemann (2025); auto-enabled by Prior$vartree.
+  # See R/heter_cov_priors.R for shared parsing/validation/printing.
+  # ---------------------------------------------------------------------------
+  hcv_flags   <- .parse_heter_cov_flags(Prior, nvar)
+  useHeterCov <- hcv_flags$useHeterCov
+  useFullCov  <- hcv_flags$useFullCov
+  auto_full   <- hcv_flags$auto_full
+  var_params  <- list()    # placeholder forwarded to C++ when useHeterCov=FALSE
+  phi_params  <- list()    # placeholder forwarded to C++ when useFullCov=FALSE
+  .validate_heter_cov(useHeterCov, useBART, ncomp, drawdelta, SignRes)
   if(is.null(Prior$a)) { a=rep(BayesmConstant.a,ncomp)} else {a=Prior$a}
   if(length(a) != ncomp) {pandterm("Requires dim(a)= ncomp (no of components)")}
   bada=FALSE
@@ -407,9 +430,9 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
   #
   #  compute pooled optimum
   #
-  # changed to default method - Nelder-Mead for more robust optimization- sometimes BFGS
-  #  fails to find optimum using exponential reparameterization
-  out=optim(betainit,llmnl_con,control=list( fnscale=-1,trace=0,reltol=1e-6), 
+  # Use explicit BFGS here (including nvar == 1) to avoid default Nelder-Mead
+  # scalar warnings and keep optimizer behavior consistent with other setup steps.
+  out=optim(betainit,llmnl_con,method="BFGS",control=list( fnscale=-1,trace=0,reltol=1e-6), 
             X=Xpooled,y=ypooled,SignRes=SignRes)
   
   betapooled=out$par
@@ -447,7 +470,7 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
   #  initialize values
   #
   # set initial values for the indicators
-  #     ind is of length(nlgt) and indicates which mixture component this obs
+  #     ind is of length(nlgt) and indicates which prior component this obs
   #     belongs to.
   #
   ind=NULL
@@ -475,7 +498,30 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
     Ad = matrix(0)
     bart_params = list(0)
   }
-  
+  # ---------------------------------------------------------------------------
+  # Heter-cov hyperparameter setup.  oldbetas (per-unit MLE betas) are now
+  # available, so lambda for the variance-tree chi^{-2} prior can be
+  # data-calibrated if the user did not supply one.  All parsing lives in
+  # R/heter_cov_priors.R for reuse by Negbin and Linear.
+  # ---------------------------------------------------------------------------
+  if (useHeterCov) {
+    var_params <- .parse_var_params(Prior$vartree, oldbetas, nz)
+    if (useFullCov) phi_params <- .parse_phi_params(Prior$phitree, nz, nu, nvar)
+    if (r_verbose)
+      .print_heter_cov_summary(useFullCov, var_params, phi_params,
+                               lambda_user_supplied = !is.null(Prior$vartree$lambda),
+                               auto_full = auto_full)
+  }
+
+  # Unique-row map for exact cache storage in C++ prediction payload.
+  if (drawdelta && useBART) {
+    z_map <- .build_unique_z_map(Z)
+    bart_params$z_index <- z_map$z_index
+    bart_params$n_unique <- nrow(z_map$Z_unique)
+  } else {
+    z_map <- NULL
+  }
+
   ###################################################################
   # Wayne Taylor
   # 09/22/2014
@@ -485,313 +531,46 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
                                        nu, V, s,
                                        R, keep, nprint, drawdelta,
                                        as.matrix(olddelta), a, oldprob, oldbetas, ind, SignRes,
-                                       useBART, bart_params)
+                                       useBART, bart_params,
+                                       useHeterCov, var_params, phi_params)
   ####################################################################
-  
-  if(!useBART & drawdelta){
-    attributes(draws$Deltadraw)$class=c("bayesm.mat","mcmc")
-    attributes(draws$Deltadraw)$mcpar=c(1,R,keep)}
-  attributes(draws$betadraw)$class=c("bayesm.hcoef")
-  attributes(draws$nmix)$class="bayesm.nmix"
-  class(draws) <- "rhierMnlRwMixture"
-  
+
+  if (useHeterCov) {
+    attributes(draws$betadraw)$class <- c("bayesm.hcoef")
+    attributes(draws$mu_draw)$class  <- c("bayesm.mat", "mcmc")
+    attributes(draws$mu_draw)$mcpar  <- c(1, R, keep)
+    # "bayesm.HART.HeterCov" is the marker superclass shared by all
+    # heteroscedastic-Sigma(Z) hierarchical models (MNL, Negbin, Linear); it
+    # lets predict_helpers.R dispatch generically without hardcoding any
+    # model-specific class name.
+    class(draws) <- c("rhierMnlRwMixtureHeterCov",
+                      "bayesm.HART.HeterCov",
+                      "rhierMnlRwMixture")
+  } else {
+    if(!useBART & drawdelta){
+      attributes(draws$Deltadraw)$class=c("bayesm.mat","mcmc")
+      attributes(draws$Deltadraw)$mcpar=c(1,R,keep)}
+    attributes(draws$betadraw)$class=c("bayesm.hcoef")
+    attributes(draws$nmix)$class="bayesm.nmix"
+    class(draws) <- "rhierMnlRwMixture"
+  }
+
+  draws <- .assemble_hart_cache(draws, z_map)
+
   return(draws)
 }
 
 # Methods ======================================================================
 
-# --- Internal Helper Functions for predict.rhierMnlRwMixture ---
+# --- Shared Helper Functions (in R/predict_helpers.R) ---
+# .validate_predict_inputs()  - Input validation for predict methods
+# .calculate_delta_z()        - Compute Delta(Z) via Deltadraw or pwbart
+# .add_mu_component()         - Add prior component mean mu
 
-# Helper 1: Minimal Input Validation
-.validate_predict_inputs <- function(object, newdata, type, burn, nsim) {
-  # Minimal validation: Type and basic object structure
-  valid_types <- c("DeltaZ", "DeltaZ+mu", "posterior_probs", "prior_probs")
-  if (!(type %in% valid_types)) {
-    stop(paste("Invalid type specified. Choose one of:", 
-               paste(valid_types, collapse = ", ")))
-  }
-  if (is.null(object$betadraw) || !is.array(object$betadraw) || 
-      length(dim(object$betadraw)) != 3) {
-    stop("Invalid object: object$betadraw missing or not a 3D array.")
-  }
-  
-  ndraws_total <- dim(object$betadraw)[3]
-  
-  # Minimal validation: burn and nsim (assuming numeric)
-  if (burn < 0 || burn >= ndraws_total) {
-    stop(paste0("burn must be >= 0 and < ndraws_total (", ndraws_total, ")."))
-  }
-  if (type == "prior_probs" && nsim <= 0) {
-    stop("nsim must be > 0 for type='prior_probs'.")
-  }
-  
-  return(ndraws_total)
-}#VALIDATE_PREDICT_INPUTS
-
-# Helper 2: Calculate DeltaZ component
-.calculate_delta_z <- function(object, newdata, burn, r_verbose, ...) {
-  nvar <- dim(object$betadraw)[2]
-  ndraws_total <- dim(object$betadraw)[3]
-  
-  # Check if Z covariates were used in the original model fit
-  model_has_Z <- !is.null(object$Deltadraw) || !is.null(object$bart_models)
-  
-  pred <- NULL # Initialize pred
-  npred <- 1 # Default if no Z
-  
-  if (model_has_Z) {
-    # Model with Z covariates - Assume newdata$Z is provided and is a matrix
-    if (is.null(newdata$Z)) {
-      stop("Model was fit with Z. 'newdata$Z' must be provided.")
-    }
-    npred <- nrow(newdata$Z)
-    nz <- ncol(newdata$Z)
-    
-    pred <- raw_pred <- array(0, dim = c(npred, nvar, ndraws_total))
-    
-    # Calculate DeltaZ component (systematic part)
-    if (!is.null(object$Deltadraw)) {
-      # Linear model prediction case
-      if (ncol(object$Deltadraw) != nz * nvar) {
-        stop(paste("Dimension mismatch: ncol(Deltadraw) is", 
-                   ncol(object$Deltadraw), "but expected nz*nvar =", nz * nvar))
-      }
-      for (i in 1:ndraws_total) {
-        Delta_draw <- matrix(object$Deltadraw[i, ], nrow = nz, byrow = TRUE)
-        pred[, , i] <- newdata$Z %*% Delta_draw
-      }#FOR
-    } else if (!is.null(object$bart_models)) {
-      # BART model prediction case
-      if (length(object$bart_models) != nvar) {
-        stop(paste("Number of BART models (", length(object$bart_models), 
-                   ") does not match nvar (", nvar, ")"))
-      }
-      # --- Prepare arguments for pwbart, handling ... ---
-      passed_args <- list(...)
-      pwbart_arg_names <- names(formals(bayesm.HART:::pwbart))
-      valid_passed_args <- passed_args[names(passed_args) %in% pwbart_arg_names]
-      base_args <- list(
-        x.test = newdata$Z,
-        mu = 0,
-        transposed = FALSE,
-        dodraws = TRUE
-      )
-      final_args_template <- utils::modifyList(base_args, valid_passed_args)
-      final_args_template <- 
-        final_args_template[names(final_args_template) %in% pwbart_arg_names]
-      # --- End argument preparation ---
-      
-      for (j in 1:nvar) {
-        if (is.null(object$bart_models[[j]]$treedraws)) {
-          stop(paste("Missing treedraws for BART model of coefficient", j))
-        }
-        if (r_verbose) {
-          cat("Predicting coefficient", j, "with BART model\n")
-        }
-        current_iter_args <- final_args_template
-        current_iter_args$treedraws <- object$bart_models[[j]]$treedraws
-        bart_pred <- do.call(bayesm.HART:::pwbart, current_iter_args)
-        raw_pred[, j, ] <- t(bart_pred)
-      }#FOR
-      
-      # Apply scaling using rooti (specific to this package's BART impl.)
-      if (is.null(object$nmix) || is.null(object$nmix$compdraw)) {
-        stop("Missing nmix$compdraw needed for BART scaling.")
-      }
-      for (s in 1:ndraws_total) {
-        if (is.null(object$nmix$compdraw[[s]][[1]]$rooti)) {
-          stop(paste("Missing nmix$compdraw[[ ", s, " ]][[1]]$rooti", sep = ""))
-        }
-        root_i_s <- object$nmix$compdraw[[s]][[1]]$rooti
-        if (inherits(try(solve(root_i_s), silent = TRUE), "try-error")) {
-          stop(paste("rooti matrix is singular for draw", s))
-        }
-        root_s_inv <- solve(root_i_s)
-        pred[, , s] <- raw_pred[, , s] %*% root_s_inv
-      }#FOR
-    }#ELSEIF
-  } else {
-    # Model without Z covariates
-    npred <- 1 # Predict only the baseline heterogeneity component
-    pred <- array(0, dim = c(npred, nvar, ndraws_total))
-  }#ELSE (model_has_Z)
-  
-  # Apply burn-in
-  if (burn >= ndraws_total) stop("Burn-in period too large.") # Should be caught earlier
-  if (burn > 0) {
-    kept_draws <- (burn + 1):ndraws_total
-    pred <- pred[, , kept_draws, drop = FALSE]
-  }#IF
-  
-  return(pred)
-}#CALCULATE_DELTA_Z
-
-# Helper 3: Add mu component
-.add_mu_component <- function(delta_z_array, object, kept_draws_indices) {
-  # Check ncomp and issue warning if > 1
-  ncomp <- 1 # Default
-  if (!is.null(object$nmix$probdraw)) {
-    ncomp <- ncol(object$nmix$probdraw)
-  } else if (!is.null(object$nmix$compdraw)) {
-    # Fallback: check length of first draw's components if probdraw missing
-    ncomp <- length(object$nmix$compdraw[[1]]) 
-  }
-  if (ncomp > 1) {
-    warning("DeltaZ+mu prediction currently only uses mu from the first mixture component.")
-  }
-  
-  # Extract mu from the first component for kept draws
-  mudraw <- tryCatch({
-    sapply(object$nmix$compdraw[kept_draws_indices], function(x) {
-      if (is.null(x[[1]]$mu)) stop("mu missing in component draw")
-      x[[1]]$mu
-    })
-  }, error = function(e) {
-    stop(paste("Error extracting mu from nmix$compdraw:", e$message))
-  })
-  
-  # Get dimensions from inputs
-  npred <- dim(delta_z_array)[1]
-  nvar <- dim(delta_z_array)[2]
-  ndraws_out <- dim(delta_z_array)[3]
-  
-  if (!is.matrix(mudraw) || nrow(mudraw) != nvar || ncol(mudraw) != ndraws_out) {
-    stop("Extracted mudraw has incorrect dimensions.")
-  }
-  
-  # Reshape mudraw and add to delta_z_array
-  mudraw_array <- array(mudraw, dim = c(nvar, ndraws_out, npred))
-  mudraw_array <- aperm(mudraw_array, c(3, 1, 2))
-  
-  return(delta_z_array + mudraw_array)
-}#ADD_MU_COMPONENT
-
-# Helper 4: Predict Posterior Probabilities
-.predict_posterior_probs <- function(object, newdata, kept_draws_indices, 
-                                     r_verbose) {
-  # Minimal validation assumes object$betadraw is valid from main validation
-  dims_beta <- dim(object$betadraw)
-  nlgt <- dims_beta[1]
-  nvar <- dims_beta[2]
-  ndraws_out <- length(kept_draws_indices)
-  
-  # Minimal newdata validation
-  if (is.null(newdata$p)) stop("newdata$p must be provided.")
-  p <- newdata$p
-  if (is.null(newdata$nlgtdata)) stop("newdata$nlgtdata must be provided.")
-  
-  # Initialize Probability List
-  prob_pred_list <- vector("list", nlgt)
-  names(prob_pred_list) <- paste0("Unit_", 1:nlgt)
-  
-  betadraw <- object$betadraw # Alias for readability
-  
-  # Calculate Probabilities
-  for (i in 1:nlgt) { # Loop through original units
-    if (r_verbose) cat("Calculating posterior probabilities for Unit", i, "of", 
-                       nlgt, "...\n")
-    
-    # Minimal check on this unit's X (assuming it exists and is matrix)
-    X_i <- newdata$nlgtdata[[i]]$X
-    # Assume dimensions are correct based on prior checks/usage
-    
-    T_i <- nrow(X_i) / p
-    # Initialize 3D array for this unit's probabilities
-    prob_array_i <- array(0.0, dim = c(T_i, p, ndraws_out))
-    
-    draw_count <- 0
-    for (s_orig in kept_draws_indices) { # Loop through kept draws indices
-      draw_count <- draw_count + 1
-      beta_is <- betadraw[i, , s_orig, drop = TRUE] # Stored posterior beta
-      
-      # Call helper function from utils.R (using :::)
-      # Assume bayesm.HART namespace is available or ::: is appropriate
-      probs_mat_is <- bayesm.HART:::calculate_mnl_probs_from_beta(X_i, beta_is, p)
-      
-      # Assign the T_i x p matrix to the s-th slice of the 3D array
-      prob_array_i[, , draw_count] <- probs_mat_is
-    }#FOR s_orig
-    prob_pred_list[[i]] <- prob_array_i # Assign 3D array to unit i
-  }#FOR i
-  if (r_verbose) cat("Posterior probability calculation complete.\n")
-  
-  return(prob_pred_list)
-}#PREDICT_POSTERIOR_PROBS
-
-# Helper 5: Predict Prior Probabilities
-.predict_prior_probs <- function(object, newdata, delta_z_array, 
-                                 kept_draws_indices_nmix, nsim, r_verbose) {
-  if (!requireNamespace("bayesm", quietly = TRUE)) {
-    stop("The 'bayesm' package is required for type='prior_probs'. Please install it.")
-  }
-  
-  # Minimal validation assumes object structure is valid
-  dims_beta <- dim(object$betadraw) # Used only for nvar
-  nvar <- dims_beta[2]
-  
-  npred <- dim(delta_z_array)[1]
-  ndraws_out <- dim(delta_z_array)[3]
-  
-  # Minimal newdata validation
-  if (is.null(newdata$p)) stop("newdata$p must be provided.")
-  p <- newdata$p
-  if (is.null(newdata$X)) stop("newdata$X must be provided as a list.")
-  
-  # Initialize Probability List
-  prob_pred_list <- vector("list", npred)
-  names(prob_pred_list) <- paste0("PredUnit_", 1:npred)
-  
-  # --- Calculate Probabilities ---
-  for (i in 1:npred) { # Loop through prediction units
-    if (r_verbose) cat("Calculating prior probabilities for Prediction Unit", i, 
-                       "of", npred, "...\n")
-    
-    # Minimal check on this unit's X (assuming it exists and is matrix)
-    X_i <- newdata$X[[i]]
-    # Assume dimensions are correct based on prior checks/usage
-    
-    T_i <- nrow(X_i) / p
-    # Initialize 3D array for this unit's probabilities
-    prob_array_i <- array(0.0, dim = c(T_i, p, ndraws_out))
-    
-    for (draw_idx in 1:ndraws_out) { # Loop through kept posterior draws
-      # Get systematic component for this unit/draw
-      DeltaZ_is <- delta_z_array[i, , draw_idx, drop = TRUE] # Already post-burn
-      
-      # Get mixture components for this draw (original index)
-      s_orig <- kept_draws_indices_nmix[draw_idx]
-      comps_s <- object$nmix$compdraw[[s_orig]]
-      pvec_s <- object$nmix$probdraw[s_orig, ]
-      
-      # Simulate eta, calculate beta, get probs, average over nsim
-      prob_is_sum <- matrix(0.0, nrow = T_i, ncol = p)
-      for (k in 1:nsim) {
-        # Simulate heterogeneity component eta_is ~ N(mu_s, Sigma_s) mixture
-        # bayesm::rmixture returns a list with $z (comp indicator) and $x (draw)
-        eta_is_k <- bayesm::rmixture(n = 1, pvec = pvec_s, comps = comps_s)$x
-        eta_is_k <- as.vector(eta_is_k) # Ensure it's a vector
-        
-        # Combine systematic and heterogeneity parts
-        beta_is_k <- DeltaZ_is + eta_is_k
-        
-        # Calculate probabilities for this simulated beta
-        # Assume bayesm.HART namespace is available or ::: is appropriate
-        probs_mat_is_k <- 
-          bayesm.HART:::calculate_mnl_probs_from_beta(X_i, beta_is_k, p)
-        
-        prob_is_sum <- prob_is_sum + probs_mat_is_k
-      } # End nsim loop
-      
-      # Average probabilities over nsim simulations
-      prob_array_i[, , draw_idx] <- prob_is_sum / nsim
-      
-    }#FOR draw_idx
-    prob_pred_list[[i]] <- prob_array_i # Assign 3D array to prediction unit i
-  }#FOR i
-  if (r_verbose) cat("Prior probability calculation complete.\n")
-  
-  return(prob_pred_list)
-}#PREDICT_PRIOR_PROBS
+# --- MNL-Specific predictive engines ---
+# Implementations are in R/predictive_mnl_engine.R:
+#   .predict_posterior_probs()
+#   .predict_prior_probs()
 
 
 # --- Refactored predict.rhierMnlRwMixture Method ---
@@ -799,81 +578,112 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
 #' Predict Method for rhierMnlRwMixture Objects
 #' @param object A fitted rhierMnlRwMixture object.
 #' @param newdata Optional list containing data for prediction. Structure depends
-#'   on `type`:
-#'   - For `type %in% c("DeltaZ", "DeltaZ+mu")`: Requires `newdata$Z`, a matrix
-#'     with `npred` rows for prediction units (if model was fit with Z).
-#'   - For `type = "posterior_probs"`: Requires `newdata$nlgtdata`, a list of
-#'     length `nlgt` (original number of units). Each element `\\[[i]]` must
-#'     contain `$X`, the design matrix `(T_i*p) x nvar` for unit `i`. Also
-#'     requires `newdata$p`, the number of alternatives.
-#'   - For `type = "prior_probs"`: Requires `newdata$Z` (if model fit with Z,
-#'     determining `npred`), `newdata$p`, and `newdata$X` (a list of length
-#'     `npred`, each element `\\[[i]]` having the design matrix `(T_i*p) x nvar`).
-#' @param type Type of prediction:
+#'   on `mode` and `type`:
+#'   - For `mode = "coefficients"` with `type %in% c("DeltaZ", "DeltaZ+mu", "SigmaZ")`:
+#'     requires `newdata$Z`, a matrix with `npred` rows for prediction units
+#'     (if model was fit with Z).
+#'   - For `mode = "posterior"` with `type = "choice_probs"`: requires
+#'     `newdata$nlgtdata`, a list of length `nlgt` (original number of units).
+#'     Each element `\\[[i]]` must contain `$X`, the design matrix `(T_i*p) x nvar`
+#'     for unit `i`. Also requires `newdata$p`, the number of alternatives.
+#'   - For `mode = "prior"` with `type = "choice_probs"`: requires `newdata$Z`
+#'     (if model fit with Z, determining `npred`), `newdata$p`, and `newdata$X`
+#'     (a list of length `npred`, each element `\\[[i]]` having design matrix
+#'     `(T_i*p) x nvar`).
+#' @param type Type of prediction within the selected `mode`:
 #'   - `"DeltaZ"`: Expected part-worths of the representative consumer, \eqn{\Delta(Z)}.
-#'   - `"DeltaZ+mu"`: Expected part-worths plus the mean of the unobserved heterogeneity component, \eqn{\Delta(Z) + \mu_j}. Note: for mixtures (`ncomp > 1`), this uses the mean \eqn{\mu_1} from the first component.
-#'   - `"posterior_probs"`: Posterior predictive choice probabilities for the original
-#'     estimation units using stored `betadraw`.
-#'   - `"prior_probs"`: Prior predictive choice probabilities for new prediction units
-#'     (based on `newdata$Z` or the overall mixture if no Z was used). Probabilities
-#'     are averaged over `nsim` draws from the heterogeneity mixture distribution
-#'     per posterior draw.
+#'   - `"DeltaZ+mu"`: Expected part-worths plus the mean of the unobserved heterogeneity component, \eqn{\Delta(Z) + \mu_1}. The package supports only `ncomp = 1`.
+#'   - `"choice_probs"`: Predictive choice probabilities (use with
+#'     `mode = "posterior"` or `mode = "prior"`).
+#'   - `"SigmaZ"`: Draws of the heteroscedastic covariance matrix \eqn{\Sigma(Z)}.
+#'     Available only for models fit with `Prior$vartree` (class marker
+#'     `"bayesm.HART.HeterCov"`).
+#' @param mode Prediction mode:
+#'   - `"coefficients"`: coefficient-level outputs (`DeltaZ`, `DeltaZ+mu`, `SigmaZ`).
+#'   - `"posterior"`: posterior predictive output (`type = "choice_probs"`).
+#'   - `"prior"`: prior predictive output (`type = "choice_probs"`).
 #' @param burn Integer, number of initial MCMC draws to discard.
-#' @param nsim Integer, number of draws from the heterogeneity mixture distribution
-#'   per posterior draw for `type = "prior_probs"`.
+#' @param nsim Integer, number of draws from the heterogeneity distribution
+#'   per posterior draw for `mode = "prior"` and `type = "choice_probs"`.
 #' @param r_verbose Logical, print progress updates?
 #' @param ... Additional arguments passed to underlying prediction functions
 #'   (e.g., `mc.cores`, `verbose` for BART `DeltaZ` predictions via `pwbart`).
 #' @return Depends on `type`:
 #'   - For `type %in% c("DeltaZ", "DeltaZ+mu")`: 3D array `[npred, nvar, ndraws_out]`
 #'     of predicted expected part-worths.
-#'   - For `type = "posterior_probs"`: List of length `nlgt`. Each element `\\[[i]]`
+#'   - For `type = "SigmaZ"`: 4D array `[npred, nvar, nvar, ndraws_out]` of
+#'     covariance draws at each prediction unit.
+#'   - For `mode = "posterior", type = "choice_probs"`: List of length `nlgt`.
+#'     Each element `\\[[i]]`
 #'     is a 3D array `[T_i, p, ndraws_out]` of posterior predictive choice probabilities
 #'     for unit `i`.
-#'   - For `type = "prior_probs"`: List of length `npred`. Each element `\\[[i]]`
+#'   - For `mode = "prior", type = "choice_probs"`: List of length `npred`.
+#'     Each element `\\[[i]]`
 #'     is a 3D array `[T_i, p, ndraws_out]` of prior predictive choice
 #'     probabilities for prediction unit `i`.
 #' @keywords internal
 #' @export
-predict.rhierMnlRwMixture <- function(object, newdata = NULL, type = "DeltaZ+mu", burn = 0, nsim = 10, r_verbose = TRUE, ...) {
-  
-  # 1. Initial Validation & Setup
-  ndraws_total <- .validate_predict_inputs(object, newdata, type, burn, nsim)
-  kept_draws_indices <- if (burn > 0) (burn + 1):ndraws_total else 1:ndraws_total
-  # Note: ndraws_out is derived within helpers where needed
-  
-  # 2. Dispatch based on type
-  if (type == "posterior_probs") {
-    
-    result <- .predict_posterior_probs(object, newdata, kept_draws_indices, 
-                                       r_verbose)
-    
-  } else if (type == "prior_probs") {
-    
-    # Calculate the base DeltaZ component (handles burn-in internally)
-    # Pass ellipsis for potential pwbart args
-    delta_z_array <- .calculate_delta_z(object, newdata, burn, r_verbose, ...) 
-    
-    # Predict prior probabilities (uses kept_draws_indices for nmix access)
-    result <- .predict_prior_probs(object, newdata, delta_z_array, 
-                                   kept_draws_indices, nsim, r_verbose)
-    
-  } else if (type %in% c("DeltaZ", "DeltaZ+mu")) {
-    
-    # Calculate the base DeltaZ component (handles burn-in internally)
-    # Pass ellipsis for potential pwbart args
-    result <- .calculate_delta_z(object, newdata, burn, r_verbose, ...) 
-    
-    if (type == "DeltaZ+mu") {
-      # Add mu component (uses kept_draws_indices for nmix access)
-      result <- .add_mu_component(result, object, kept_draws_indices)
+predict.rhierMnlRwMixture <- function(object, newdata = NULL,
+                                      type = "DeltaZ+mu", burn = 0, nsim = 10,
+                                      mode = "coefficients",
+                                      r_verbose = TRUE,
+                                      force_tree_eval = FALSE, ...) {
+  mode <- .resolve_predict_mode(mode)
+
+  if (mode %in% c("prior", "posterior")) {
+    if (!identical(type, "choice_probs")) {
+      stop("For rhierMnlRwMixture predictive modes, use type='choice_probs'.")
     }
-    
-  } else {
-    # Should be caught by initial validation, but defensive programming
-    stop("Internal error: Unhandled prediction type.") 
+    return(.predictive_dispatch(
+      object, newdata, mode = mode, type = "choice_probs",
+      burn = burn, nsim = nsim, r_verbose = r_verbose,
+      force_tree_eval = force_tree_eval, ...
+    ))
   }
-  
-  # 3. Return result
-  return(result)
+
+  structural_types <- c("DeltaZ", "DeltaZ+mu", "SigmaZ")
+  ndraws_total <- .validate_predict_inputs(object, newdata, type, burn, nsim,
+                                           valid_types = structural_types)
+  kept_draws_indices <- .kept_draw_indices(ndraws_total, burn)
+
+  # Heter-cov: evaluate every BART / varBART / phi-BART ensemble at newdata$Z
+  # exactly ONCE, then share the result with both .calculate_delta_z and
+  # .calculate_sigma_z.
+  hetercov_comps <- NULL
+  if (inherits(object, "bayesm.HART.HeterCov") &&
+      type %in% c("DeltaZ", "DeltaZ+mu", "SigmaZ")) {
+    if (is.null(newdata$Z))
+      stop("Heter-cov predictions require newdata$Z.")
+    map_seen <- .match_cached_unique_rows(object, newdata$Z)
+    seen_all <- !is.null(map_seen) && map_seen$all_seen
+    has_delta_cache <- !is.null(.cache_get(object, "DeltaZ_unique_draws"))
+    has_sigma_cache <- !is.null(.cache_get(object, "SigmaZ_unique_draws"))
+
+    need_tree_eval <- .has_tree_payload(object) && (
+      force_tree_eval ||
+      (type %in% c("DeltaZ", "DeltaZ+mu") && !(has_delta_cache && seen_all)) ||
+      (type == "SigmaZ" && !(has_sigma_cache && seen_all))
+    )
+    if (need_tree_eval) {
+      nvar  <- dim(object$betadraw)[2]
+      npred <- nrow(newdata$Z)
+      hetercov_comps <- .hetercov_components(object, newdata$Z, npred, nvar,
+                                             ndraws_total, r_verbose)
+    }
+  }
+  if (type == "SigmaZ") {
+    return(.predict_structural_common(
+      object, newdata, type, burn, r_verbose,
+      force_tree_eval = force_tree_eval,
+      hetercov_comps = hetercov_comps
+    ))
+  }
+
+  if (type %in% c("DeltaZ", "DeltaZ+mu")) {
+    return(.predict_structural_common(
+      object, newdata, type, burn, r_verbose,
+      force_tree_eval = force_tree_eval,
+      hetercov_comps = hetercov_comps, ...
+    ))
+  }
 }#PREDICT.RHIERMNLRWMIXTURE

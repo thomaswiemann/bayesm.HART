@@ -133,6 +133,11 @@ test_that("Input validation works", {
   expect_error(capture.output(rhierMnlRwMixture(Data = valid_data, Prior = bad_prior_ncomp, Mcmc = valid_mcmc)),
                regexp = "Requires Prior element ncomp")
 
+  bad_prior_ncomp_gt1 <- valid_prior
+  bad_prior_ncomp_gt1$ncomp <- 2
+  expect_error(capture.output(rhierMnlRwMixture(Data = valid_data, Prior = bad_prior_ncomp_gt1, Mcmc = valid_mcmc)),
+               regexp = "Only ncomp = 1 is currently supported")
+
   ncoef_val <- valid_data$true_values$dimensions$ncoef
   bad_prior_signres_len <- valid_prior; bad_prior_signres_len$SignRes <- rep(0, ncoef_val + 1)
   expect_error(capture.output(rhierMnlRwMixture(Data = valid_data, Prior = bad_prior_signres_len, Mcmc = valid_mcmc)),
@@ -552,10 +557,7 @@ test_that("Edge cases run without error", {
   # Minimal predictors (only 1 Xa, no const, no Xd)
   set.seed(611)
   sim_minpred <- sim_hier_mnl(nlgt = 50, nT = 5, p = 3, nz = 1, nXa = 1, nXd = 0, const = FALSE, seed = 612)
-  expect_warning(
-    run_quick_hmnl(sim_minpred, Prior_edge, Mcmc_edge),
-    regexp = "one-dimensional optimization by Nelder-Mead is unreliable"
-  )
+  expect_no_warning(run_quick_hmnl(sim_minpred, Prior_edge, Mcmc_edge))
 
   # Minimal Z (nz = 1)
   set.seed(613)
@@ -698,7 +700,7 @@ test_that("Mixture with ncomp = 1 parameter recovery is reasonable", {
 
   # --- Settings ---
   nlgt_rec <- 500 # More units for better estimates
-  nT_rec <- 10
+  nT_rec <- 20    # Increased T to prevent BART from overfitting unit-level noise
   p_rec <- 3
   nz_rec <- 2
   R_rec <- 1000  # More draws needed for recovery check
@@ -837,183 +839,22 @@ test_that("Mixture with ncomp = 1 parameter recovery is reasonable", {
 
 }) 
 
-test_that("Mixture parameter recovery is reasonable", {
-
-  # --- Settings ---
-  nlgt_rec <- 300 # More units for better estimates
-  nT_rec <- 20
-  p_rec <- 3
-  nz_rec <- 2
-  R_rec <- 3000  # More draws needed for recovery check
-  keep_rec <- 10
-  Mcmc_rec <- list(R = R_rec, keep = keep_rec, nprint = 0)
-
-  # --- Mixture Component Recovery (ncomp > 1) ---
+test_that("rhierMnlRwMixture rejects ncomp > 1", {
   set.seed(807)
-  ncomp_rec <- 2
-  # Explicitly calculate ncoef based on sim_hier_mnl defaults being used
-  const_rec <- TRUE # Default in sim_hier_mnl
-  nXd_rec <- 0   # Default in sim_hier_mnl
-  ncoef_rec <- const_rec * (p_rec - 1) + (p_rec - 1) * nXd_rec + 1
-
-  # Restore definition of true_comps_rec_lin
-  true_comps_rec_lin <- list(
-   list(mu = c(-2, rep(0, ncoef_rec - 1)), rooti = diag(0.5, ncoef_rec)),
-   list(mu = c( 2, rep(0, ncoef_rec - 1)), rooti = diag(1, ncoef_rec))
+  sim_data <- sim_hier_mnl(
+    nlgt = 30, nT = 5, p = 3, nz = 2, nXa = 1,
+    beta_func_type = "linear", seed = 808
   )
-  # Revert the first sim call to use the defined list
-  sim_data_mix_rec <- sim_hier_mnl(
-    nlgt = nlgt_rec, nT = nT_rec, p = p_rec, nz = nz_rec, nXa = 1, 
-    nXd = 0, # <<< Add nXd = 0
-    const = TRUE, # Explicitly state const=TRUE (default, but good practice)
-    beta_func_type = "linear",
-    ncomp = ncomp_rec,
-    mixture_comps = true_comps_rec_lin, # Use the defined list again
-    seed = 808
+  expect_error(
+    capture.output(
+      rhierMnlRwMixture(
+        Data = sim_data,
+        Prior = list(ncomp = 2),
+        Mcmc = list(R = 50, keep = 1, nprint = 0)
+      )
+    ),
+    regexp = "Only ncomp = 1 is currently supported"
   )
-  Prior_mix_rec <- list(ncomp = ncomp_rec)
-
-  set.seed(809)
-  fit_mix_rec <- run_quick_hmnl(sim_data_mix_rec, Prior_mix_rec, Mcmc_rec)
-
-  # Check probdraw recovery
-  true_pvec_lin <- sim_data_mix_rec$true_values$true_params$pvec
-  est_pvec_mean_lin <- colMeans(fit_mix_rec$nmix$probdraw)
-  expect_equal(sum(est_pvec_mean_lin), 1.0, tolerance = 1e-6,
-               label = "Linear Mixture: Posterior mean pvec should sum to 1")
-
-  # Check compdraw recovery (mu and rooti) - accounting for label switching
-  # Extract posterior means for each component
-  draws <- fit_mix_rec$nmix$compdraw
-  ndraws <- length(draws)
-
-  ncoef <- length(draws[[1]][[1]]$mu) # Get ncoef from the mu vector
-  
-  # Initialize storage for means
-  mu_means <- array(0, dim = c(ncoef, ncomp_rec))
-  rooti_means <- array(0, dim = c(ncoef, ncoef, ncomp_rec))
-  
-  # Calculate means (sum across draws)
-  for (r in 1:ndraws) {
-    for (c in 1:ncomp_rec) {
-      mu_means[, c] <- mu_means[, c] + as.vector(draws[[r]][[c]]$mu)
-      rooti_means[, , c] <- rooti_means[, , c] + draws[[r]][[c]]$rooti
-    }
-  }
-  mu_means <- mu_means / ndraws
-  rooti_means <- rooti_means / ndraws
-
-  # --- Order components for comparison (handle label switching) ---
-  # Order estimated components based on the first element of mu
-  est_order_lin <- order(mu_means[1, ])
-  mu_means_ordered_lin <- mu_means[, est_order_lin, drop=FALSE]
-  rooti_means_ordered_lin <- rooti_means[, , est_order_lin, drop=FALSE]
-
-  # Order true components based on the first element of mu
-  true_order_lin <- order(sapply(true_comps_rec_lin, function(x) x$mu[1]))
-  true_comps_rec_ordered_lin <- true_comps_rec_lin[true_order_lin]
-
-  # Compare ordered pvec
-  expect_equal(est_pvec_mean_lin[est_order_lin], true_pvec_lin[true_order_lin],
-               tolerance = 0.4,
-               label = "Linear Mixture: Ordered posterior mean pvec far from ordered true pvec")
-
-  # --- Compare ordered components ---
-  # Compare Mu vectors
-  expect_equal(mu_means_ordered_lin[, 1], true_comps_rec_ordered_lin[[1]]$mu,
-               tolerance = 0.5, # Still using loose tolerance
-               label = "Mixture: Ordered mu for component 1 doesn't match true")
-  expect_equal(mu_means_ordered_lin[, 2], true_comps_rec_ordered_lin[[2]]$mu,
-               tolerance = 0.5,
-               label = "Mixture: Ordered mu for component 2 doesn't match true")
-
-  # Compare Rooti matrices
-  expect_equal(rooti_means_ordered_lin[, , 1], true_comps_rec_ordered_lin[[1]]$rooti,
-               tolerance = 0.5,
-               label = "Mixture: Ordered rooti for component 1 doesn't match true")
-  expect_equal(rooti_means_ordered_lin[, , 2], true_comps_rec_ordered_lin[[2]]$rooti,
-               tolerance = 1.5,
-               label = "Mixture: Ordered rooti for component 2 doesn't match true")
-
-  # --- SKIP BART Mixture Recovery PART for now ---
-  # --- Test Mixture Component Recovery (ncomp > 1, BART DeltaZ) ---
-  # set.seed(901)
-  # # Use ncoef_rec calculated above
-  # true_comps_rec_bart <- true_comps_rec_lin # Reuse component defs
-  #
-  # sim_data_mix_bart_rec <- sim_hier_mnl(
-  #   nlgt = nlgt_rec, nT = nT_rec, p = p_rec, nz = nz_rec, nXa = 1,
-  #   nXd = 0, # <<< Add nXd = 0
-  #   const = TRUE, # Explicitly state const=TRUE (default, but good practice)
-  #   beta_func_type = "step", # Use step for BART test
-  #   ncomp = ncomp_rec,
-  #   mixture_comps = true_comps_rec_bart,
-  #   seed = 902
-  # )
-  # Prior_mix_bart_rec <- list(ncomp = ncomp_rec,
-  #                            bart = list(num_trees = 100))
-  #
-  # fit_mix_bart_rec <- run_quick_hmnl(sim_data_mix_bart_rec, Prior_mix_bart_rec, Mcmc_rec)
-  #
-  # # Check probdraw recovery
-  # true_pvec_bart <- sim_data_mix_bart_rec$true_values$true_params$pvec
-  # est_pvec_mean_bart <- colMeans(fit_mix_bart_rec$nmix$probdraw)
-  # expect_equal(sum(est_pvec_mean_bart), 1.0, tolerance = 1e-6,
-  #              label = "BART Mixture: Posterior mean pvec should sum to 1")
-  #
-  # # Check compdraw recovery (mu and rooti) - accounting for label switching
-  # # Extract posterior means for each component
-  # draws_bart <- fit_mix_bart_rec$nmix$compdraw
-  # ndraws_bart <- length(draws_bart)
-  #
-  # ncoef_bart <- length(draws_bart[[1]][[1]]$mu) # Get ncoef from the mu vector
-  # 
-  # # Initialize storage for means
-  # mu_means_bart <- array(0, dim = c(ncoef_bart, ncomp_rec))
-  # rooti_means_bart <- array(0, dim = c(ncoef_bart, ncoef_bart, ncomp_rec))
-  # 
-  # # Calculate means (sum across draws)
-  # for (r in 1:ndraws_bart) {
-  #   for (c in 1:ncomp_rec) {
-  #     mu_means_bart[, c] <- mu_means_bart[, c] + as.vector(draws_bart[[r]][[c]]$mu)
-  #     rooti_means_bart[, , c] <- rooti_means_bart[, , c] + draws_bart[[r]][[c]]$rooti
-  #   }
-  # }
-  # mu_means_bart <- mu_means_bart / ndraws_bart
-  # rooti_means_bart <- rooti_means_bart / ndraws_bart
-  #
-  # # --- Order components for comparison (handle label switching) ---
-  # # Order estimated components based on the first element of mu
-  # est_order_bart <- order(mu_means_bart[1, ])
-  # mu_means_ordered_bart <- mu_means_bart[, est_order_bart, drop=FALSE]
-  # rooti_means_ordered_bart <- rooti_means_bart[, , est_order_bart, drop=FALSE]
-  #
-  # # Order true components based on the first element of mu
-  # true_order_bart <- order(sapply(true_comps_rec_bart, function(x) x$mu[1]))
-  # true_comps_rec_ordered_bart <- true_comps_rec_bart[true_order_bart]
-  #
-  # # Compare ordered pvec
-  # expect_equal(est_pvec_mean_bart[est_order_bart], true_pvec_bart[true_order_bart],
-  #              tolerance = 0.4,
-  #              label = "BART Mixture: Ordered posterior mean pvec far from ordered true pvec")
-  #
-  # # --- Compare ordered components ---
-  # # Compare Mu vectors -- unidentified, skipping for now
-  # #   expect_equal(mu_means_ordered_bart[, 1], true_comps_rec_ordered_bart[[1]]$mu,
-  # #                tolerance = 0.5, # Still using loose tolerance
-  # #                label = "Mixture: Ordered mu for component 1 doesn't match true")
-  # #   expect_equal(mu_means_ordered_bart[, 2], true_comps_rec_ordered_bart[[2]]$mu,
-  # #                tolerance = 0.5,
-  # #                label = "Mixture: Ordered mu for component 2 doesn't match true")
-  #
-  # # Compare Rooti matrices
-  # expect_equal(rooti_means_ordered_bart[, , 1], true_comps_rec_ordered_bart[[1]]$rooti,
-  #              tolerance = 0.5,
-  #              label = "Mixture: Ordered rooti for component 1 doesn't match true")
-  # expect_equal(rooti_means_ordered_bart[, , 2], true_comps_rec_ordered_bart[[2]]$rooti,
-  #              tolerance = 1.5,
-  #              label = "Mixture: Ordered rooti for component 2 doesn't match true")
-
-}) 
+})
 
 
