@@ -40,6 +40,7 @@ struct HeterCovState {
     std::vector<std::stringstream>             treess;       // mean
     std::vector<std::stringstream>             var_treess;   // var
     std::vector<std::vector<std::stringstream>> phi_treess;  // phi (jagged)
+    bool store_trees;
 
     // ---- Output cubes / matrices (owned) ----------------------------------
     arma::cube  varcount,    varprob;       // mean trees
@@ -57,6 +58,12 @@ struct HeterCovState {
     // ---- Per-iter state consumed by Step E --------------------------------
     arma::vec   mu_post;     // current mu draw (length nvar)
     arma::mat   delta_Z;     // nlgt x nvar; delta_Z(i,.) = Sigma(Z_i)^{1/2} delta_i
+
+    // ---- Optional keep-time cache payload ----------------------------------
+    bool        has_unique_map;
+    arma::uvec  unique_first_idx;       // n_unique, 0-based row indices
+    arma::cube  delta_z_unique_draws;   // n_unique x nvar x (R/keep)
+    arma::cube  sigma_z_unique_flat;    // n_unique x (nvar*nvar) x (R/keep)
 };
 
 // ---------------------------------------------------------------------------

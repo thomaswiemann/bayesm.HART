@@ -68,3 +68,31 @@ calculate_mnl_probs_from_beta <- function(X_i, beta_is, p) {
     burn      = bart_list$burn %||% 100
   )
 }#.parse_bart_params
+
+# Build exact unique-row mapping for Z matrices.
+# Returns:
+#   - Z_unique: unique rows in first-appearance order
+#   - z_index:  length nrow(Z), 1-based map into Z_unique
+#   - z_key:    stable row keys aligned with Z_unique (for fast matching)
+.build_unique_z_map <- function(Z) {
+  if (!is.matrix(Z)) stop("Internal error: Z must be a matrix.")
+  if (nrow(Z) < 1L) stop("Internal error: Z must have at least one row.")
+
+  # 17 significant digits is sufficient to preserve exact double identity for
+  # values generated/retained within the same R session object.
+  row_key <- apply(Z, 1, function(r) paste(sprintf("%.17g", r), collapse = "\r"))
+  keep_unique <- !duplicated(row_key)
+
+  Z_unique <- Z[keep_unique, , drop = FALSE]
+  z_key <- row_key[keep_unique]
+  z_index <- match(row_key, z_key)
+  if (anyNA(z_index)) {
+    stop("Internal error: failed to build z_index for unique-row map.")
+  }
+
+  list(
+    Z_unique = Z_unique,
+    z_index = as.integer(z_index),
+    z_key = z_key
+  )
+}

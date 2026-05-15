@@ -259,9 +259,11 @@ if(sum(dim(V)==c(nvar,nvar)) != 2) pandterm("Invalid V in prior")
 
 # ---- HART prior modification ----
 useBART <- ifelse(!is.null(Prior$bart) & drawdelta, TRUE, FALSE)
+store_trees <- if (is.null(Prior$store_trees)) TRUE else isTRUE(Prior$store_trees)
 bart_params <- NULL
 if (useBART) {
   bart_params <- .parse_bart_params(Prior$bart, nz)
+  bart_params$store_trees <- store_trees
 }
 # ---- end HART prior modification ----
 
@@ -375,6 +377,14 @@ if (!useBART) {
 }
 # ---- end HART initialization ----
 
+if (drawdelta && useBART) {
+  z_map <- .build_unique_z_map(Z)
+  bart_params$z_index <- z_map$z_index
+  bart_params$n_unique <- nrow(z_map$Z_unique)
+} else {
+  z_map <- NULL
+}
+
 oldprob=rep(1/ncomp,ncomp)
 
 # Per-unit OLS slopes: used as the lambda baseline for vartree auto-calibration
@@ -432,6 +442,27 @@ if (useHeterCov) {
   class(draws) <- "rhierLinearMixture"
 }
 
+cache <- attr(draws, "hart_cache", exact = TRUE)
+if (is.null(cache)) cache <- list()
+if (!is.null(z_map)) {
+  cache$Z_unique <- z_map$Z_unique
+  cache$z_index <- z_map$z_index
+  cache$z_key <- z_map$z_key
+}
+if (!is.null(draws$DeltaZ_unique_draws)) {
+  cache$DeltaZ_unique_draws <- draws$DeltaZ_unique_draws
+  draws$DeltaZ_unique_draws <- NULL
+}
+if (!is.null(draws$SigmaZ_unique_draws_flat) && !is.null(cache$Z_unique)) {
+  ndraws <- dim(draws$betadraw)[3]
+  nvar_fit <- dim(draws$betadraw)[2]
+  n_unique <- nrow(cache$Z_unique)
+  cache$SigmaZ_unique_draws <- array(draws$SigmaZ_unique_draws_flat,
+    dim = c(n_unique, nvar_fit, nvar_fit, ndraws))
+  draws$SigmaZ_unique_draws_flat <- NULL
+}
+if (length(cache) > 0L) attr(draws, "hart_cache") <- cache
+
 return(draws)
 }
 
@@ -463,17 +494,20 @@ return(draws)
 #' @export
 predict.rhierLinearMixture <- function(object, newdata = NULL,
                                         type = "DeltaZ+mu", burn = 0,
-                                        r_verbose = TRUE, ...) {
+                                        r_verbose = TRUE,
+                                        force_tree_eval = FALSE, ...) {
   valid_types <- c("DeltaZ", "DeltaZ+mu", "SigmaZ")
   ndraws_total <- .validate_predict_inputs(object, newdata, type, burn, nsim = 1,
                                            valid_types = valid_types)
   kept_draws_indices <- if (burn > 0) (burn + 1):ndraws_total else 1:ndraws_total
 
   if (type == "SigmaZ") {
-    return(.calculate_sigma_z(object, newdata, burn, r_verbose))
+    return(.calculate_sigma_z(object, newdata, burn, r_verbose,
+                             force_tree_eval = force_tree_eval))
   }
 
-  result <- .calculate_delta_z(object, newdata, burn, r_verbose, ...)
+  result <- .calculate_delta_z(object, newdata, burn, r_verbose,
+                               force_tree_eval = force_tree_eval, ...)
 
   if (type == "DeltaZ+mu") {
     result <- .add_mu_component(result, object, kept_draws_indices)

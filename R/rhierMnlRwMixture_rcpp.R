@@ -255,10 +255,12 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
       V=Prior$V } }
   if(sum(dim(V)==c(nvar,nvar)) !=2) pandterm("Invalid V in prior")
   useBART <- ifelse(!is.null(Prior$bart) & drawdelta, TRUE, FALSE)
+  store_trees <- if (is.null(Prior$store_trees)) TRUE else isTRUE(Prior$store_trees)
   bart_params = Ad = deltabar = NULL # Set to NULL if unused
   if (useBART) {
     # Bart parameter defaults
     bart_params <- .parse_bart_params(Prior$bart, nz)
+    bart_params$store_trees <- store_trees
   } else {
     if(is.null(Prior$Ad) & drawdelta) {Ad=BayesmConstant.A*diag(nvar*nz)} else {Ad=Prior$Ad}
     if(drawdelta) {if(ncol(Ad) != nvar*nz | nrow(Ad) != nvar*nz) {pandterm("Ad must be nvar*nz x nvar*nz")}}
@@ -516,6 +518,15 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
                                auto_full = auto_full)
   }
 
+  # Unique-row map for exact cache storage in C++ prediction payload.
+  if (drawdelta && useBART) {
+    z_map <- .build_unique_z_map(Z)
+    bart_params$z_index <- z_map$z_index
+    bart_params$n_unique <- nrow(z_map$Z_unique)
+  } else {
+    z_map <- NULL
+  }
+
   ###################################################################
   # Wayne Taylor
   # 09/22/2014
@@ -548,6 +559,27 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
     attributes(draws$nmix)$class="bayesm.nmix"
     class(draws) <- "rhierMnlRwMixture"
   }
+
+  cache <- attr(draws, "hart_cache", exact = TRUE)
+  if (is.null(cache)) cache <- list()
+  if (!is.null(z_map)) {
+    cache$Z_unique <- z_map$Z_unique
+    cache$z_index <- z_map$z_index
+    cache$z_key <- z_map$z_key
+  }
+  if (!is.null(draws$DeltaZ_unique_draws)) {
+    cache$DeltaZ_unique_draws <- draws$DeltaZ_unique_draws
+    draws$DeltaZ_unique_draws <- NULL
+  }
+  if (!is.null(draws$SigmaZ_unique_draws_flat) && !is.null(cache$Z_unique)) {
+    ndraws <- dim(draws$betadraw)[3]
+    nvar_fit <- dim(draws$betadraw)[2]
+    n_unique <- nrow(cache$Z_unique)
+    cache$SigmaZ_unique_draws <- array(draws$SigmaZ_unique_draws_flat,
+      dim = c(n_unique, nvar_fit, nvar_fit, ndraws))
+    draws$SigmaZ_unique_draws_flat <- NULL
+  }
+  if (length(cache) > 0L) attr(draws, "hart_cache") <- cache
 
   return(draws)
 }
@@ -652,10 +684,19 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
       stop("npred (from delta_z_array) does not match nrow(newdata$Z).")
     if (is.null(object$mu_draw))
       stop("Heter-cov object missing mu_draw.")
-    if (is.null(hetercov_comps))
+    mu_kept <- object$mu_draw[kept_draws_indices_nmix, , drop = FALSE]  # ndraws_out x nvar
+
+    sigma_kept <- NULL
+    sigma_cache <- .cache_get(object, "SigmaZ_unique_draws")
+    if (!is.null(sigma_cache)) {
+      map <- .match_cached_unique_rows(object, newdata$Z)
+      if (!is.null(map) && map$all_seen) {
+        sigma_kept <- sigma_cache[map$idx, , , kept_draws_indices_nmix, drop = FALSE]
+      }
+    }
+    if (is.null(sigma_kept) && is.null(hetercov_comps))
       hetercov_comps <- .hetercov_components(object, newdata$Z, npred, nvar,
                                              ndraws_total, r_verbose)
-    mu_kept <- object$mu_draw[kept_draws_indices_nmix, , drop = FALSE]  # ndraws_out x nvar
   } else {
     .assert_single_component_nmix(object, "prior_probs prediction")
   }
@@ -675,23 +716,33 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
       s_orig    <- kept_draws_indices_nmix[draw_idx]
 
       if (is_heter) {
-        # eta = mu_s + Sigma(Z*_i)^{1/2} z, with z ~ N(0, I), nsim copies.
-        z_mat <- matrix(rnorm(nsim * nvar), nrow = nsim, ncol = nvar)
-        d_is  <- hetercov_comps$d_arr[i, , s_orig]
-        x_mat <- z_mat * matrix(sqrt(d_is), nrow = nsim, ncol = nvar,
-                                byrow = TRUE)
-        if (hetercov_comps$use_full) {
-          phi_is <- hetercov_comps$phi_arr[i, , , s_orig]   # nvar x nvar lower
-          for (k in seq_len(nsim)) {
-            x <- x_mat[k, ]
-            for (j in 2:nvar) {
-              x[j] <- x[j] + sum(phi_is[j, seq_len(j - 1)] * x[seq_len(j - 1)])
-            }
-            x_mat[k, ] <- x
-          }
-        }
         mu_s    <- mu_kept[draw_idx, ]
-        eta_mat <- x_mat + matrix(mu_s, nrow = nsim, ncol = nvar, byrow = TRUE)
+        z_mat <- matrix(rnorm(nsim * nvar), nrow = nsim, ncol = nvar)
+        if (!is.null(sigma_kept)) {
+          Sigma_is <- sigma_kept[i, , , draw_idx]
+          U <- tryCatch(chol(Sigma_is), error = function(e) NULL)
+          if (is.null(U)) {
+            stop(sprintf("prior_probs heter-cov failed at draw %d, unit %d: SigmaZ chol failed.",
+                         s_orig, i))
+          }
+          eta_mat <- z_mat %*% U + matrix(mu_s, nrow = nsim, ncol = nvar, byrow = TRUE)
+        } else {
+          # eta = mu_s + Sigma(Z*_i)^{1/2} z, with z ~ N(0, I), nsim copies.
+          d_is  <- hetercov_comps$d_arr[i, , s_orig]
+          x_mat <- z_mat * matrix(sqrt(d_is), nrow = nsim, ncol = nvar,
+                                  byrow = TRUE)
+          if (hetercov_comps$use_full) {
+            phi_is <- hetercov_comps$phi_arr[i, , , s_orig]   # nvar x nvar lower
+            for (k in seq_len(nsim)) {
+              x <- x_mat[k, ]
+              for (j in 2:nvar) {
+                x[j] <- x[j] + sum(phi_is[j, seq_len(j - 1)] * x[seq_len(j - 1)])
+              }
+              x_mat[k, ] <- x
+            }
+          }
+          eta_mat <- x_mat + matrix(mu_s, nrow = nsim, ncol = nvar, byrow = TRUE)
+        }
 
         prob_is_sum <- matrix(0.0, nrow = T_i, ncol = p)
         for (k in seq_len(nsim)) {
@@ -772,7 +823,8 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
 #' @export
 predict.rhierMnlRwMixture <- function(object, newdata = NULL,
                                       type = "DeltaZ+mu", burn = 0, nsim = 10,
-                                      r_verbose = TRUE, ...) {
+                                      r_verbose = TRUE,
+                                      force_tree_eval = FALSE, ...) {
   mnl_types    <- c("DeltaZ", "DeltaZ+mu", "posterior_probs", "prior_probs", "SigmaZ")
   ndraws_total <- .validate_predict_inputs(object, newdata, type, burn, nsim,
                                            valid_types = mnl_types)
@@ -790,18 +842,37 @@ predict.rhierMnlRwMixture <- function(object, newdata = NULL,
       type %in% c("DeltaZ", "DeltaZ+mu", "prior_probs", "SigmaZ")) {
     if (is.null(newdata$Z))
       stop("Heter-cov predictions require newdata$Z.")
-    nvar  <- dim(object$betadraw)[2]
-    npred <- nrow(newdata$Z)
-    hetercov_comps <- .hetercov_components(object, newdata$Z, npred, nvar,
-                                           ndraws_total, r_verbose)
+    map_seen <- .match_cached_unique_rows(object, newdata$Z)
+    seen_all <- !is.null(map_seen) && map_seen$all_seen
+    has_delta_cache <- !is.null(.cache_get(object, "DeltaZ_unique_draws"))
+    has_sigma_cache <- !is.null(.cache_get(object, "SigmaZ_unique_draws"))
+
+    need_tree_eval <- .has_tree_payload(object) && (
+      force_tree_eval ||
+      (type %in% c("DeltaZ", "DeltaZ+mu") && !(has_delta_cache && seen_all)) ||
+      (type == "SigmaZ" && !(has_sigma_cache && seen_all)) ||
+      (type == "prior_probs" && !(has_sigma_cache && seen_all))
+    )
+    if (type == "prior_probs" && !.has_tree_payload(object) &&
+        !(has_sigma_cache && seen_all)) {
+      stop("prior_probs prediction requires stored tree objects for unseen Z; refit with store_trees=TRUE.")
+    }
+    if (need_tree_eval) {
+      nvar  <- dim(object$betadraw)[2]
+      npred <- nrow(newdata$Z)
+      hetercov_comps <- .hetercov_components(object, newdata$Z, npred, nvar,
+                                             ndraws_total, r_verbose)
+    }
   }
   if (type == "SigmaZ") {
     return(.calculate_sigma_z(object, newdata, burn, r_verbose,
-                              hetercov_comps = hetercov_comps))
+                              hetercov_comps = hetercov_comps,
+                              force_tree_eval = force_tree_eval))
   }
 
   delta_z <- .calculate_delta_z(object, newdata, burn, r_verbose,
-                                hetercov_comps = hetercov_comps, ...)
+                                hetercov_comps = hetercov_comps,
+                                force_tree_eval = force_tree_eval, ...)
   if (type == "DeltaZ")    return(delta_z)
   if (type == "DeltaZ+mu") return(.add_mu_component(delta_z, object,
                                                     kept_draws_indices))

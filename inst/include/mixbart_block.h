@@ -19,11 +19,17 @@ struct MixBartState {
     std::vector<bart>              bart_models;
     std::vector<std::stringstream> treess;
     arma::cube                     varcount, varprob;
+    bool                           store_trees;
 
     // ---------- Per-iter outputs consumed by Step E ----------
     arma::mat   delta_Z;        // nlgt x nvar
     Rcpp::List  oldcomp;        // mixture components (current draw)
     arma::vec   oldprob, ind;   // current mixture probs / labels
+
+    // ---------- Optional keep-time cache payload ----------
+    bool        has_unique_map;
+    arma::uvec  unique_first_idx;     // n_unique, 0-based row indices into delta_Z
+    arma::cube  delta_z_unique_draws; // n_unique x nvar x (R/keep)
 
 };
 

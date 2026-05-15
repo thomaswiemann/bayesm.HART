@@ -15,6 +15,10 @@ void hetercov_init(HeterCovState& s,
     s.nlgt = nlgt; s.nz = nz; s.nvar = nvar; s.R = R; s.keep = keep;
     s.useFullCov = (phi_params.size() > 0);
     s.n_pairs    = s.useFullCov ? (nvar * (nvar - 1)) / 2 : 0;
+    s.store_trees = bart_params.containsElementNamed("store_trees")
+        ? as<bool>(bart_params["store_trees"])
+        : true;
+    s.has_unique_map = false;
 
     // ---- DART configuration --------------------------------------------------
     // Each ensemble (mean / variance / phi) is independently sparse-eligible.
@@ -90,6 +94,38 @@ void hetercov_init(HeterCovState& s,
                 s.phi_treess[j][k] << R / keep << " " << phi_num_trees << " " << nz << std::endl;
             }
         }
+    }
+
+    if (bart_params.containsElementNamed("z_index")) {
+        IntegerVector z_index = bart_params["z_index"];
+        if ((int)z_index.size() != nlgt)
+            stop("hetercov_init: z_index length must match nreg.");
+        int n_unique = bart_params.containsElementNamed("n_unique")
+            ? as<int>(bart_params["n_unique"])
+            : 0;
+        if (n_unique <= 0)
+            n_unique = Rcpp::max(z_index);
+        if (n_unique <= 0)
+            stop("hetercov_init: n_unique must be positive when z_index is supplied.");
+
+        std::vector<int> first_idx(n_unique, -1);
+        for (int i = 0; i < nlgt; i++) {
+            int u = z_index[i] - 1;
+            if (u < 0 || u >= n_unique)
+                stop("hetercov_init: z_index values must be in 1..n_unique.");
+            if (first_idx[u] < 0) first_idx[u] = i;
+        }
+        s.unique_first_idx.set_size(n_unique);
+        for (int u = 0; u < n_unique; u++) {
+            if (first_idx[u] < 0)
+                stop("hetercov_init: every unique index must appear at least once.");
+            s.unique_first_idx[u] = static_cast<uword>(first_idx[u]);
+        }
+        s.delta_z_unique_draws.set_size(n_unique, nvar, R / keep);
+        s.delta_z_unique_draws.zeros();
+        s.sigma_z_unique_flat.set_size(n_unique, nvar * nvar, R / keep);
+        s.sigma_z_unique_flat.zeros();
+        s.has_unique_map = true;
     }
 }
 
@@ -263,16 +299,18 @@ void hetercov_draw_iter(HeterCovState& s,
 void hetercov_store(HeterCovState& s, int mkeep) {
     s.mu_draw.row(mkeep - 1) = s.mu_post.t();
     for (int j = 0; j < s.nvar; j++) {
-        for (size_t k = 0; k < s.bart_models[j].getm(); k++)
-            s.treess[j]     << s.bart_models[j].gettree(k);
-        for (size_t k = 0; k < s.var_models[j].getm();  k++)
-            s.var_treess[j] << s.var_models[j].gettree(k);
+        if (s.store_trees) {
+            for (size_t k = 0; k < s.bart_models[j].getm(); k++)
+                s.treess[j]     << s.bart_models[j].gettree(k);
+            for (size_t k = 0; k < s.var_models[j].getm();  k++)
+                s.var_treess[j] << s.var_models[j].gettree(k);
+        }
         s.varcount    .slice(mkeep - 1).col(j) = conv_to<vec>::from(s.bart_models[j].getnv());
         s.varprob     .slice(mkeep - 1).col(j) = conv_to<vec>::from(s.bart_models[j].getpv());
         s.var_varcount.slice(mkeep - 1).col(j) = conv_to<vec>::from(s.var_models[j].getnv());
         s.var_varprob .slice(mkeep - 1).col(j) = conv_to<vec>::from(s.var_models[j].getpv());
     }
-    if (s.useFullCov) {
+    if (s.useFullCov && s.store_trees) {
         for (int j = 1; j < s.nvar; j++) {
             for (int k = 0; k < j; k++) {
                 for (size_t t = 0; t < s.phi_models[j][k].getm(); t++) {
@@ -281,23 +319,44 @@ void hetercov_store(HeterCovState& s, int mkeep) {
             }
         }
     }
+    if (s.has_unique_map) {
+        mat delta_unique = s.delta_Z.rows(s.unique_first_idx);
+        s.delta_z_unique_draws.slice(mkeep - 1) = delta_unique;
+
+        for (uword u = 0; u < s.unique_first_idx.n_elem; u++) {
+            size_t i = static_cast<size_t>(s.unique_first_idx[u]);
+            cov::cov_eval ev{s.var_models, s.phi_models, i};
+            mat R = cov::rootpi(ev); // upper-tri, R R^T = Sigma^{-1}
+            mat A = solve(trimatu(R), eye<mat>(s.nvar, s.nvar)); // A = R^{-1}
+            mat Sigma = A.t() * A;
+            s.sigma_z_unique_flat.slice(mkeep - 1).row(u) =
+                trans(vectorise(Sigma));
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
 // hetercov_pack
 // ---------------------------------------------------------------------------
 List hetercov_pack(HeterCovState& s) {
-    SEXP phi_models_pkg = s.useFullCov
-        ? (SEXP) pack_bart_jagged_(s.nvar, s.phi_models, s.phi_treess)
-        : R_NilValue;
-
-    return List::create(
-        Named("bart_models")  = pack_bart_list_(s.nvar, s.bart_models, s.treess),
-        Named("var_models")   = pack_bart_list_(s.nvar, s.var_models,  s.var_treess),
-        Named("phi_models")   = phi_models_pkg,
+    List out = List::create(
         Named("mu_draw")      = s.mu_draw,
         Named("varcount")     = s.varcount,
         Named("varprob")      = s.varprob,
         Named("var_varcount") = s.var_varcount,
         Named("var_varprob")  = s.var_varprob);
+
+    if (s.store_trees) {
+        SEXP phi_models_pkg = s.useFullCov
+            ? (SEXP) pack_bart_jagged_(s.nvar, s.phi_models, s.phi_treess)
+            : R_NilValue;
+        out["bart_models"] = pack_bart_list_(s.nvar, s.bart_models, s.treess);
+        out["var_models"] = pack_bart_list_(s.nvar, s.var_models, s.var_treess);
+        out["phi_models"] = phi_models_pkg;
+    }
+    if (s.has_unique_map) {
+        out["DeltaZ_unique_draws"] = s.delta_z_unique_draws;
+        out["SigmaZ_unique_draws_flat"] = s.sigma_z_unique_flat;
+    }
+    return out;
 }

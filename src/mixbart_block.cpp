@@ -16,6 +16,10 @@ void mixbart_init(MixBartState& s,
     s.keep = keep;
     s.oldprob = oldprob;
     s.ind = ind;
+    s.store_trees = bart_params.containsElementNamed("store_trees")
+        ? as<bool>(bart_params["store_trees"])
+        : true;
+    s.has_unique_map = false;
     
     s.delta_Z.zeros(nlgt, nvar);
     
@@ -33,6 +37,36 @@ void mixbart_init(MixBartState& s,
     s.sparse = bart_params["sparse"];
     s.burn = 0;
     if (s.sparse) s.burn = bart_params["burn"];
+
+    if (bart_params.containsElementNamed("z_index")) {
+        IntegerVector z_index = bart_params["z_index"];
+        if ((int)z_index.size() != nlgt)
+            stop("mixbart_init: z_index length must match nreg.");
+        int n_unique = bart_params.containsElementNamed("n_unique")
+            ? as<int>(bart_params["n_unique"])
+            : 0;
+        if (n_unique <= 0)
+            n_unique = Rcpp::max(z_index);
+        if (n_unique <= 0)
+            stop("mixbart_init: n_unique must be positive when z_index is supplied.");
+
+        std::vector<int> first_idx(n_unique, -1);
+        for (int i = 0; i < nlgt; i++) {
+            int u = z_index[i] - 1; // 1-based from R
+            if (u < 0 || u >= n_unique)
+                stop("mixbart_init: z_index values must be in 1..n_unique.");
+            if (first_idx[u] < 0) first_idx[u] = i;
+        }
+        s.unique_first_idx.set_size(n_unique);
+        for (int u = 0; u < n_unique; u++) {
+            if (first_idx[u] < 0)
+                stop("mixbart_init: every unique index must appear at least once.");
+            s.unique_first_idx[u] = static_cast<uword>(first_idx[u]);
+        }
+        s.delta_z_unique_draws.set_size(n_unique, nvar, R / keep);
+        s.delta_z_unique_draws.zeros();
+        s.has_unique_map = true;
+    }
 }
 
 void mixbart_draw_iter(MixBartState& s,
@@ -143,21 +177,31 @@ void mixbart_draw_iter(MixBartState& s,
 
 void mixbart_store(MixBartState& s, int mkeep) {
     for (int i = 0; i < s.nvar; i++) {
-        for (size_t j = 0; j < s.bart_models[i].getm(); j++) {
-            s.treess[i] << s.bart_models[i].gettree(j);
+        if (s.store_trees) {
+            for (size_t j = 0; j < s.bart_models[i].getm(); j++) {
+                s.treess[i] << s.bart_models[i].gettree(j);
+            }
         }
         s.varcount.slice(mkeep - 1).col(i) = conv_to<vec>::from(s.bart_models[i].getnv());
         s.varprob.slice(mkeep - 1).col(i) = conv_to<vec>::from(s.bart_models[i].getpv());
     }
+    if (s.has_unique_map) {
+        s.delta_z_unique_draws.slice(mkeep - 1) = s.delta_Z.rows(s.unique_first_idx);
+    }
 }
 
 Rcpp::List mixbart_pack(MixBartState& s) {
-    std::vector<std::stringstream> tss(s.nvar);
-    for(int i = 0; i < s.nvar; ++i) tss[i] << s.treess[i].str();
-    
-    return List::create(
-        Named("bart_models") = pack_bart_list_(s.nvar, s.bart_models, tss),
+    List out = List::create(
         Named("varcount") = s.varcount,
         Named("varprob") = s.varprob
     );
+    if (s.store_trees) {
+        std::vector<std::stringstream> tss(s.nvar);
+        for(int i = 0; i < s.nvar; ++i) tss[i] << s.treess[i].str();
+        out["bart_models"] = pack_bart_list_(s.nvar, s.bart_models, tss);
+    }
+    if (s.has_unique_map) {
+        out["DeltaZ_unique_draws"] = s.delta_z_unique_draws;
+    }
+    return out;
 }

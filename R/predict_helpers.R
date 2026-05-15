@@ -42,6 +42,34 @@
   invisible(NULL)
 }
 
+.row_keys_from_Z <- function(Z) {
+  apply(Z, 1, function(r) paste(sprintf("%.17g", r), collapse = "\r"))
+}
+
+.cache_get <- function(object, name) {
+  if (!is.null(object[[name]])) return(object[[name]])
+  cache <- attr(object, "hart_cache", exact = TRUE)
+  if (!is.null(cache) && !is.null(cache[[name]])) return(cache[[name]])
+  NULL
+}
+
+.match_cached_unique_rows <- function(object, Z) {
+  Z_unique <- .cache_get(object, "Z_unique")
+  z_index <- .cache_get(object, "z_index")
+  if (is.null(Z_unique) || is.null(z_index)) return(NULL)
+  z_key_unique <- .cache_get(object, "z_key")
+  if (is.null(z_key_unique)) z_key_unique <- .row_keys_from_Z(Z_unique)
+  idx <- match(.row_keys_from_Z(Z), z_key_unique)
+  list(idx = idx, all_seen = all(!is.na(idx)))
+}
+
+.has_tree_payload <- function(object) {
+  if (inherits(object, "bayesm.HART.HeterCov")) {
+    return(!is.null(object$bart_models) && !is.null(object$var_models))
+  }
+  !is.null(object$bart_models)
+}
+
 # Helper 2: Calculate DeltaZ component
 #
 # Returns a (npred x nvar x ndraws_kept) array of representative-consumer
@@ -56,14 +84,16 @@
 #         Sigma(Z*)^{1/2} = L(Z*)^{-1} D(Z*)^{1/2} is rebuilt per draw from
 #         var_models (product-of-trees -> d) and phi_models (sum-of-trees -> phi).
 .calculate_delta_z <- function(object, newdata, burn, r_verbose,
-                               hetercov_comps = NULL, ...) {
+                               hetercov_comps = NULL,
+                               force_tree_eval = FALSE, ...) {
   nvar         <- dim(object$betadraw)[2]
   ndraws_total <- dim(object$betadraw)[3]
 
   is_heter <- inherits(object, "bayesm.HART.HeterCov")
   has_bart <- !is.null(object$bart_models)
   has_lin  <- !is.null(object$Deltadraw)
-  model_has_Z <- has_lin || has_bart
+  has_cache <- !is.null(.cache_get(object, "DeltaZ_unique_draws"))
+  model_has_Z <- has_lin || has_bart || has_cache
 
   if (!model_has_Z) {
     pred <- array(0, dim = c(1L, nvar, ndraws_total))
@@ -73,15 +103,31 @@
     npred <- nrow(newdata$Z)
     nz    <- ncol(newdata$Z)
 
-    if (has_lin) {
-      pred <- .delta_z_linear(object, newdata$Z, npred, nvar, nz, ndraws_total)
-    } else if (is_heter) {
-      pred <- .delta_z_hetercov(object, newdata$Z, npred, nvar,
-                                ndraws_total, r_verbose,
-                                hetercov_comps = hetercov_comps)
+    delta_cache <- .cache_get(object, "DeltaZ_unique_draws")
+    if (!force_tree_eval && !is.null(delta_cache)) {
+      map <- .match_cached_unique_rows(object, newdata$Z)
+      if (!is.null(map) && map$all_seen) {
+        pred <- delta_cache[map$idx, , , drop = FALSE]
+      } else if (!is.null(map) && !map$all_seen && !.has_tree_payload(object)) {
+        stop("Out-of-sample Z prediction requires stored tree objects; refit with store_trees=TRUE.")
+      } else {
+        pred <- NULL
+      }
     } else {
-      pred <- .delta_z_bart(object, newdata$Z, npred, nvar, ndraws_total,
-                            r_verbose, ...)
+      pred <- NULL
+    }
+
+    if (is.null(pred)) {
+      if (has_lin) {
+        pred <- .delta_z_linear(object, newdata$Z, npred, nvar, nz, ndraws_total)
+      } else if (is_heter) {
+        pred <- .delta_z_hetercov(object, newdata$Z, npred, nvar,
+                                  ndraws_total, r_verbose,
+                                  hetercov_comps = hetercov_comps)
+      } else {
+        pred <- .delta_z_bart(object, newdata$Z, npred, nvar, ndraws_total,
+                              r_verbose, ...)
+      }
     }
   }
 
@@ -242,7 +288,8 @@
 # Sigma(Z*_i) is reconstructed from modified-Cholesky components:
 #   Sigma(Z*) = L(Z*)^{-1} D(Z*) L(Z*)^{-T}
 .calculate_sigma_z <- function(object, newdata, burn, r_verbose,
-                               hetercov_comps = NULL) {
+                               hetercov_comps = NULL,
+                               force_tree_eval = FALSE) {
   if (!inherits(object, "bayesm.HART.HeterCov")) {
     stop("type='SigmaZ' is only available for heteroscedastic covariance models.")
   }
@@ -254,6 +301,17 @@
   ndraws_total <- dim(object$betadraw)[3]
   npred        <- nrow(newdata$Z)
   kept_draws   <- if (burn > 0) (burn + 1):ndraws_total else seq_len(ndraws_total)
+
+  sigma_cache <- .cache_get(object, "SigmaZ_unique_draws")
+  if (!force_tree_eval && !is.null(sigma_cache)) {
+    map <- .match_cached_unique_rows(object, newdata$Z)
+    if (!is.null(map) && map$all_seen) {
+      return(sigma_cache[map$idx, , , kept_draws, drop = FALSE])
+    }
+    if (!is.null(map) && !map$all_seen && !.has_tree_payload(object)) {
+      stop("Out-of-sample Z prediction requires stored tree objects; refit with store_trees=TRUE.")
+    }
+  }
 
   comps <- if (is.null(hetercov_comps))
     .hetercov_components(object, newdata$Z, npred, nvar, ndraws_total, r_verbose)

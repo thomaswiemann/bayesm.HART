@@ -549,8 +549,19 @@ test_that("DeltaZ BART prediction errors include draw context on singular rooti"
   nvar <- dim(fit_bad$betadraw)[2]
   fit_bad$nmix$compdraw[[1]][[1]]$rooti <- matrix(0, nvar, nvar)
 
+  # Cache-first behavior: seen-Z in-sample predictions should use cached draws
+  # when available and therefore not touch rooti inversion.
+  pred_cached <- predict(
+    fit_bad, newdata = list(Z = sim$Z), type = "DeltaZ", r_verbose = FALSE
+  )
+  expect_true(is.array(pred_cached))
+
+  # Tree-eval debug path should still surface the detailed draw-context error.
   expect_error(
-    predict(fit_bad, newdata = list(Z = sim$Z), type = "DeltaZ", r_verbose = FALSE),
+    predict(
+      fit_bad, newdata = list(Z = sim$Z), type = "DeltaZ",
+      force_tree_eval = TRUE, r_verbose = FALSE
+    ),
     regexp = "DeltaZ BART prediction failed at draw 1"
   )
 })
