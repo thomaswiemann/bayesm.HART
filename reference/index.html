@@ -27,6 +27,8 @@
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
   <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/bayesm-HART.html">Get Started</a></li>
+    <li><hr class="dropdown-divider"></li>
+    <li><a class="dropdown-item" href="../articles/index.html">More articles...</a></li>
   </ul></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="../search.json"></form></li>
@@ -46,8 +48,7 @@
 
 
 
-
-    </div><div class="section level2">
+      <dl></dl></div><div class="section level2">
 
 
 
@@ -58,13 +59,56 @@
 
         </dt>
         <dd>Bayesian Multinomial Logit Model with HART Prior</dd>
+
+        <dt>
+
+          <code><a href="rhierLinearMixture.html">rhierLinearMixture()</a></code>
+
+        </dt>
+        <dd>Bayesian Hierarchical Linear Model with HART Prior</dd>
+
+        <dt>
+
+          <code><a href="rhierNegbinRw.html">rhierNegbinRw()</a></code>
+
+        </dt>
+        <dd>Bayesian Hierarchical Negative Binomial Model with HART Prior</dd>
+      </dl></div><div class="section level2">
+      <h2 id="prediction">Prediction<a class="anchor" aria-label="anchor" href="#prediction"></a></h2>
+
+
+
+      <dl></dl></div><div class="section level2">
+
+
+
+
+      <dl><dt>
+
+          <code><a href="predict.rhierMnlRwMixture.html">predict(<i>&lt;rhierMnlRwMixture&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Predict Method for rhierMnlRwMixture Objects</dd>
+
+        <dt>
+
+          <code><a href="predict.rhierLinearMixture.html">predict(<i>&lt;rhierLinearMixture&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Predict Method for rhierLinearMixture Objects</dd>
+
+        <dt>
+
+          <code><a href="predict.rhierNegbinRw.html">predict(<i>&lt;rhierNegbinRw&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Predict Method for rhierNegbinRw Objects</dd>
       </dl></div><div class="section level2">
       <h2 id="marginal-effects">Marginal Effects<a class="anchor" aria-label="anchor" href="#marginal-effects"></a></h2>
 
 
 
-
-    </div><div class="section level2">
+      <dl></dl></div><div class="section level2">
 
 
 
@@ -75,25 +119,42 @@
 
         </dt>
         <dd>Calculate Marginal Effects for Hierarchical Models</dd>
-      </dl><dl><dt>
+
+        <dt>
 
           <code><a href="summary.marginal_effects.html">summary(<i>&lt;marginal_effects&gt;</i>)</a></code>
 
         </dt>
         <dd>Summarize Marginal Effects Object</dd>
-      </dl><dl><dt>
+
+        <dt>
 
           <code><a href="plot.summary.marginal_effects.html">plot(<i>&lt;summary.marginal_effects&gt;</i>)</a></code>
 
         </dt>
         <dd>Plot Summarized Marginal Effects</dd>
       </dl></div><div class="section level2">
-      <h2 id="utility-functions">Utility Functions<a class="anchor" aria-label="anchor" href="#utility-functions"></a></h2>
+      <h2 id="diagnostics-summary">Diagnostics &amp; Summary<a class="anchor" aria-label="anchor" href="#diagnostics-summary"></a></h2>
+
+
+
+      <dl></dl></div><div class="section level2">
 
 
 
 
-    </div><div class="section level2">
+      <dl><dt>
+
+          <code><a href="summary.rhierMnlRwMixture.html">summary(<i>&lt;rhierMnlRwMixture&gt;</i>)</a></code> <code><a href="summary.rhierMnlRwMixture.html">summary(<i>&lt;rhierLinearMixture&gt;</i>)</a></code> <code><a href="summary.rhierMnlRwMixture.html">summary(<i>&lt;rhierNegbinRw&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Summary Method for Hierarchical Models</dd>
+      </dl></div><div class="section level2">
+      <h2 id="simulation">Simulation<a class="anchor" aria-label="anchor" href="#simulation"></a></h2>
+
+
+
+      <dl></dl></div><div class="section level2">
 
 
 
@@ -104,7 +165,22 @@
 
         </dt>
         <dd>Simulate Hierarchical Multinomial Logit Data</dd>
-      </dl><dl><dt>
+
+        <dt>
+
+          <code><a href="sim_hier_linear.html">sim_hier_linear()</a></code>
+
+        </dt>
+        <dd>Simulate Hierarchical Linear Model Data</dd>
+
+        <dt>
+
+          <code><a href="sim_hier_negbin.html">sim_hier_negbin()</a></code>
+
+        </dt>
+        <dd>Simulate Hierarchical Negative Binomial Data</dd>
+
+        <dt>
 
           <code><a href="simple_sim_hier_mnl.html">simple_sim_hier_mnl()</a></code>
 
@@ -120,7 +196,7 @@
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
 </div>
 
     </footer></div>

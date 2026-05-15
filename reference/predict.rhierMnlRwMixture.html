@@ -27,6 +27,8 @@
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
   <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/bayesm-HART.html">Get Started</a></li>
+    <li><hr class="dropdown-divider"></li>
+    <li><a class="dropdown-item" href="../articles/index.html">More articles...</a></li>
   </ul></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="../search.json"></form></li>
@@ -56,7 +58,9 @@
 <span>  type <span class="op">=</span> <span class="st">"DeltaZ+mu"</span>,</span>
 <span>  burn <span class="op">=</span> <span class="fl">0</span>,</span>
 <span>  nsim <span class="op">=</span> <span class="fl">10</span>,</span>
+<span>  mode <span class="op">=</span> <span class="st">"coefficients"</span>,</span>
 <span>  r_verbose <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  force_tree_eval <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -71,27 +75,28 @@
 
 <dt id="arg-newdata">newdata<a class="anchor" aria-label="anchor" href="#arg-newdata"></a></dt>
 <dd><p>Optional list containing data for prediction. Structure depends
-on <code>type</code>:</p><ul><li><p>For <code>type %in% c("DeltaZ", "DeltaZ+mu")</code>: Requires <code>newdata$Z</code>, a matrix
-with <code>npred</code> rows for prediction units (if model was fit with Z).</p></li>
-<li><p>For <code>type = "posterior_probs"</code>: Requires <code>newdata$nlgtdata</code>, a list of
-length <code>nlgt</code> (original number of units). Each element <code>\\[[i]]</code> must
-contain <code>$X</code>, the design matrix <code>(T_i*p) x nvar</code> for unit <code>i</code>. Also
-requires <code>newdata$p</code>, the number of alternatives.</p></li>
-<li><p>For <code>type = "prior_probs"</code>: Requires <code>newdata$Z</code> (if model fit with Z,
-determining <code>npred</code>), <code>newdata$p</code>, and <code>newdata$X</code> (a list of length
-<code>npred</code>, each element <code>\\[[i]]</code> having the design matrix <code>(T_i*p) x nvar</code>).</p></li>
+on <code>mode</code> and <code>type</code>:</p><ul><li><p>For <code>mode = "coefficients"</code> with <code>type %in% c("DeltaZ", "DeltaZ+mu", "SigmaZ")</code>:
+requires <code>newdata$Z</code>, a matrix with <code>npred</code> rows for prediction units
+(if model was fit with Z).</p></li>
+<li><p>For <code>mode = "posterior"</code> with <code>type = "choice_probs"</code>: requires
+<code>newdata$nlgtdata</code>, a list of length <code>nlgt</code> (original number of units).
+Each element <code>\\[[i]]</code> must contain <code>$X</code>, the design matrix <code>(T_i*p) x nvar</code>
+for unit <code>i</code>. Also requires <code>newdata$p</code>, the number of alternatives.</p></li>
+<li><p>For <code>mode = "prior"</code> with <code>type = "choice_probs"</code>: requires <code>newdata$Z</code>
+(if model fit with Z, determining <code>npred</code>), <code>newdata$p</code>, and <code>newdata$X</code>
+(a list of length <code>npred</code>, each element <code>\\[[i]]</code> having design matrix
+<code>(T_i*p) x nvar</code>).</p></li>
 </ul></dd>
 
 
 <dt id="arg-type">type<a class="anchor" aria-label="anchor" href="#arg-type"></a></dt>
-<dd><p>Type of prediction:</p><ul><li><p><code>"DeltaZ"</code>: Expected part-worths of the representative consumer, \(\Delta(Z)\).</p></li>
-<li><p><code>"DeltaZ+mu"</code>: Expected part-worths plus the mean of the unobserved heterogeneity component, \(\Delta(Z) + \mu_j\). Note: for mixtures (<code>ncomp &gt; 1</code>), this uses the mean \(\mu_1\) from the first component.</p></li>
-<li><p><code>"posterior_probs"</code>: Posterior predictive choice probabilities for the original
-estimation units using stored <code>betadraw</code>.</p></li>
-<li><p><code>"prior_probs"</code>: Prior predictive choice probabilities for new prediction units
-(based on <code>newdata$Z</code> or the overall mixture if no Z was used). Probabilities
-are averaged over <code>nsim</code> draws from the heterogeneity mixture distribution
-per posterior draw.</p></li>
+<dd><p>Type of prediction within the selected <code>mode</code>:</p><ul><li><p><code>"DeltaZ"</code>: Expected part-worths of the representative consumer, \(\Delta(Z)\).</p></li>
+<li><p><code>"DeltaZ+mu"</code>: Expected part-worths plus the mean of the unobserved heterogeneity component, \(\Delta(Z) + \mu_1\). The package supports only <code>ncomp = 1</code>.</p></li>
+<li><p><code>"choice_probs"</code>: Predictive choice probabilities (use with
+<code>mode = "posterior"</code> or <code>mode = "prior"</code>).</p></li>
+<li><p><code>"SigmaZ"</code>: Draws of the heteroscedastic covariance matrix \(\Sigma(Z)\).
+Available only for models fit with <code>Prior$vartree</code> (class marker
+<code>"bayesm.HART.HeterCov"</code>).</p></li>
 </ul></dd>
 
 
@@ -100,8 +105,15 @@ per posterior draw.</p></li>
 
 
 <dt id="arg-nsim">nsim<a class="anchor" aria-label="anchor" href="#arg-nsim"></a></dt>
-<dd><p>Integer, number of draws from the heterogeneity mixture distribution
-per posterior draw for <code>type = "prior_probs"</code>.</p></dd>
+<dd><p>Integer, number of draws from the heterogeneity distribution
+per posterior draw for <code>mode = "prior"</code> and <code>type = "choice_probs"</code>.</p></dd>
+
+
+<dt id="arg-mode">mode<a class="anchor" aria-label="anchor" href="#arg-mode"></a></dt>
+<dd><p>Prediction mode:</p><ul><li><p><code>"coefficients"</code>: coefficient-level outputs (<code>DeltaZ</code>, <code>DeltaZ+mu</code>, <code>SigmaZ</code>).</p></li>
+<li><p><code>"posterior"</code>: posterior predictive output (<code>type = "choice_probs"</code>).</p></li>
+<li><p><code>"prior"</code>: prior predictive output (<code>type = "choice_probs"</code>).</p></li>
+</ul></dd>
 
 
 <dt id="arg-r-verbose">r_verbose<a class="anchor" aria-label="anchor" href="#arg-r-verbose"></a></dt>
@@ -117,10 +129,14 @@ per posterior draw for <code>type = "prior_probs"</code>.</p></dd>
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
     <p>Depends on <code>type</code>:</p><ul><li><p>For <code>type %in% c("DeltaZ", "DeltaZ+mu")</code>: 3D array <code>[npred, nvar, ndraws_out]</code>
 of predicted expected part-worths.</p></li>
-<li><p>For <code>type = "posterior_probs"</code>: List of length <code>nlgt</code>. Each element <code>\\[[i]]</code>
+<li><p>For <code>type = "SigmaZ"</code>: 4D array <code>[npred, nvar, nvar, ndraws_out]</code> of
+covariance draws at each prediction unit.</p></li>
+<li><p>For <code>mode = "posterior", type = "choice_probs"</code>: List of length <code>nlgt</code>.
+Each element <code>\\[[i]]</code>
 is a 3D array <code>[T_i, p, ndraws_out]</code> of posterior predictive choice probabilities
 for unit <code>i</code>.</p></li>
-<li><p>For <code>type = "prior_probs"</code>: List of length <code>npred</code>. Each element <code>\\[[i]]</code>
+<li><p>For <code>mode = "prior", type = "choice_probs"</code>: List of length <code>npred</code>.
+Each element <code>\\[[i]]</code>
 is a 3D array <code>[T_i, p, ndraws_out]</code> of prior predictive choice
 probabilities for prediction unit <code>i</code>.</p></li>
 </ul></div>
@@ -134,7 +150,7 @@ probabilities for prediction unit <code>i</code>.</p></li>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
 </div>
 
     </footer></div>
