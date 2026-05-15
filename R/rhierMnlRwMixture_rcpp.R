@@ -219,6 +219,7 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
   #
   if(missing(Prior)) {pandterm("Requires Prior list argument (at least ncomp)")} 
   if(is.null(Prior$ncomp)) {pandterm("Requires Prior element ncomp (num of mixture components)")} else {ncomp=Prior$ncomp}
+  if(ncomp != 1) {pandterm("Only ncomp = 1 is currently supported")}
   if(is.null(Prior$SignRes)) {SignRes=rep(0,nvar)} else {SignRes=Prior$SignRes}                     
   if(length(SignRes) != nvar) {pandterm("The length SignRes must be equal to the dimension of X")}
   if(sum(!(SignRes %in% c(-1,0,1))>0)) {pandterm("All elements of SignRes must be equal to -1, 0, or 1")}
@@ -655,6 +656,8 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
       hetercov_comps <- .hetercov_components(object, newdata$Z, npred, nvar,
                                              ndraws_total, r_verbose)
     mu_kept <- object$mu_draw[kept_draws_indices_nmix, , drop = FALSE]  # ndraws_out x nvar
+  } else {
+    .assert_single_component_nmix(object, "prior_probs prediction")
   }
 
   prob_pred_list        <- vector("list", npred)
@@ -738,7 +741,7 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
 #'     `npred`, each element `\\[[i]]` having the design matrix `(T_i*p) x nvar`).
 #' @param type Type of prediction:
 #'   - `"DeltaZ"`: Expected part-worths of the representative consumer, \eqn{\Delta(Z)}.
-#'   - `"DeltaZ+mu"`: Expected part-worths plus the mean of the unobserved heterogeneity component, \eqn{\Delta(Z) + \mu_j}. Note: for mixtures (`ncomp > 1`), this uses the mean \eqn{\mu_1} from the first component.
+#'   - `"DeltaZ+mu"`: Expected part-worths plus the mean of the unobserved heterogeneity component, \eqn{\Delta(Z) + \mu_1}. The package supports only `ncomp = 1`.
 #'   - `"posterior_probs"`: Posterior predictive choice probabilities for the original
 #'     estimation units using stored `betadraw`.
 #'   - `"prior_probs"`: Prior predictive choice probabilities for new prediction units

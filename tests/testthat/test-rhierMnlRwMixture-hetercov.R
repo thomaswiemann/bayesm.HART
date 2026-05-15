@@ -56,7 +56,7 @@ test_that("vartree requires bart, ncomp == 1, and Z", {
         Mcmc  = list(R = 4L, keep = 1L, nprint = 0L),
         r_verbose = FALSE)
     ),
-    regexp = "ncomp == 1"
+    regexp = "Only ncomp = 1 is currently supported"
   )
 })
 
@@ -107,7 +107,7 @@ test_that("vartree only with nvar > 1 auto-promotes to full Cholesky", {
   expect_named(fit,
                c("bart_models", "var_models", "phi_models", "mu_draw",
                  "varcount", "varprob", "var_varcount", "var_varprob",
-                 "betadraw", "loglike", "SignRes"),
+                 "betadraw", "loglike", "SignRes", "acceptrbeta"),
                ignore.order = TRUE)
   # Auto-promotion: phi_models is now non-null and properly jagged.
   expect_length(fit$phi_models, sim$nvar)

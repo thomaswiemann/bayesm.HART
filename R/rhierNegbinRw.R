@@ -233,6 +233,7 @@ if(missing(Prior)) {
 }
 if(is.null(Prior$ncomp)) {pandterm("Requires Prior element ncomp (num of mixture components)")}
    else {ncomp=Prior$ncomp}
+if(ncomp != 1) {pandterm("Only ncomp = 1 is currently supported")}
 if(is.null(Prior[["nu"]])) {nu=nvar+BayesmConstant.nuInc} else {nu=Prior[["nu"]]}
 if(is.null(Prior[["V"]])) {V=nu*diag(nvar)} else {V=Prior[["V"]]}
 if(is.null(Prior[["a"]])) {a=BayesmConstant.agammaprior} else {a=Prior[["a"]]}

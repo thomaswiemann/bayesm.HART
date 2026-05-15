@@ -529,3 +529,48 @@ test_that("predict method with type = 'prior_probs' works", {
                info = "T=1: Probabilities don't sum to 1")
 
 }) 
+
+test_that("DeltaZ BART prediction errors include draw context on singular rooti", {
+  set.seed(20260514)
+  sim <- sim_hier_mnl(
+    nlgt = 5, nT = 3, p = 3, nz = 1, nXa = 1, nXd = 0,
+    beta_func_type = "linear", seed = 20260515
+  )
+  capture.output({
+    fit <- rhierMnlRwMixture(
+      Data = sim,
+      Prior = list(ncomp = 1, bart = list(num_trees = 5)),
+      Mcmc = list(R = 6, keep = 1, nprint = 0),
+      r_verbose = FALSE
+    )
+  })
+
+  fit_bad <- fit
+  nvar <- dim(fit_bad$betadraw)[2]
+  fit_bad$nmix$compdraw[[1]][[1]]$rooti <- matrix(0, nvar, nvar)
+
+  expect_error(
+    predict(fit_bad, newdata = list(Z = sim$Z), type = "DeltaZ", r_verbose = FALSE),
+    regexp = "DeltaZ BART prediction failed at draw 1"
+  )
+})
+
+test_that("SigmaZ helper errors include draw and unit context", {
+  object <- list(betadraw = array(0, dim = c(2, 2, 3)))
+  class(object) <- "bayesm.HART.HeterCov"
+  newdata <- list(Z = matrix(0, nrow = 1, ncol = 1))
+
+  comps <- list(
+    d_arr = array(1, dim = c(1, 2, 3)),
+    phi_arr = array(0, dim = c(1, 2, 2, 3)),
+    use_full = TRUE
+  )
+  comps$phi_arr[1, 2, 1, 2] <- NA_real_
+
+  expect_error(
+    bayesm.HART:::.calculate_sigma_z(
+      object, newdata, burn = 0, r_verbose = FALSE, hetercov_comps = comps
+    ),
+    regexp = "SigmaZ prediction failed at draw 2, unit 1"
+  )
+})

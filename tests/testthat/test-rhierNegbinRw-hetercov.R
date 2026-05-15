@@ -51,7 +51,7 @@ test_that("vartree requires bart, ncomp == 1, and Z (drawdelta = TRUE)", {
         Mcmc  = list(R = 4L, keep = 1L, nprint = 0L),
         r_verbose = FALSE)
     ),
-    regexp = "ncomp == 1"
+    regexp = "Only ncomp = 1 is currently supported"
   )
 
   # vartree without Z -> error (drawdelta auto-flips to FALSE)

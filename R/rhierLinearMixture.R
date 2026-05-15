@@ -243,6 +243,7 @@ if(is.null(Prior$ssq)) {ssq=sapply(regdata,getvar)}
    else {ssq=Prior$ssq}
 if(is.null(Prior$ncomp)) {pandterm("Requires Prior element ncomp (num of mixture components)")}
    else {ncomp=Prior$ncomp}
+if(ncomp != 1) {pandterm("Only ncomp = 1 is currently supported")}
 if(is.null(Prior$mubar)) { mubar=matrix(rep(0,nvar),nrow=1) }
    else { mubar=matrix(Prior$mubar, nrow=1) }
 if(ncol(mubar) != nvar) {pandterm(paste("mubar must have ncomp cols, ncol(mubar)= ",ncol(mubar)))}

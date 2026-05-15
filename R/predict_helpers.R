@@ -30,6 +30,18 @@
   return(ndraws_total)
 }#VALIDATE_PREDICT_INPUTS
 
+# Global-mixture prediction paths currently support only single-component models.
+.assert_single_component_nmix <- function(object, context) {
+  if (inherits(object, "bayesm.HART.HeterCov")) return(invisible(NULL))
+  if (is.null(object$nmix) || is.null(object$nmix$probdraw)) return(invisible(NULL))
+  ncomp <- ncol(as.matrix(object$nmix$probdraw))
+  if (is.na(ncomp) || ncomp != 1) {
+    stop(sprintf("%s supports only ncomp = 1. Found ncomp = %s.",
+                 context, as.character(ncomp)))
+  }
+  invisible(NULL)
+}
+
 # Helper 2: Calculate DeltaZ component
 #
 # Returns a (npred x nvar x ndraws_kept) array of representative-consumer
@@ -97,6 +109,7 @@
 
 .delta_z_bart <- function(object, Z, npred, nvar, ndraws_total,
                           r_verbose, ...) {
+  .assert_single_component_nmix(object, "DeltaZ BART prediction")
   if (length(object$bart_models) != nvar)
     stop(sprintf("Number of BART models (%d) does not match nvar (%d)",
                  length(object$bart_models), nvar))
@@ -129,8 +142,12 @@
     rooti <- object$nmix$compdraw[[s]][[1]]$rooti
     if (is.null(rooti))
       stop(paste0("Missing nmix$compdraw[[", s, "]][[1]]$rooti"))
-    root_inv <- tryCatch(solve(rooti), error = function(e)
-      stop(paste("rooti matrix is singular for draw", s)))
+    root_inv <- tryCatch(
+      solve(rooti),
+      error = function(e)
+        stop(sprintf("DeltaZ BART prediction failed at draw %d while inverting nmix rooti: %s",
+                     s, e$message))
+    )
     pred[, , s] <- raw_pred[, , s] %*% root_inv
   }
   return(pred)
@@ -150,7 +167,12 @@
   use_full <- comps$use_full
   for (s in seq_len(ndraws_total)) {
     for (i in seq_len(npred)) {
-      x <- comps$delta_arr[i, , s] * sqrt(comps$d_arr[i, , s])  # D^{1/2} delta
+      d_is <- comps$d_arr[i, , s]
+      if (any(!is.finite(d_is))) {
+        stop(sprintf("DeltaZ heter-cov prediction failed at draw %d, unit %d: non-finite d(Z) values.",
+                     s, i))
+      }
+      x <- comps$delta_arr[i, , s] * sqrt(d_is)  # D^{1/2} delta
       if (use_full) {
         for (j in 2:nvar) {
           x[j] <- x[j] + sum(comps$phi_arr[i, j, seq_len(j - 1), s] *
@@ -249,7 +271,16 @@
           L[j, seq_len(j - 1L)] <- -comps$phi_arr[i, j, seq_len(j - 1L), s]
         }
       }
-      A <- solve(L, diag(sqrt(d_vec), nvar))
+      if (any(!is.finite(L))) {
+        stop(sprintf("SigmaZ prediction failed at draw %d, unit %d: non-finite Cholesky factor entries.",
+                     s, i))
+      }
+      A <- tryCatch(
+        solve(L, diag(sqrt(d_vec), nvar)),
+        error = function(e)
+          stop(sprintf("SigmaZ prediction failed at draw %d, unit %d while solving L^{-1}D^{1/2}: %s",
+                       s, i, e$message))
+      )
       sigma_arr[i, , , out_idx] <- A %*% t(A)
     }
   }
@@ -272,12 +303,9 @@
       stop("Heter-cov object missing mu_draw.")
     mudraw <- t(object$mu_draw[kept_draws_indices, , drop = FALSE])  # nvar x ndraws_out
   } else {
+    .assert_single_component_nmix(object, "DeltaZ+mu prediction")
     if (is.null(object$nmix) || is.null(object$nmix$compdraw))
       stop("DeltaZ+mu requires nmix$compdraw.")
-    ncomp <- if (!is.null(object$nmix$probdraw)) ncol(object$nmix$probdraw)
-             else                                length(object$nmix$compdraw[[1]])
-    if (ncomp > 1)
-      warning("DeltaZ+mu prediction currently only uses mu from the first mixture component.")
     mudraw <- tryCatch({
       sapply(object$nmix$compdraw[kept_draws_indices], function(x) {
         if (is.null(x[[1]]$mu)) stop("mu missing in component draw")

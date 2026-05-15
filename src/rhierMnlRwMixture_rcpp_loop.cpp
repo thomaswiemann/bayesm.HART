@@ -1,6 +1,9 @@
 #include "bayesm.HART.h"
-#include "mixbart_block.h"    // MixBartState + mixbart_* helpers (BART path)
-#include "hetercov_block.h"   // HeterCovState + hetercov_* helpers
+#include "global_covariance_backend.h"
+#include "hetercov_backend.h"
+#include "mnl_theta_updater.h"
+#include "unified_sampler_driver.h"
+#include <memory>
 
 //FUNCTION SPECIFIC TO MAIN FUNCTION------------------------------------------------------
 //[[Rcpp::export]]
@@ -112,18 +115,12 @@ List rhierMnlRwMixture_rcpp_loop(List const& lgtdata, mat const& Z,
 
     int nlgt = lgtdata.size();
     int nvar = V.n_cols;
-    int nz = Z.n_cols;
 
     // Validation for the heter-cov path.
     if (useHeterCov && !useBART)    stop("useHeterCov requires useBART = TRUE");
     if (useHeterCov && !drawdelta)  stop("useHeterCov requires drawdelta = TRUE");
 
-    mat rootpi, betabar, ucholinv, incroot;
-    int mkeep;
-    mnlMetropOnceOut metropout_struct;
-    List lgtdatai, nmix;
-
-    mat delta_Z;
+    List lgtdatai;
 
     // convert List to std::vector of struct
     std::vector<moments> lgtdata_vector;
@@ -137,209 +134,55 @@ List rhierMnlRwMixture_rcpp_loop(List const& lgtdata, mat const& Z,
         lgtdata_vector.push_back(lgtdatai_struct);
     }
 
-    // allocate space for draws
-    vec oldll = zeros<vec>(nlgt);
-    int nacceptbeta = 0;
+    // allocate driver-owned storage
     cube betadraw(nlgt, nvar, R / keep);
-    mat probdraw(R / keep, oldprob.size());
     vec loglike(R / keep);
-    mat Deltadraw = drawdelta && !useBART ? zeros<mat>(R / keep, nz * nvar) : zeros<mat>(1, 1); //enlarge Deltadraw only if the space is required
-    List compdraw(R / keep);
-	if (drawdelta) delta_Z.zeros(nlgt, nvar);
 
-    // ===== Mix-BART state (only when useBART && drawdelta && !useHeterCov) =
-    // Owns bart_models, treess, varcount, varprob, oldcomp, oldprob, ind,
-    // delta_Z, plus DART burn-in scheduling.  See inst/include/mixbart_block.h.
-    MixBartState mbs;
-    if (useBART && drawdelta && !useHeterCov)
-        mixbart_init(mbs, nlgt, nz, nvar, R, keep, bart_params, oldprob, ind);
-
-    // ===== Heter-cov state ===============================================
-    HeterCovState hcs;
-    if (useHeterCov)
-        hetercov_init(hcs, nlgt, nz, nvar, R, keep,
-                      bart_params, var_params, phi_params);
-
-    // BART operates on standardized betas; std_oldbetas is the caller-owned
-    // working buffer that update_stdoldbetas* writes into and that BART reads
-    // residuals from.  The mixbart_block / hetercov_block helpers do NOT own
-    // this storage.
-    mat Zt = Z.t();
-    double* pZt = Zt.memptr();
-    mat std_oldbetas = oldbetas;
-    std::vector<double*> pstd_oldbetas_cols(nvar);
-    for (int i = 0; i < nvar; i++) pstd_oldbetas_cols[i] = std_oldbetas.colptr(i);
-
-    // Random number generator for BART
-    arn gen;
-
-    // Start MCMC loop
-    if (nprint > 0) startMcmcTimer();
-
-    for (int rep = 0; rep < R; rep++) {
-
-        // ====================================================================
-        // Steps A-D: heter-cov branch is fully encapsulated; mixture-BART
-        // backfitting is fully delegated to mixbart_block.cpp.
-        // ====================================================================
-        List mgout;
-        List oldcomp;
-        if (useHeterCov) {
-            // Steps A, B, C, D': Draw mu, variance trees (d_j), phi trees, and mean trees (Delta)
-            hetercov_draw_iter(hcs, oldbetas, mubar.row(0).t(), Amu,
-                               pZt, pstd_oldbetas_cols,
-                               bart_params, var_params, phi_params,
-                               rep, gen);
-            delta_Z = hcs.delta_Z;
-        }
-        else if (useBART && drawdelta) {
-            // Steps 2 & 3: Standardize unit-level betas and draw mean trees (Delta)
-            mixbart_draw_iter(mbs, oldbetas, mubar, Amu, nu, V, a,
-                              pZt, pstd_oldbetas_cols, bart_params, rep, gen);
-            oldcomp = mbs.oldcomp;
-            oldprob = mbs.oldprob;
-            ind     = mbs.ind;
-            delta_Z = mbs.delta_Z;
-        }
-        else if (drawdelta) {
-            // Step 4: Draw mixture component assignments and update global mixture parameters
-            olddelta.reshape(nvar, nz);
-            mgout = rmixGibbs(oldbetas - delta_Z, mubar, Amu, nu, V, a, oldprob, ind);
-            oldcomp = mgout["comps"];
-            oldprob = as<vec>(mgout["p"]);
-            ind = as<vec>(mgout["z"]);
-
-            olddelta = drawDelta(Z, oldbetas, ind, oldcomp, deltabar, Ad);
-            olddelta.reshape(nvar, nz);
-            delta_Z = Z * trans(olddelta);
-        }
-        else {
-            // Step 4: Draw mixture component assignments and update global mixture parameters
-            mgout = rmixGibbs(oldbetas, mubar, Amu, nu, V, a, oldprob, ind);
-            oldcomp = mgout["comps"];
-            oldprob = as<vec>(mgout["p"]);
-            ind = as<vec>(mgout["z"]);
-        }
-
-        // ====================================================================
-        // Step E: theta_i Metropolis | Delta(.), Sigma(.), data.
-        // ====================================================================
-        for (int lgt = 0; lgt < nlgt; lgt++) {
-            if (useHeterCov) {
-                cov::cov_eval ev{hcs.var_models, hcs.phi_models, (size_t)lgt};
-                rootpi  = cov::rootpi(ev);
-                betabar = hcs.mu_post + delta_Z.row(lgt).t();
-            } else {
-                List oldcomplgt = oldcomp[ind[lgt] - 1];
-                rootpi = as<mat>(oldcomplgt[1]);
-                if (drawdelta) {
-                    betabar = as<vec>(oldcomplgt[0]) + delta_Z.row(lgt).t();
-                } else {
-                    betabar = as<vec>(oldcomplgt[0]);
-                }
-            }
-
-            if (rep == 0) oldll[lgt] = llmnl_con(vectorise(oldbetas(lgt, span::all)), lgtdata_vector[lgt].y, lgtdata_vector[lgt].X, SignRes);
-
-            //compute inc.root
-            ucholinv = solve(trimatu(chol(lgtdata_vector[lgt].hess + rootpi * trans(rootpi))), eye(nvar, nvar)); //trimatu interprets the matrix as upper triangular and makes solve more efficient
-            incroot = chol(ucholinv * trans(ucholinv));
-
-            metropout_struct = mnlMetropOnce_con(lgtdata_vector[lgt].y, lgtdata_vector[lgt].X, vectorise(oldbetas(lgt, span::all)),
-                oldll[lgt], s, incroot, betabar, rootpi, SignRes);
-            if (metropout_struct.stay == 0) nacceptbeta = nacceptbeta + 1;
-
-            oldbetas(lgt, span::all) = trans(metropout_struct.betadraw);
-            oldll[lgt] = metropout_struct.oldll;
-        }
-
-        //print time to completion and draw # every nprint'th draw
-        if (nprint > 0) if ((rep + 1) % nprint == 0) infoMcmcTimer(rep, R);
-
-        if ((rep + 1) % keep == 0) {
-            mkeep = (rep + 1) / keep;
-            betadraw.slice(mkeep - 1) = oldbetas;
-            loglike[mkeep - 1] = sum(oldll);
-            if (useHeterCov) {
-                hetercov_store(hcs, mkeep);
-            }
-            else {
-                probdraw(mkeep - 1, span::all) = trans(oldprob);
-                compdraw[mkeep - 1] = oldcomp;
-                if (useBART && drawdelta) {
-                    mixbart_store(mbs, mkeep);
-                }
-                else if (drawdelta) {
-                    Deltadraw(mkeep - 1, span::all) = trans(vectorise(olddelta));
-                }
-            }
-        }
+    // ====================================================================
+    // Create backend + updater adapters, then run the unified MCMC loop.
+    // ====================================================================
+    std::unique_ptr<CovarianceBackend> backend;
+    if (useHeterCov) {
+        backend = std::make_unique<HeterCovBackend>(
+            oldbetas, Z, mubar, Amu, R, keep,
+            bart_params, var_params, phi_params);
+    } else {
+        backend = std::make_unique<GlobalCovarianceBackend>(
+            oldbetas, Z, mubar, Amu, nu, V, a,
+            deltabar, Ad, drawdelta, useBART,
+            olddelta, oldprob, ind, R, keep, bart_params);
     }
 
-    if (nprint > 0) endMcmcTimer();
+    MnlThetaUpdaterAdapter updater(oldbetas, lgtdata_vector, SignRes, s, R);
 
-    nmix = List::create(Named("probdraw") = probdraw,
-        Named("zdraw") = R_NilValue, //sets the value to NULL in R
-        Named("compdraw") = compdraw);
+    run_unified_sampler(R, keep, nprint, nlgt,
+                        *backend, updater, oldbetas, betadraw, loglike);
 
-    //ADDED FOR CONSTRAINTS
-    //If there are sign constraints, return f(betadraws) as "betadraws"
-    //conStatus will be set to true if SignRes has any non-zero elements
+    // ====================================================================
+    // Post-loop: SignRes transform on betadraw
+    // ====================================================================
     bool conStatus = any(SignRes);
-
     if (conStatus) {
         int SignResSize = SignRes.size();
         for (int i = 0;i < SignResSize; i++) {
             if (SignRes[i] != 0) {
-                for (int s = 0;s < R / keep; s++) {
-                    betadraw(span(), span(i), span(s)) = SignRes[i] * exp(betadraw(span(), span(i), span(s)));
+                for (int ss = 0;ss < R / keep; ss++) {
+                    betadraw(span(), span(i), span(ss)) = SignRes[i] * exp(betadraw(span(), span(i), span(ss)));
                 }
             }
         }
     }
 
-    double acceptrbeta = nacceptbeta / (R * nlgt * 1.0) * 100;
+    // ====================================================================
+    // Output assembly: backend.pack() + updater metrics + betadraw/loglike
+    // ====================================================================
+    AcceptanceMetrics am = updater.acceptance_metrics();
+    BackendPackPayload bp = backend->pack();
 
-    // Heter-cov return path: hetercov_pack supplies the heter-cov outputs;
-    // caller merges in betadraw / loglike / SignRes.  The R-side
-    // predict.rhierMnlRwMixture method dispatches on class
-    // "bayesm.HART.HeterCov" and consumes (bart_models, var_models,
-    // phi_models, mu_draw) to evaluate Sigma(Z*)^{1/2} delta(Z*) at any
-    // user-supplied Z*.
-    if (useHeterCov) {
-        List out = hetercov_pack(hcs);
-        out["betadraw"] = betadraw;
-        out["loglike"]  = loglike;
-        out["SignRes"]  = SignRes;
-        out["acceptrbeta"] = acceptrbeta;
-        return out;
-    }
-
-    if (useBART && drawdelta) {
-        List out = mixbart_pack(mbs);
-        out["betadraw"] = betadraw;
-        out["nmix"]     = nmix;
-        out["loglike"]  = loglike;
-        out["SignRes"]  = SignRes;
-        out["acceptrbeta"] = acceptrbeta;
-        return out;
-    }
-    else if (drawdelta) {
-        return(List::create(
-			Named("Deltadraw") = Deltadraw,
-            Named("betadraw") = betadraw,
-            Named("nmix") = nmix,
-            Named("loglike") = loglike,
-            Named("SignRes") = SignRes,
-            Named("acceptrbeta") = acceptrbeta));
-    }
-    else {
-        return(List::create(
-            Named("betadraw") = betadraw,
-            Named("nmix") = nmix,
-            Named("loglike") = loglike,
-            Named("SignRes") = SignRes,
-            Named("acceptrbeta") = acceptrbeta));
-    }
-
+    List out = bp.fields;
+    out["betadraw"]    = betadraw;
+    out["loglike"]     = loglike;
+    out["SignRes"]     = SignRes;
+    out["acceptrbeta"] = am.acceptrbeta;
+    return out;
 }

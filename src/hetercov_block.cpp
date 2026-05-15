@@ -110,6 +110,9 @@ void hetercov_draw_iter(HeterCovState& s,
     const int nlgt = s.nlgt;
     const int nvar = s.nvar;
     const int nz   = s.nz;
+    // Centered unit-level coefficients used across Step C and Step D'.
+    // Pure algebraic rewrite: theta_centered(i,j) == oldbetas(i,j) - mu_post(j).
+    arma::mat theta_centered(nlgt, nvar, fill::zeros);
 
     // ====================================================================
     // Step A: draw mu | {theta_i}, Sigma(.).
@@ -139,6 +142,7 @@ void hetercov_draw_iter(HeterCovState& s,
         s.mu_post = drawMuHeterCov(oldbetas, mubar0, Amu,
                                    s.var_models, s.phi_models, gen);
     }
+    theta_centered = oldbetas.each_row() - s.mu_post.t();
 
     // ====================================================================
     // DART burn-in (mean and variance trees independently configured).
@@ -166,7 +170,7 @@ void hetercov_draw_iter(HeterCovState& s,
     // ====================================================================
     for (int i = 0; i < nlgt; i++) {
         cov::cov_eval ev{s.var_models, s.phi_models, (size_t)i};
-        vec eta_i = oldbetas.row(i).t() - s.mu_post;
+        vec eta_i = theta_centered.row(i).t();
         cov::apply_L(eta_i, ev);                            // eta_i := L (theta_i - mu)
         for (int j = 0; j < nvar; j++) {
             double sqrt_dj = std::sqrt(s.var_models[j].f(i));
@@ -193,21 +197,32 @@ void hetercov_draw_iter(HeterCovState& s,
     // ====================================================================
     if (s.useFullCov) {
         const double eps = 1e-8;
+        // These are Step D' invariants because bart_models is fixed until Step B
+        // and var_models has already been updated at this point in the iteration.
+        // Caching avoids repeated function calls with no change in algebra.
+        arma::mat sqrt_d_cache(nlgt, nvar, fill::zeros);
+        arma::mat delta_cache(nlgt, nvar, fill::zeros);
+        for (int i = 0; i < nlgt; i++) {
+            for (int j = 0; j < nvar; j++) {
+                sqrt_d_cache(i, j) = std::sqrt(s.var_models[j].f(i));
+                delta_cache(i, j)  = s.bart_models[j].f(i);
+            }
+        }
         for (int j = 1; j < nvar; j++) {
             for (int k = 0; k < j; k++) {
                 double* y_buf = s.py_phi_cols[j][k];
                 for (int i = 0; i < nlgt; i++) {
-                    double c_ik = oldbetas(i, k) - s.mu_post(k);
+                    double c_ik = theta_centered(i, k);
                     if (std::abs(c_ik) < eps)
                         c_ik = (c_ik >= 0 ? eps : -eps);
 
-                    double sqrt_dj = std::sqrt(s.var_models[j].f(i));
-                    double delta_j = s.bart_models[j].f(i);
-                    double r_i = oldbetas(i, j) - s.mu_post(j) - sqrt_dj * delta_j;
+                    double sqrt_dj = sqrt_d_cache(i, j);
+                    double delta_j = delta_cache(i, j);
+                    double r_i = theta_centered(i, j) - sqrt_dj * delta_j;
                     for (int m = 0; m < j; m++) {
                         if (m == k) continue;
                         r_i -= s.phi_models[j][m].f(i)
-                             * (oldbetas(i, m) - s.mu_post(m));
+                             * theta_centered(i, m);
                     }
 
                     y_buf[i]            = r_i / c_ik;

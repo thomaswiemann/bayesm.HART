@@ -138,6 +138,19 @@ test_that("rhierNegbinRw validates missing regdata", {
                "Requires Data element regdata")
 })
 
+test_that("rhierNegbinRw rejects ncomp > 1", {
+  sim <- generate_negbin_test_data(nreg = 10, nobs = 10, nvar = 1, nz = 2)
+  expect_error(
+    rhierNegbinRw(
+      Data = list(regdata = sim$regdata, Z = sim$Z),
+      Prior = list(ncomp = 2),
+      Mcmc = list(R = 10, nprint = 0),
+      r_verbose = FALSE
+    ),
+    regexp = "Only ncomp = 1 is currently supported"
+  )
+})
+
 test_that("rhierNegbinRw validates missing R", {
   sim <- generate_negbin_test_data(nreg = 10, nobs = 10, nvar = 1, nz = 2)
   expect_error(rhierNegbinRw(

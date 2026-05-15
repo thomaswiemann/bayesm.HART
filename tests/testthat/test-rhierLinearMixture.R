@@ -58,18 +58,17 @@ test_that("rhierLinearMixture runs without Z", {
   expect_true(!is.null(out$nmix))
 })
 
-test_that("rhierLinearMixture runs with ncomp=2", {
+test_that("rhierLinearMixture rejects ncomp > 1", {
   sim <- generate_mixture_linear_data(nreg = 40, nobs = 15, nvar = 1, nz = 2)
-  out <- rhierLinearMixture(
-    Data = list(regdata = sim$regdata, Z = sim$Z),
-    Prior = list(ncomp = 2),
-    Mcmc = list(R = 50, keep = 1, nprint = 0),
-    r_verbose = FALSE
+  expect_error(
+    rhierLinearMixture(
+      Data = list(regdata = sim$regdata, Z = sim$Z),
+      Prior = list(ncomp = 2),
+      Mcmc = list(R = 50, keep = 1, nprint = 0),
+      r_verbose = FALSE
+    ),
+    regexp = "Only ncomp = 1 is currently supported"
   )
-  expect_s3_class(out, "rhierLinearMixture")
-  expect_true(!is.null(out$nmix))
-  # probdraw should have 2 columns for 2 mixture components
-  expect_equal(ncol(out$nmix$probdraw), 2)
 })
 
 # ==============================================================================
