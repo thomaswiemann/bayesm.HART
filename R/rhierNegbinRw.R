@@ -22,21 +22,23 @@
 #'   - `a` (optional): Shape parameter for gamma prior on alpha (default: 0.5). Note: This differs from `rhierLinearMixture` where `a` is the Dirichlet prior.
 #'   - `b` (optional): Rate parameter for gamma prior on alpha (default: 0.1).
 #'   - `mubar` (optional): `1 x nvar` prior mean vector for the normal prior (default: 0).
-#'   - `Amu` (optional): `1 x 1` prior precision for the normal prior (default: 0.01).
+#'   - `Amu` (optional): Prior precision for the normal prior on \eqn{\mu} (default: 0.01). Scalar on the bayesm paths. Under a HART model the prior is the independent \eqn{N(\bar\mu, Amu^{-1})}, and `Amu` may be a scalar (expanded to `Amu * I`) or an `nvar x nvar` SPD matrix.
 #'   - `Ad` (optional): `nvar*nz x nvar*nz` prior precision for vec(Delta) (default: 0.01 * I). Only used when `drawdelta = TRUE` and `useBART = FALSE`.
 #'   - `deltabar` (optional): `nvar*nz` prior mean for vec(Delta) (default: 0). Only used when `drawdelta = TRUE` and `useBART = FALSE`.
-#'   - `bart` (optional): List of HART prior parameters. See `rhierLinearMixture` for details.
-#'   - `vartree` (optional, *experimental extension beyond Wiemann 2025*): List of
-#'     parameters enabling heteroscedastic covariance \eqn{\Sigma(Z_i)} via
-#'     product-of-trees variance models on the Modified Cholesky diagonal
-#'     \eqn{d_j(\cdot)}. Requires `bart` to also be specified and `ncomp = 1`.
-#'     When `nvar > 1`, the package automatically promotes to the full-Cholesky
-#'     structure described under `phitree`. See "Heteroscedastic Covariance"
-#'     in Details.
-#'   - `phitree` (optional, *experimental extension beyond Wiemann 2025*): List of
-#'     parameters enabling sum-of-trees regression models on the Modified
-#'     Cholesky off-diagonals \eqn{\phi_{jk}(\cdot)}. Requires `vartree`.
-#'     Auto-enabled when `vartree` is supplied and `nvar > 1`.
+#'   - `hart_model` (optional): Preference-model selector, one of `"none"`
+#'     (default; bayesm constant or linear \eqn{\Delta(Z)}), `"normalized"`
+#'     (HART prior on the representative unit), or `"direct"` (HART mean and
+#'     covariance trees). Both HART models require `Z`. The tree lists below
+#'     are optional under a HART model and are an error under `"none"`. See
+#'     `rhierMnlRwMixture` for the model definitions.
+#'   - `bart` (optional): List of hyperparameters for the HART mean trees
+#'     (`hart_model = "normalized"` or `"direct"`). See `rhierMnlRwMixture`.
+#'   - `vartree` (optional, `hart_model = "direct"` only): List of
+#'     hyperparameters for the product-of-trees variance models on the Modified
+#'     Cholesky diagonal \eqn{d_j(\cdot)}.
+#'   - `phitree` (optional, `hart_model = "direct"` and `nvar > 1` only): List
+#'     of hyperparameters for the sum-of-trees models on the Modified Cholesky
+#'     off-diagonals \eqn{\phi_{jk}(\cdot)}.
 #' @param Mcmc A list containing MCMC parameters:
 #'   - `R`: Number of MCMC iterations (required).
 #'   - `keep` (optional): Thinning parameter (default: 1).
@@ -221,6 +223,10 @@ if(missing(Prior)) {
 if(is.null(Prior$ncomp)) {pandterm("Requires Prior element ncomp")}
    else {ncomp=Prior$ncomp}
 if(ncomp != 1) {pandterm("Only ncomp = 1 is currently supported")}
+# HART preference model (R/hart_priors.R): "none" keeps the bayesm paths.
+cfg <- .hart_config(Prior, nvar = nvar, nz = if (drawdelta) nz else 0L,
+                    drawdelta = drawdelta,
+                    coef_names = colnames(regdata[[1]]$X))
 if(is.null(Prior[["nu"]])) {nu=nvar+BayesmConstant.nuInc} else {nu=Prior[["nu"]]}
 if(is.null(Prior[["V"]])) {V=nu*diag(nvar)} else {V=Prior[["V"]]}
 if(is.null(Prior[["a"]])) {a=BayesmConstant.agammaprior} else {a=Prior[["a"]]}
@@ -233,19 +239,28 @@ if((length(b) != 1) | (b <=0)) pandterm("b should be a positive number")
 # Mixture prior parameters (mirrors MNL/linear)
 if(is.null(Prior$mubar)) { mubar=matrix(rep(0,nvar),nrow=1) } else { mubar=matrix(Prior$mubar, nrow=1) }
 if(ncol(mubar) != nvar) {pandterm(paste("mubar must have ncomp cols, ncol(mubar)= ",ncol(mubar)))}
-if(is.null(Prior$Amu)) { Amu=matrix(BayesmConstant.A,ncol=1) } else { Amu=matrix(Prior$Amu, ncol=1) }
-if(ncol(Amu) != 1 | nrow(Amu) != 1) {pandterm("Amu must be a 1 x 1 array")}
+if (cfg$model == "none") {
+  if(is.null(Prior$Amu)) { Amu=matrix(BayesmConstant.A,ncol=1) } else { Amu=matrix(Prior$Amu, ncol=1) }
+  if(ncol(Amu) != 1 | nrow(Amu) != 1) {pandterm("Amu must be a 1 x 1 array")}
+} else {
+  # HART: independent prior mu ~ N(mubar, Amu^{-1}); scalar or nvar x nvar.
+  Amu <- .hart_Amu(Prior$Amu, nvar, default = BayesmConstant.A)
+}
+cfg$Amu <- Amu
 if(is.null(Prior$a_mix)) { a_mix=rep(BayesmConstant.a, ncomp) } else { a_mix=Prior$a_mix }
 if(length(a_mix) != ncomp) {pandterm("Requires dim(a_mix)= ncomp (no of components)")}
 
-# ---- HART prior modification ----
-useBART <- ifelse(!is.null(Prior$bart) & drawdelta, TRUE, FALSE)
-store_trees <- if (is.null(Prior$store_trees)) TRUE else isTRUE(Prior$store_trees)
-bart_params = NULL
-if (useBART) {
-  bart_params <- .parse_bart_params(Prior$bart, nz)
-  bart_params$store_trees <- store_trees
-}
+# ---- HART preference model (see R/hart_priors.R) ----
+# Prior$hart_model selects "none" (bayesm paths), "normalized", or "direct".
+# Stage 0: both HART models run on the pre-plan kernels behind useBART /
+# useHeterCov.  Variance-tree lambda defaults use per-unit MLE betas
+# (Beta_init, computed below).
+useBART     <- cfg$model != "none"
+useHeterCov <- cfg$model == "direct"
+bart_params <- cfg$bart
+var_params  <- list()
+phi_params  <- list()
+# ---- end HART preference model ----
 
 # Delta prior (for non-BART drawdelta path)
 if(is.null(Prior$Ad) & drawdelta) {Ad=BayesmConstant.A*diag(nvar*nz)}
@@ -259,20 +274,6 @@ if(drawdelta & !useBART) {
   if(length(deltabar) != nz*nvar) {pandterm("deltabar must be of length nvar*nz")}
 }
 # ---- end HART prior modification ----
-
-# ---------------------------------------------------------------------------
-# Heteroscedastic covariance Sigma(Z_i) via modified-Cholesky tree ensembles.
-# Auto-enabled by Prior$vartree.  Requires Prior$bart, drawdelta, ncomp == 1.
-# Negbin lambda baseline uses per-unit MLE betas (Beta_init below); see
-# R/heter_cov_priors.R for the parsing helpers.
-# ---------------------------------------------------------------------------
-hcv_flags   <- .parse_heter_cov_flags(Prior, nvar)
-useHeterCov <- hcv_flags$useHeterCov
-useFullCov  <- hcv_flags$useFullCov
-auto_full   <- hcv_flags$auto_full
-var_params  <- list()
-phi_params  <- list()
-.validate_heter_cov(useHeterCov, useBART, ncomp, drawdelta, SignRes = NULL)
 
 #
 # check for Mcmc 
@@ -306,13 +307,7 @@ if(drawdelta) {
 cat(" ",fill=TRUE)
 cat("Prior Parameters:",fill=TRUE)
 if (useBART) {
-  cat("\nHART prior parameters:\n")
-  cat(sprintf("num_trees = %d\n", bart_params$num_trees))
-  cat(sprintf("power = %g\n", bart_params$power))
-  cat(sprintf("base = %g\n", bart_params$base))
-  cat(sprintf("tau = %g\n", bart_params$tau))
-  cat(sprintf("numcut = %d\n", bart_params$numcut))
-  cat(sprintf("sparse = %d\n", bart_params$sparse))
+  .print_hart_prior(cfg)
 } else {
   cat("deltabar",fill=TRUE)
   print(deltabar)
@@ -394,14 +389,15 @@ for (i in 1:nreg) {
    fsh()
 }
 
-# Heter-cov hyperparameter setup (Beta_init now available for lambda calibration).
+# Covariance-tree hyperparameters (Beta_init now available for the
+# data-calibrated lambda default; see R/hart_priors.R).
 if (useHeterCov) {
-  var_params <- .parse_var_params(Prior$vartree, Beta_init, nz)
-  if (useFullCov) phi_params <- .parse_phi_params(Prior$phitree, nz, nu, nvar)
+  cfg$vartree <- .parse_var_params(cfg$vartree, Beta_init, nz)
+  if (cfg$full_cov) cfg$phitree <- .parse_phi_params(cfg$phitree, nz, nu, nvar)
+  var_params <- cfg$vartree
+  phi_params <- cfg$phitree %||% list()
   if (r_verbose)
-    .print_heter_cov_summary(useFullCov, var_params, phi_params,
-                             lambda_user_supplied = !is.null(Prior$vartree$lambda),
-                             auto_full = auto_full)
+    .print_hart_covariance(cfg, lambda_user_supplied = !is.null(Prior$vartree$lambda))
   # Warm-start MCMC at per-unit MLEs under heter-cov; the BART path keeps the
   # original pooled-MLE start for backward compatibility.
   Beta = Beta_init
@@ -462,27 +458,8 @@ draws=rhierNegbinRw_rcpp_loop(regdata, hess_i, Z, Beta, deltabar,
 # (Now handled directly in C++)
 attributes(draws$alphadraw)$class=c("bayesm.mat","mcmc")
 attributes(draws$alphadraw)$mcpar=c(1,R,keep)
-attributes(draws$betadraw)$class=c("bayesm.hcoef")
-
-if (useHeterCov) {
-  # "bayesm.HART.HeterCov" is the marker superclass shared by all
-  # heteroscedastic-Sigma(Z) hierarchical models; it lets predict_helpers.R
-  # dispatch generically without hardcoding any model-specific class name.
-  attributes(draws$mu_draw)$class <- c("bayesm.mat", "mcmc")
-  attributes(draws$mu_draw)$mcpar <- c(1, R, keep)
-  class(draws) <- c("rhierNegbinRwHeterCov",
-                    "bayesm.HART.HeterCov",
-                    "rhierNegbinRw")
-} else {
-  if(!useBART & drawdelta) {
-    attributes(draws$Deltadraw)$class=c("bayesm.mat","mcmc")
-    attributes(draws$Deltadraw)$mcpar=c(1,R,keep)
-  }
-  attributes(draws$nmix)$class <- "bayesm.nmix"
-  class(draws) <- "rhierNegbinRw"
-}
-
-draws <- .assemble_hart_cache(draws, z_map)
+draws <- .finish_hart_fit(draws, cfg, z_map, R, keep,
+                          base_class = "rhierNegbinRw")
 
 return(draws)
 }

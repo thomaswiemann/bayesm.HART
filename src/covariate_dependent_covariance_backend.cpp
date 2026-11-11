@@ -3,6 +3,13 @@
 using namespace arma;
 using namespace Rcpp;
 
+namespace {
+bool store_trees_flag(List const& bart_params) {
+    return bart_params.containsElementNamed("store_trees")
+        ? as<bool>(bart_params["store_trees"]) : true;
+}
+}
+
 HeterCovBackend::HeterCovBackend(
     mat& oldbetas, mat const& Z,
     mat const& mubar, mat const& Amu,
@@ -10,48 +17,37 @@ HeterCovBackend::HeterCovBackend(
     List const& bart_params,
     List const& var_params,
     List const& phi_params)
-    : oldbetas_(oldbetas), mubar_(mubar), Amu_(Amu),
+    : HartBackend(oldbetas, Z, R, keep, store_trees_flag(bart_params)),
+      mubar_(mubar), Amu_(Amu),
       bart_params_(bart_params), var_params_(var_params),
-      phi_params_(phi_params),
-      nreg_(oldbetas.n_rows), nz_(Z.n_cols), nvar_(oldbetas.n_cols)
+      phi_params_(phi_params)
 {
-    hetercov_init(hcs_, nreg_, nz_, nvar_, R, keep,
+    hetercov_init(hcs_, n_, nz_, D_, R, keep,
                   bart_params, var_params, phi_params);
-    std_oldbetas_ = oldbetas_;
-    pstd_oldbetas_cols_.resize(nvar_);
-    for (int j = 0; j < nvar_; j++)
+    std_oldbetas_ = theta_;
+    pstd_oldbetas_cols_.resize(D_);
+    for (int j = 0; j < D_; j++)
         pstd_oldbetas_cols_[j] = std_oldbetas_.colptr(j);
-    Zt_ = Z.t();
-    pZt_ = Zt_.memptr();
-    rootpi_cache_.resize(nreg_);
-    prior_mean_cache_.resize(nreg_);
-    for (int i = 0; i < nreg_; i++) {
-        rootpi_cache_[i].set_size(nvar_, nvar_);
-        prior_mean_cache_[i].set_size(nvar_);
-    }
+    rootpi_cache_.assign(n_, mat(D_, D_, fill::zeros));
 }
 
 void HeterCovBackend::draw_iteration(int rep) {
-    hetercov_draw_iter(hcs_, oldbetas_, mubar_.row(0).t(), Amu_,
-                       pZt_, pstd_oldbetas_cols_,
+    hetercov_draw_iter(hcs_, theta_, mubar_.row(0).t(), Amu_,
+                       pZt(), pstd_oldbetas_cols_,
                        bart_params_, var_params_, phi_params_,
                        rep, gen_);
 
     // Cache per-unit kernels once per iteration for reference-based access
     // from the unified sampler driver.
-    for (int i = 0; i < nreg_; i++) {
+    for (int i = 0; i < n_; i++) {
         cov::cov_eval ev{hcs_.var_models, hcs_.phi_models, (size_t)i};
         rootpi_cache_[i] = cov::rootpi(ev);
-        prior_mean_cache_[i] = hcs_.mu_post + hcs_.delta_Z.row(i).t();
+        prior_mean_[i]   = hcs_.mu_post + hcs_.delta_Z.row(i).t();
     }
 }
 
 mat const& HeterCovBackend::precision_root(int i) const {
     return rootpi_cache_[i];
-}
-
-vec const& HeterCovBackend::prior_mean(int i) const {
-    return prior_mean_cache_[i];
 }
 
 void HeterCovBackend::store(int mkeep) {

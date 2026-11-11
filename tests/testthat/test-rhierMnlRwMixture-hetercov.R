@@ -31,10 +31,10 @@ make_small_sim <- function(seed = 20260512L, nlgt = 30L, nvar = 2L, nz = 2L,
        theta_true = theta_true, Z = Z, p = p, nvar = nvar)
 }
 
-test_that("vartree requires bart, ncomp == 1, and Z", {
+test_that("vartree requires hart_model, ncomp == 1, and Z", {
   sim <- make_small_sim()
 
-  # vartree without bart
+  # vartree without hart_model
   expect_error(
     capture.output(
       rhierMnlRwMixture(
@@ -43,7 +43,7 @@ test_that("vartree requires bart, ncomp == 1, and Z", {
         Mcmc  = list(R = 4L, keep = 1L, nprint = 0L),
         r_verbose = FALSE)
     ),
-    regexp = "requires Prior\\$bart"
+    regexp = "require Prior\\$hart_model"
   )
 
   # ncomp > 1 with vartree
@@ -51,7 +51,7 @@ test_that("vartree requires bart, ncomp == 1, and Z", {
     capture.output(
       rhierMnlRwMixture(
         Data  = sim$Data,
-        Prior = list(ncomp = 2L, bart = list(num_trees = 5L),
+        Prior = list(ncomp = 2L, hart_model = "direct", bart = list(num_trees = 5L),
                      vartree = list(num_trees = 5L)),
         Mcmc  = list(R = 4L, keep = 1L, nprint = 0L),
         r_verbose = FALSE)
@@ -66,7 +66,7 @@ test_that("Sign restrictions under heter-cov preserve positivity (lifted validat
   # every kept draw.  This regression test guards against any future change
   # that re-introduces a SignRes block in .validate_heter_cov.
   sim <- make_small_sim()                  # nvar = 2L
-  Prior <- list(ncomp = 1L,
+  Prior <- list(ncomp = 1L, hart_model = "direct",
                 SignRes = c(1L, 0L),       # constrain coef 1 to be positive
                 bart    = list(num_trees = 5L),
                 vartree = list(num_trees = 5L))
@@ -92,7 +92,7 @@ test_that("vartree only with nvar > 1 auto-promotes to full Cholesky", {
   # default .parse_phi_params(NULL, nz) so the user gets full Cholesky even
   # without explicitly passing Prior$phitree.
   sim <- make_small_sim()                # nvar = 2L
-  Prior <- list(ncomp = 1L,
+  Prior <- list(ncomp = 1L, hart_model = "direct",
                 bart    = list(num_trees = 5L),
                 vartree = list(num_trees = 5L))   # NO phitree
   Mcmc  <- list(R = 20L, keep = 1L, nprint = 0L)
@@ -107,7 +107,7 @@ test_that("vartree only with nvar > 1 auto-promotes to full Cholesky", {
   expect_named(fit,
                c("bart_models", "var_models", "phi_models", "mu_draw",
                  "varcount", "varprob", "var_varcount", "var_varprob",
-                 "betadraw", "loglike", "SignRes", "acceptrbeta"),
+                 "betadraw", "loglike", "SignRes", "acceptrbeta", "hart"),
                ignore.order = TRUE)
   # Auto-promotion: phi_models is now non-null and properly jagged.
   expect_length(fit$phi_models, sim$nvar)
@@ -129,7 +129,7 @@ test_that("vartree only with nvar == 1 stays diagonal (scalar case)", {
   # When nvar == 1 there are no off-diagonals to model, so phi_models is
   # legitimately NULL and Sigma(Z) is just d_1(Z).  Auto-promotion is a no-op.
   sim <- make_small_sim(nvar = 1L)
-  Prior <- list(ncomp = 1L,
+  Prior <- list(ncomp = 1L, hart_model = "direct",
                 bart    = list(num_trees = 5L),
                 vartree = list(num_trees = 5L))
   Mcmc  <- list(R = 20L, keep = 1L, nprint = 0L)
@@ -170,7 +170,7 @@ test_that("DART (sparse=TRUE) on vartree concentrates var_varprob away from unif
     list(y = y, X = X)
   })
   Data <- list(p = p, lgtdata = lgtdata, Z = Z)
-  Prior <- list(ncomp = 1L,
+  Prior <- list(ncomp = 1L, hart_model = "direct",
                 bart    = list(num_trees = 5L),
                 vartree = list(num_trees = 20L, sparse = TRUE, burn = 5L))
   Mcmc  <- list(R = 60L, keep = 1L, nprint = 0L)
@@ -192,7 +192,7 @@ test_that("DART (sparse=TRUE) on vartree concentrates var_varprob away from unif
 
 test_that("Phase 2 (vartree + phitree) runs end-to-end and returns jagged phi_models", {
   sim <- make_small_sim()
-  Prior <- list(ncomp = 1L,
+  Prior <- list(ncomp = 1L, hart_model = "direct",
                 bart    = list(num_trees = 5L),
                 vartree = list(num_trees = 5L),
                 phitree = list(num_trees = 5L))
@@ -221,7 +221,7 @@ test_that("Phase 2 (vartree + phitree) runs end-to-end and returns jagged phi_mo
 
 test_that("predict.rhierMnlRwMixtureHeterCov dispatches for all five types", {
   sim <- make_small_sim()
-  Prior <- list(ncomp = 1L,
+  Prior <- list(ncomp = 1L, hart_model = "direct",
                 bart    = list(num_trees = 5L),
                 vartree = list(num_trees = 5L),
                 phitree = list(num_trees = 5L))
@@ -291,7 +291,7 @@ test_that("predict.rhierMnlRwMixtureHeterCov dispatches for all five types", {
 
 test_that("auto-calibrated lambda is used when Prior$vartree$lambda is NULL", {
   sim <- make_small_sim()
-  Prior <- list(ncomp = 1L,
+  Prior <- list(ncomp = 1L, hart_model = "direct",
                 bart    = list(num_trees = 5L),
                 vartree = list(num_trees = 5L))   # no lambda -> auto
   Mcmc  <- list(R = 6L, keep = 1L, nprint = 0L)

@@ -8,6 +8,7 @@ library(testthat)
   )
   prior <- list(
     ncomp = 1L,
+    hart_model = if (use_heter) "direct" else "normalized",
     bart = list(num_trees = 5L),
     store_trees = store_trees
   )

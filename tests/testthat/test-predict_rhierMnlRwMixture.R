@@ -25,6 +25,7 @@ run_model_for_pred_test <- function(sim_data, R = 50, keep = 1, useBART = FALSE)
   }
   # Use bart settings only if requested
   if (useBART && nz > 0) { 
+    Prior$hart_model <- "normalized"
     Prior$bart <- list(num_trees = 20) # Small number of trees
   } else {
     Prior$bart <- NULL # Ensure BART is off otherwise
@@ -408,7 +409,7 @@ test_that("predict method with prior choice_probs works", {
 
   # 2. BART with Z
   sim_bart_Z <- sim_lin_Z # Can use same data
-  fit_bart_Z <- run_quick_hmnl(sim_bart_Z, list(ncomp = ncomp_test, bart = list(num_trees = num_trees_test)), 
+  fit_bart_Z <- run_quick_hmnl(sim_bart_Z, list(ncomp = ncomp_test, hart_model = "normalized", bart = list(num_trees = num_trees_test)), 
                                list(R = R_test, keep = keep_test, nprint=0))
   ncoef_bart_Z <- dim(fit_bart_Z$betadraw)[2] # Should be ncoef_test
   expect_equal(ncoef_bart_Z, ncoef_test, info="ncoef mismatch for fit_bart_Z")
@@ -422,12 +423,13 @@ test_that("predict method with prior choice_probs works", {
   ncoef_lin_noZ <- dim(fit_lin_noZ$betadraw)[2] # Should be ncoef_test
   expect_equal(ncoef_lin_noZ, ncoef_test, info="ncoef mismatch for fit_lin_noZ")
 
-  # 4. BART without Z (should run as linear internally)
-  sim_bart_noZ <- sim_lin_noZ
-  fit_bart_noZ <- run_quick_hmnl(sim_bart_noZ, list(ncomp = ncomp_test, bart = list(num_trees = num_trees_test)), 
-                                 list(R = R_test, keep = keep_test, nprint=0))
-  ncoef_bart_noZ <- dim(fit_bart_noZ$betadraw)[2] # Should be ncoef_test
-  expect_equal(ncoef_bart_noZ, ncoef_test, info="ncoef mismatch for fit_bart_noZ")
+  # 4. A HART model without Z is an error under the explicit selector
+  expect_error(
+    run_quick_hmnl(sim_lin_noZ,
+                   list(ncomp = ncomp_test, hart_model = "normalized",
+                        bart = list(num_trees = num_trees_test)),
+                   list(R = R_test, keep = keep_test, nprint=0)),
+    regexp = "requires Data\\$Z")
 
   # Create newdata structures
   # newdata for models WITH Z
@@ -496,14 +498,6 @@ test_that("predict method with prior choice_probs works", {
   expect_true(is.array(pred_lin_noZ[[1]]), info = "pred_lin_noZ[[1]] is not array")
   expect_equal(dim(pred_lin_noZ[[1]]), c(nT2_test, p_test, ndraws_out))
   
-  # Test 2.4: Basic Execution (BART, without Z)
-  pred_bart_noZ <- predict(fit_bart_noZ, newdata = newdata_noZ,
-                           mode = "prior", type = "choice_probs",
-                           nsim = 1, r_verbose=FALSE)
-  expect_type(pred_bart_noZ, "list")
-  expect_length(pred_bart_noZ, 1)
-  expect_true(is.array(pred_bart_noZ[[1]]), info = "pred_bart_noZ[[1]] is not array")
-  expect_equal(dim(pred_bart_noZ[[1]]), c(nT2_test, p_test, ndraws_out))
 
   # --- nsim Argument Tests --- 
   
@@ -558,7 +552,7 @@ test_that("DeltaZ BART prediction errors include draw context on singular rooti"
   capture.output({
     fit <- rhierMnlRwMixture(
       Data = sim,
-      Prior = list(ncomp = 1, bart = list(num_trees = 5)),
+      Prior = list(ncomp = 1, hart_model = "normalized", bart = list(num_trees = 5)),
       Mcmc = list(R = 6, keep = 1, nprint = 0),
       r_verbose = FALSE
     )

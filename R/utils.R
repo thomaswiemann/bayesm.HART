@@ -46,29 +46,6 @@ calculate_mnl_probs_from_beta <- function(X_i, beta_is, p) {
   if (is.null(a)) b else a
 }#%||%
 
-# Parse BART prior parameters, supplying defaults
-# @param bart_list Prior$bart list
-# @param nz number of covariates (used for default rho)
-# @return fully populated list of parameters
-# @keywords internal
-.parse_bart_params <- function(bart_list, nz) {
-  list(
-    num_trees = bart_list$num_trees %||% 200,
-    power     = bart_list$power %||% 2.0,
-    base      = bart_list$base %||% 0.95,
-    tau       = bart_list$tau %||% (1.0 / sqrt(bart_list$num_trees %||% 200)),
-    numcut    = bart_list$numcut %||% 100,
-    sparse    = bart_list$sparse %||% FALSE,
-    theta     = bart_list$theta %||% 0.0,
-    omega     = bart_list$omega %||% 1.0,
-    a         = bart_list$a %||% 0.5,
-    b         = bart_list$b %||% 1.0,
-    rho       = bart_list$rho %||% nz,
-    aug       = bart_list$aug %||% FALSE,
-    burn      = bart_list$burn %||% 100
-  )
-}#.parse_bart_params
-
 # Build exact unique-row mapping for Z matrices.
 # Returns:
 #   - Z_unique: unique rows in first-appearance order
@@ -130,4 +107,43 @@ calculate_mnl_probs_from_beta <- function(X_i, beta_is, p) {
 
   if (length(cache) > 0L) attr(draws, "hart_cache") <- cache
   draws
-}
+}#.ASSEMBLE_HART_CACHE
+
+# Shared output finishing for the three samplers: bayesm classes and `mcpar`
+# attributes, the HART metadata field, and the unique-Z cache attribute.
+# Likelihood-specific attributes (taudraw, alphadraw) are set by the wrapper
+# before calling this.
+#
+# `cfg` is the .hart_config() list (with vartree/phitree parsed), `z_map` the
+# .build_unique_z_map() result or NULL, `base_class` the bayesm class name.
+.finish_hart_fit <- function(draws, cfg, z_map, R, keep, base_class) {
+  attributes(draws$betadraw)$class <- "bayesm.hcoef"
+  if (cfg$model == "direct") {
+    # "bayesm.HART.HeterCov" is the marker superclass shared by all
+    # heteroscedastic-Sigma(Z) fits; predict_helpers.R dispatches on it.
+    attributes(draws$mu_draw)$class <- c("bayesm.mat", "mcmc")
+    attributes(draws$mu_draw)$mcpar <- c(1, R, keep)
+    class(draws) <- c(paste0(base_class, "HeterCov"),
+                      "bayesm.HART.HeterCov", base_class)
+  } else {
+    if (!is.null(draws$Deltadraw)) {
+      attributes(draws$Deltadraw)$class <- c("bayesm.mat", "mcmc")
+      attributes(draws$Deltadraw)$mcpar <- c(1, R, keep)
+    }
+    attributes(draws$nmix)$class <- "bayesm.nmix"
+    class(draws) <- base_class
+  }
+  # Metadata records the model identity, schema, coefficient ordering, and
+  # the resolved priors.  bayesm-path fits ("none") are left exactly as bayesm
+  # returns them.
+  if (cfg$model != "none") {
+    draws$hart <- list(model      = cfg$model,
+                       schema     = 1L,
+                       nvar       = cfg$nvar,
+                       nz         = cfg$nz,
+                       coef_names = cfg$coef_names,
+                       priors     = cfg[c("bart", "vartree", "phitree",
+                                          "Amu", "store_trees")])
+  }
+  .assemble_hart_cache(draws, z_map)
+}#.FINISH_HART_FIT

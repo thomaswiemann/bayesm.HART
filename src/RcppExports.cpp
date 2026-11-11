@@ -316,21 +316,42 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// sigma_mu_block_gibbs_R
-Rcpp::List sigma_mu_block_gibbs_R(arma::mat L, arma::vec mu, arma::mat const& theta, arma::mat const& delta, arma::mat const& Psi, double nu, arma::vec const& mubar0, double Amu_scalar);
-RcppExport SEXP _bayesm_HART_sigma_mu_block_gibbs_R(SEXP LSEXP, SEXP muSEXP, SEXP thetaSEXP, SEXP deltaSEXP, SEXP PsiSEXP, SEXP nuSEXP, SEXP mubar0SEXP, SEXP Amu_scalarSEXP) {
+// normalized_kernel_R
+Rcpp::List normalized_kernel_R(arma::mat const& L, arma::mat const& theta, arma::mat const& fstar, arma::vec const& mu, arma::mat const& Psi, double nu, arma::vec const& mubar, arma::mat const& Amu);
+RcppExport SEXP _bayesm_HART_normalized_kernel_R(SEXP LSEXP, SEXP thetaSEXP, SEXP fstarSEXP, SEXP muSEXP, SEXP PsiSEXP, SEXP nuSEXP, SEXP mubarSEXP, SEXP AmuSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::mat const& >::type L(LSEXP);
+    Rcpp::traits::input_parameter< arma::mat const& >::type theta(thetaSEXP);
+    Rcpp::traits::input_parameter< arma::mat const& >::type fstar(fstarSEXP);
+    Rcpp::traits::input_parameter< arma::vec const& >::type mu(muSEXP);
+    Rcpp::traits::input_parameter< arma::mat const& >::type Psi(PsiSEXP);
+    Rcpp::traits::input_parameter< double >::type nu(nuSEXP);
+    Rcpp::traits::input_parameter< arma::vec const& >::type mubar(mubarSEXP);
+    Rcpp::traits::input_parameter< arma::mat const& >::type Amu(AmuSEXP);
+    rcpp_result_gen = Rcpp::wrap(normalized_kernel_R(L, theta, fstar, mu, Psi, nu, mubar, Amu));
+    return rcpp_result_gen;
+END_RCPP
+}
+// normalized_gibbs_R
+Rcpp::List normalized_gibbs_R(arma::mat L, arma::vec mu, arma::mat const& theta, arma::mat const& fstar, arma::mat const& Psi, double nu, arma::vec const& mubar, arma::mat const& Amu, int nsweep, bool update_mu, bool update_L);
+RcppExport SEXP _bayesm_HART_normalized_gibbs_R(SEXP LSEXP, SEXP muSEXP, SEXP thetaSEXP, SEXP fstarSEXP, SEXP PsiSEXP, SEXP nuSEXP, SEXP mubarSEXP, SEXP AmuSEXP, SEXP nsweepSEXP, SEXP update_muSEXP, SEXP update_LSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< arma::mat >::type L(LSEXP);
     Rcpp::traits::input_parameter< arma::vec >::type mu(muSEXP);
     Rcpp::traits::input_parameter< arma::mat const& >::type theta(thetaSEXP);
-    Rcpp::traits::input_parameter< arma::mat const& >::type delta(deltaSEXP);
+    Rcpp::traits::input_parameter< arma::mat const& >::type fstar(fstarSEXP);
     Rcpp::traits::input_parameter< arma::mat const& >::type Psi(PsiSEXP);
     Rcpp::traits::input_parameter< double >::type nu(nuSEXP);
-    Rcpp::traits::input_parameter< arma::vec const& >::type mubar0(mubar0SEXP);
-    Rcpp::traits::input_parameter< double >::type Amu_scalar(Amu_scalarSEXP);
-    rcpp_result_gen = Rcpp::wrap(sigma_mu_block_gibbs_R(L, mu, theta, delta, Psi, nu, mubar0, Amu_scalar));
+    Rcpp::traits::input_parameter< arma::vec const& >::type mubar(mubarSEXP);
+    Rcpp::traits::input_parameter< arma::mat const& >::type Amu(AmuSEXP);
+    Rcpp::traits::input_parameter< int >::type nsweep(nsweepSEXP);
+    Rcpp::traits::input_parameter< bool >::type update_mu(update_muSEXP);
+    Rcpp::traits::input_parameter< bool >::type update_L(update_LSEXP);
+    rcpp_result_gen = Rcpp::wrap(normalized_gibbs_R(L, mu, theta, fstar, Psi, nu, mubar, Amu, nsweep, update_mu, update_L));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -376,7 +397,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"_bayesm_HART_rmultireg", (DL_FUNC) &_bayesm_HART_rmultireg, 6},
     {"_bayesm_HART_rtrun", (DL_FUNC) &_bayesm_HART_rtrun, 4},
     {"_bayesm_HART_rwishart", (DL_FUNC) &_bayesm_HART_rwishart, 2},
-    {"_bayesm_HART_sigma_mu_block_gibbs_R", (DL_FUNC) &_bayesm_HART_sigma_mu_block_gibbs_R, 8},
+    {"_bayesm_HART_normalized_kernel_R", (DL_FUNC) &_bayesm_HART_normalized_kernel_R, 8},
+    {"_bayesm_HART_normalized_gibbs_R", (DL_FUNC) &_bayesm_HART_normalized_gibbs_R, 11},
     {"_bayesm_HART_varbart_smoke", (DL_FUNC) &_bayesm_HART_varbart_smoke, 10},
     {"cpwbart",    (DL_FUNC) &cpwbart,    4},
     {"cpwvarbart", (DL_FUNC) &cpwvarbart, 4},

@@ -58,8 +58,7 @@ double lndIWishart(double nu, mat const& V, mat const& IW);
 vec breg(vec const& y, mat const& X, vec const& betabar, mat const& A);
 
 List rmixGibbs( mat const& y,  mat const& Bbar, mat const& A, double nu, mat const& V,  vec const& a, vec const& p,  vec const& z);
-  // Sub-steps of rmixGibbs.  Exposed so `mixbart_block` can drive its own
-  // (mu, Sigma) updates via `sigma_gibbs` while reusing the label/prob draws.
+  // Sub-steps of rmixGibbs.
 vec drawLabelsFromComps(mat const& y, vec const& p, List comps);
 vec drawPFromLabels(vec const& a, vec const& z);
 
@@ -68,8 +67,8 @@ vec drawPFromLabels(vec const& a, vec const& z);
 //Used in rhierLinearModel, rhierLinearMixture and rhierMnlRWMixture
 mat drawDelta(mat const& x,mat const& y,vec const& z,List const& comps,vec const& deltabar,mat const& Ad);
 
-void drawBART(mat const& x, mat const& y, std::vector<bart>& models, vec const& ind, List const& comps, arn gen);
-void update_stdoldbetas(mat const& oldbetas, std::vector<double*>& pstd_oldbetas_cols, vec const& ind, List const& comps);
+// Build D scalar mean-tree ensembles on caller-owned response buffers.
+// bart_params$tau is the ensemble scale; the leaf sd is tau / sqrt(num_trees).
 std::vector<bart> initializeBART(double* pZt, size_t nlgt, size_t nz, std::vector<double*> const& pstd_oldbetas_cols, List const& bart_params, arn gen);
 
 // Heteroscedastic standardization: tilde_theta_i = D(Z_i)^{-1/2} L(Z_i) (theta_i - mu).

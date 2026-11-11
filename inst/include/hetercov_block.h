@@ -5,6 +5,7 @@
 #include <vector>
 #include <sstream>
 #include "bayesm.HART.h"
+#include "unique_z_cache.h"
 
 using namespace Rcpp;
 using namespace arma;
@@ -60,10 +61,7 @@ struct HeterCovState {
     arma::mat   delta_Z;     // nlgt x nvar; delta_Z(i,.) = Sigma(Z_i)^{1/2} delta_i
 
     // ---- Optional keep-time cache payload ----------------------------------
-    bool        has_unique_map;
-    arma::uvec  unique_first_idx;       // n_unique, 0-based row indices
-    arma::cube  delta_z_unique_draws;   // n_unique x nvar x (R/keep)
-    arma::cube  sigma_z_unique_flat;    // n_unique x (nvar*nvar) x (R/keep)
+    UniqueZCache zcache;                // Delta(Z_u), Sigma(Z_u) at unique Z rows
 };
 
 // ---------------------------------------------------------------------------

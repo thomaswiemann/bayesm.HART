@@ -26,21 +26,23 @@ rhierNegbinRw(Data, Prior, Mcmc, r_verbose = TRUE)
 \item \code{a} (optional): Shape parameter for gamma prior on alpha (default: 0.5). Note: This differs from \code{rhierLinearMixture} where \code{a} is the Dirichlet prior.
 \item \code{b} (optional): Rate parameter for gamma prior on alpha (default: 0.1).
 \item \code{mubar} (optional): \verb{1 x nvar} prior mean vector for the normal prior (default: 0).
-\item \code{Amu} (optional): \verb{1 x 1} prior precision for the normal prior (default: 0.01).
+\item \code{Amu} (optional): Prior precision for the normal prior on \eqn{\mu} (default: 0.01). Scalar on the bayesm paths. Under a HART model the prior is the independent \eqn{N(\bar\mu, Amu^{-1})}, and \code{Amu} may be a scalar (expanded to \code{Amu * I}) or an \verb{nvar x nvar} SPD matrix.
 \item \code{Ad} (optional): \verb{nvar*nz x nvar*nz} prior precision for vec(Delta) (default: 0.01 * I). Only used when \code{drawdelta = TRUE} and \code{useBART = FALSE}.
 \item \code{deltabar} (optional): \code{nvar*nz} prior mean for vec(Delta) (default: 0). Only used when \code{drawdelta = TRUE} and \code{useBART = FALSE}.
-\item \code{bart} (optional): List of HART prior parameters. See \code{rhierLinearMixture} for details.
-\item \code{vartree} (optional, \emph{experimental extension beyond Wiemann 2025}): List of
-parameters enabling heteroscedastic covariance \eqn{\Sigma(Z_i)} via
-product-of-trees variance models on the Modified Cholesky diagonal
-\eqn{d_j(\cdot)}. Requires \code{bart} to also be specified and \code{ncomp = 1}.
-When \code{nvar > 1}, the package automatically promotes to the full-Cholesky
-structure described under \code{phitree}. See "Heteroscedastic Covariance"
-in Details.
-\item \code{phitree} (optional, \emph{experimental extension beyond Wiemann 2025}): List of
-parameters enabling sum-of-trees regression models on the Modified
-Cholesky off-diagonals \eqn{\phi_{jk}(\cdot)}. Requires \code{vartree}.
-Auto-enabled when \code{vartree} is supplied and \code{nvar > 1}.
+\item \code{hart_model} (optional): Preference-model selector, one of \code{"none"}
+(default; bayesm constant or linear \eqn{\Delta(Z)}), \code{"normalized"}
+(HART prior on the representative unit), or \code{"direct"} (HART mean and
+covariance trees). Both HART models require \code{Z}. The tree lists below
+are optional under a HART model and are an error under \code{"none"}. See
+\code{rhierMnlRwMixture} for the model definitions.
+\item \code{bart} (optional): List of hyperparameters for the HART mean trees
+(\code{hart_model = "normalized"} or \code{"direct"}). See \code{rhierMnlRwMixture}.
+\item \code{vartree} (optional, \code{hart_model = "direct"} only): List of
+hyperparameters for the product-of-trees variance models on the Modified
+Cholesky diagonal \eqn{d_j(\cdot)}.
+\item \code{phitree} (optional, \code{hart_model = "direct"} and \code{nvar > 1} only): List
+of hyperparameters for the sum-of-trees models on the Modified Cholesky
+off-diagonals \eqn{\phi_{jk}(\cdot)}.
 }}
 
 \item{Mcmc}{A list containing MCMC parameters:

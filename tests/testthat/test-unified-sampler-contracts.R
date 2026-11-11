@@ -129,7 +129,7 @@ test_that("MNL global output has expected field names", {
   set.seed(202)
   run_quiet({
     fit_bart <- rhierMnlRwMixture(
-      Data = sim, Prior = list(ncomp = 1, bart = list(num_trees = 3)),
+      Data = sim, Prior = list(ncomp = 1, hart_model = "normalized", bart = list(num_trees = 3)),
       Mcmc = list(R = 4, keep = 1, nprint = 0))
   })
   expect_true(all(c("betadraw", "loglike", "nmix", "bart_models",
@@ -143,7 +143,7 @@ test_that("MNL heter-cov output has expected field names", {
   run_quiet({
     fit <- rhierMnlRwMixture(
       Data = sim,
-      Prior = list(ncomp = 1,
+      Prior = list(ncomp = 1, hart_model = "direct",
                    bart = list(num_trees = 3),
                    vartree = list(num_trees = 3)),
       Mcmc = list(R = 4, keep = 1, nprint = 0))

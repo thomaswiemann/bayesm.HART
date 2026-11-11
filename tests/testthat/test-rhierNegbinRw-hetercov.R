@@ -25,10 +25,10 @@ make_small_negbin_sim <- function(seed = 20260513L,
 }
 
 # --- input validation --------------------------------------------------------
-test_that("vartree requires bart, ncomp == 1, and Z (drawdelta = TRUE)", {
+test_that("vartree requires hart_model, ncomp == 1, and Z (drawdelta = TRUE)", {
   sim <- make_small_negbin_sim()
 
-  # vartree without bart -> error
+  # vartree without hart_model -> error
   expect_error(
     capture.output(
       rhierNegbinRw(
@@ -37,7 +37,7 @@ test_that("vartree requires bart, ncomp == 1, and Z (drawdelta = TRUE)", {
         Mcmc  = list(R = 4L, keep = 1L, nprint = 0L),
         r_verbose = FALSE)
     ),
-    regexp = "requires Prior\\$bart"
+    regexp = "require Prior\\$hart_model"
   )
 
   # ncomp > 1 with vartree -> error
@@ -45,7 +45,7 @@ test_that("vartree requires bart, ncomp == 1, and Z (drawdelta = TRUE)", {
     capture.output(
       rhierNegbinRw(
         Data  = list(regdata = sim$regdata, Z = sim$Z),
-        Prior = list(ncomp = 2L,
+        Prior = list(ncomp = 2L, hart_model = "direct",
                      bart    = list(num_trees = 5L),
                      vartree = list(num_trees = 5L)),
         Mcmc  = list(R = 4L, keep = 1L, nprint = 0L),
@@ -59,13 +59,13 @@ test_that("vartree requires bart, ncomp == 1, and Z (drawdelta = TRUE)", {
     capture.output(
       rhierNegbinRw(
         Data  = list(regdata = sim$regdata),       # no Z
-        Prior = list(ncomp = 1L,
+        Prior = list(ncomp = 1L, hart_model = "direct",
                      bart    = list(num_trees = 5L),
                      vartree = list(num_trees = 5L)),
         Mcmc  = list(R = 4L, keep = 1L, nprint = 0L),
         r_verbose = FALSE)
     ),
-    regexp = "requires Z"
+    regexp = "requires Data\\$Z"
   )
 })
 
@@ -73,7 +73,7 @@ test_that("vartree requires bart, ncomp == 1, and Z (drawdelta = TRUE)", {
 test_that("vartree only with nvar > 1 auto-promotes to full Cholesky", {
   # Default sim has nvar = 1 + intercept = ncoef = 2, so auto-promotion fires.
   sim   <- make_small_negbin_sim()
-  Prior <- list(ncomp = 1L,
+  Prior <- list(ncomp = 1L, hart_model = "direct",
                 bart    = list(num_trees = 5L),
                 vartree = list(num_trees = 5L))   # NO phitree
   Mcmc  <- list(R = 20L, keep = 1L, nprint = 0L)
@@ -91,7 +91,7 @@ test_that("vartree only with nvar > 1 auto-promotes to full Cholesky", {
   expected_slots <- c("bart_models", "var_models", "phi_models", "mu_draw",
                       "varcount", "varprob", "var_varcount", "var_varprob",
                       "betadraw", "alphadraw", "loglike",
-                      "acceptrbeta", "acceptralpha")
+                      "acceptrbeta", "acceptralpha", "hart")
   expect_named(fit, expected_slots, ignore.order = TRUE)
   expect_null(fit$nmix)
   expect_null(fit$Deltadraw)
@@ -117,7 +117,7 @@ test_that("vartree only with ncoef == 1 stays diagonal (scalar case)", {
     const = FALSE, het_observed = "linear",
     target_var_betabar = 0.5, target_var_eps = 0.25,
     alpha = 5.0, seed = 20260513L)
-  Prior <- list(ncomp = 1L,
+  Prior <- list(ncomp = 1L, hart_model = "direct",
                 bart    = list(num_trees = 5L),
                 vartree = list(num_trees = 5L))
   Mcmc  <- list(R = 20L, keep = 1L, nprint = 0L)
@@ -141,7 +141,7 @@ test_that("Phase 2 (vartree + phitree) returns jagged phi_models", {
   sim   <- make_small_negbin_sim(nvar = 2L, nz = 2L,
                                  nreg = 25L, nobs = 15L,
                                  seed = 20260514L)
-  Prior <- list(ncomp = 1L,
+  Prior <- list(ncomp = 1L, hart_model = "direct",
                 bart    = list(num_trees = 5L),
                 vartree = list(num_trees = 5L),
                 phitree = list(num_trees = 5L))
@@ -175,7 +175,7 @@ test_that("predict.rhierNegbinRw dispatches via marker class for heter-cov", {
   sim   <- make_small_negbin_sim(nvar = 2L, nz = 2L,
                                  nreg = 25L, nobs = 15L,
                                  seed = 20260515L)
-  Prior <- list(ncomp = 1L,
+  Prior <- list(ncomp = 1L, hart_model = "direct",
                 bart    = list(num_trees = 5L),
                 vartree = list(num_trees = 5L),
                 phitree = list(num_trees = 5L))
@@ -228,7 +228,7 @@ test_that("predict.rhierNegbinRw dispatches via marker class for heter-cov", {
 # --- lambda auto-calibration --------------------------------------------------
 test_that("auto-calibrated lambda is announced when Prior$vartree$lambda is NULL", {
   sim   <- make_small_negbin_sim()
-  Prior <- list(ncomp = 1L,
+  Prior <- list(ncomp = 1L, hart_model = "direct",
                 bart    = list(num_trees = 5L),
                 vartree = list(num_trees = 5L))   # no lambda -> auto
   Mcmc  <- list(R = 6L, keep = 1L, nprint = 0L)

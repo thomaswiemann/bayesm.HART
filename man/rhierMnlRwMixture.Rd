@@ -25,13 +25,14 @@ Should NOT contain an intercept and should be centered.
 \item \code{deltabar} (optional): \verb{nz * nvar x 1} prior mean for \code{vec(Delta)} (default: 0). Ignored if HART is used.
 \item \code{Ad} (optional): Prior precision matrix for \code{vec(Delta)} (default: \code{0.01 * I}). Ignored if HART is used.
 \item \code{mubar} (optional): \verb{nvar x 1} prior mean vector for the normal prior (default: 0 if unrestricted, 2 if restricted).
-\item \code{Amu} (optional): Prior precision for the normal prior (default: 0.01 if unrestricted, 0.1 if restricted).
+\item \code{Amu} (optional): Prior precision for the normal prior on \eqn{\mu} (default: 0.01 if unrestricted, 0.1 if restricted). Scalar on the bayesm paths. Under a HART model the prior is the independent \eqn{N(\bar\mu, Amu^{-1})}, and \code{Amu} may be a scalar (expanded to \code{Amu * I}) or an \verb{nvar x nvar} SPD matrix.
 \item \code{nu} (optional): Degrees of freedom for IW prior on component \code{Sigma} (default: \code{nvar+3} if unrestricted, \code{nvar+15} if restricted).
 \item \code{V} (optional): Location matrix for IW prior on component \code{Sigma} (default: \code{nu * I} or scaled based on restriction).
 \item \code{SignRes} (optional): \verb{nvar x 1} vector of sign restrictions. Must contain values of 0, -1, or 1. The value 0 means no restriction, -1 ensures the coefficient is negative, and 1 ensures the coefficient is positive. For example, \code{SignRes = c(0,1,-1)} means the first coefficient is unconstrained, the second will be positive, and the third will be negative. Default: \code{rep(0, nvar)}.
-\item \code{bart} (optional): List of parameters for the HART prior. If specified, this models the representative consumer \eqn{\Delta(Z)} as a scaled sum-of-trees factor model. See Details.
-\item \code{vartree} (optional, \emph{experimental extension beyond Wiemann 2025}): List of parameters enabling heteroscedastic covariance \eqn{\Sigma(Z_i)} via product-of-trees variance models on the Modified Cholesky diagonal \eqn{d_j(\cdot)}. Requires \code{bart} to also be specified and \code{ncomp = 1}. Compatible with \code{SignRes} (see "Heteroscedastic Covariance" in Details). When \code{nvar > 1}, the package automatically promotes to the full-Cholesky structure described under \code{phitree} (diagonal-only \eqn{\Sigma(Z_i)} would force every conditional cross-correlation to zero, which is essentially never a believable posterior).
-\item \code{phitree} (optional, \emph{experimental extension beyond Wiemann 2025}): List of parameters enabling sum-of-trees regression models on the Modified Cholesky off-diagonals \eqn{\phi_{jk}(\cdot)}. Requires \code{vartree}. Adds the full-Cholesky structure on top of the diagonal \code{vartree} model. Auto-enabled when \code{vartree} is supplied and \code{nvar > 1}.
+\item \code{hart_model} (optional): Preference-model selector, one of \code{"none"} (default; the bayesm constant or linear \eqn{\Delta(Z)} paths), \code{"normalized"} (HART prior on the representative consumer, \eqn{\theta_i = \mu + S\{f^*(Z_i) + \varepsilon_i\}}), or \code{"direct"} (HART mean and covariance trees, \eqn{\theta_i = \mu + f(Z_i) + S_i \varepsilon_i}). Both HART models require \code{Z}. The tree lists below are optional under a HART model and are an error under \code{"none"}.
+\item \code{bart} (optional): List of hyperparameters for the HART mean trees (\code{hart_model = "normalized"} or \code{"direct"}). See Details.
+\item \code{vartree} (optional, \code{hart_model = "direct"} only): List of hyperparameters for the product-of-trees variance models on the Modified Cholesky diagonal \eqn{d_j(\cdot)}. Compatible with \code{SignRes}. See "Heteroscedastic Covariance" in Details.
+\item \code{phitree} (optional, \code{hart_model = "direct"} and \code{nvar > 1} only): List of hyperparameters for the sum-of-trees models on the Modified Cholesky off-diagonals \eqn{\phi_{jk}(\cdot)}. The off-diagonal ensembles always exist when \code{nvar > 1}; this list only sets their hyperparameters.
 }}
 
 \item{Mcmc}{A list containing MCMC parameters:
@@ -90,7 +91,7 @@ With \code{ncomp = 1} (currently required), the unobserved heterogeneity compone
 \subsection{Prior Specifications}{
 \itemize{
 \item \strong{Linear model}: \eqn{\delta = vec(\Delta) \sim N(deltabar, A_d^{-1})}
-\item \strong{Component means}: \eqn{\mu_1 \sim N(mubar, \Sigma_1 \otimes Amu^{-1})} (covariance scaled by \eqn{\Sigma_1})
+\item \strong{Component means}: \eqn{\mu_1 \sim N(mubar, \Sigma_1 \otimes Amu^{-1})} (covariance scaled by \eqn{\Sigma_1}) on the bayesm paths. Under a HART model, \eqn{\mu \sim N(mubar, Amu^{-1})} independently of \eqn{\Sigma}.
 \item \strong{Component covariance}: \eqn{\Sigma_1 \sim IW(\nu, V)}
 \item \strong{HART model}: A sum-of-trees prior is placed on each factor of the scaled sum-of-trees model (see HART details below).
 }
@@ -106,7 +107,7 @@ consumer using a scaled vector of \code{nvar} sum-of-trees models.
 \itemize{
 \item \code{num_trees}: Number of trees H in each sum-of-trees model (default: 200).
 \item \code{power}, \code{base}: Parameters for the tree structure prior. The probability of a node at depth \code{q} splitting is \eqn{\alpha(1+q)^{-\beta}}, where \code{base}=\eqn{\alpha} and \code{power}=\eqn{\beta}. Defaults are \code{base=0.95}, \code{power=2}, which strongly favors shallow trees.
-\item \code{tau}: Parameter controlling the prior variance of terminal leaf coefficients. The default is \eqn{\tau = 1/\sqrt{H}} where \eqn{\lambda_{dhg} \sim N(0, \tau^2)} for terminal leaf coefficients.
+\item \code{tau}: Prior scale of each sum-of-trees factor on the standardized coordinates. Terminal leaf coefficients are \eqn{\lambda_{dhg} \sim N(0, \tau^2 / H)}, so \eqn{\tau} is the prior standard deviation of \eqn{f^*_d(Z)}. Default \eqn{\tau = 1}.
 \item \code{numcut}: Number of grid points for proposing splitting rules for continuous variables (default: 100).
 \item \code{sparse}: If \code{TRUE}, use the Dirichlet HART prior to induce sparsity in variable selection (default: \code{FALSE}).
 }

@@ -255,7 +255,7 @@ test_that("rhierNegbinRw runs with BART prior", {
   sim <- generate_negbin_test_data(nreg = 25, nobs = 20, nvar = 1, nz = 3)
   out <- rhierNegbinRw(
     Data = list(regdata = sim$regdata, Z = sim$Z),
-    Prior = list(ncomp = 1, bart = list(num_trees = 10)),
+    Prior = list(ncomp = 1, hart_model = "normalized", bart = list(num_trees = 10)),
     Mcmc = list(R = 50, keep = 1, nprint = 0),
     r_verbose = FALSE
   )
@@ -275,7 +275,7 @@ test_that("rhierNegbinRw BART output dimensions are correct", {
   sim <- generate_negbin_test_data(nreg = nreg, nobs = 15, nvar = nvar_x, nz = nz)
   out <- rhierNegbinRw(
     Data = list(regdata = sim$regdata, Z = sim$Z),
-    Prior = list(ncomp = 1, bart = list(num_trees = 10)),
+    Prior = list(ncomp = 1, hart_model = "normalized", bart = list(num_trees = 10)),
     Mcmc = list(R = R, keep = keep, nprint = 0),
     r_verbose = FALSE
   )
@@ -291,7 +291,7 @@ test_that("rhierNegbinRw BART with sparse/DART works", {
   sim <- generate_negbin_test_data(nreg = 15, nobs = 15, nvar = 1, nz = 3)
   out <- rhierNegbinRw(
     Data = list(regdata = sim$regdata, Z = sim$Z),
-    Prior = list(ncomp = 1, bart = list(num_trees = 10, sparse = TRUE, burn = 5)),
+    Prior = list(ncomp = 1, hart_model = "normalized", bart = list(num_trees = 10, sparse = TRUE, burn = 5)),
     Mcmc = list(R = 30, keep = 1, nprint = 0),
     r_verbose = FALSE
   )
@@ -303,7 +303,7 @@ test_that("rhierNegbinRw BART with fixalpha works", {
   sim <- generate_negbin_test_data(nreg = 15, nobs = 15, nvar = 1, nz = 3)
   out <- rhierNegbinRw(
     Data = list(regdata = sim$regdata, Z = sim$Z),
-    Prior = list(ncomp = 1, bart = list(num_trees = 10)),
+    Prior = list(ncomp = 1, hart_model = "normalized", bart = list(num_trees = 10)),
     Mcmc = list(R = 30, keep = 1, nprint = 0, alpha = 5.0, fixalpha = TRUE),
     r_verbose = FALSE
   )
@@ -351,7 +351,7 @@ test_that("predict.rhierNegbinRw DeltaZ+mu works (BART)", {
   set.seed(222)
   out <- rhierNegbinRw(
     Data = list(regdata = sim$regdata, Z = sim$Z),
-    Prior = list(ncomp = 1, bart = list(num_trees = 10)),
+    Prior = list(ncomp = 1, hart_model = "normalized", bart = list(num_trees = 10)),
     Mcmc = list(R = 30, keep = 1, nprint = 0),
     r_verbose = FALSE
   )

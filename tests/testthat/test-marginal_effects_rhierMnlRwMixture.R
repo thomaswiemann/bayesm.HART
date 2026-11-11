@@ -23,6 +23,7 @@ run_quick_model_for_mfx_test <- function(R = 50, keep = 1, useBART = FALSE) {
 
   Prior <- list(ncomp = 1)
   if (useBART) {
+    Prior$hart_model <- "normalized"
     Prior$bart <- list(num_trees = 10, numcut = 10) # Fast BART settings
   } else {
     Prior$Deltabar <- matrix(0, nz * ncoef, 1)

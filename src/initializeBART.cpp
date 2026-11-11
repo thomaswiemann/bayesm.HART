@@ -24,6 +24,10 @@ std::vector<bart> initializeBART(
 	double rho = bart_params["rho"];
 	bool aug = bart_params["aug"];
 
+	// Birth/death admissibility floor (see bd.cpp); default 5.
+	size_t nmin = bart_params.containsElementNamed("nmin")
+	              ? as<size_t>(bart_params["nmin"]) : 5;
+
 	// Initialize models vector (p is length of pstd_oldbetas_cols)
 	size_t p = pstd_oldbetas_cols.size();
 	std::vector<bart> models(p);
@@ -31,54 +35,16 @@ std::vector<bart> initializeBART(
 	// Initialize each model
 	for (size_t i = 0; i < p; i++) {
 		models[i] = bart(num_trees);
-		models[i].setprior(base, power, tau);
+		// `tau` is the ensemble scale: leaf coefficients are N(0, tau^2 / H).
+		models[i].setprior(base, power, tau / std::sqrt((double)num_trees));
 		models[i].setdata(nz, nlgt, pZt, pstd_oldbetas_cols[i], numcut);
 
 		// Use dart
 		models[i].setdart(a, b, rho, aug, sparse, theta, omega);
+		models[i].setleafguard(nmin, 0.0);
 	}
 
 	return models;
-}
-
-void update_stdoldbetas(mat const& oldbetas, std::vector<double*>& pstd_oldbetas_cols,
-	vec const& ind, List const& comps) {
-
-	// Get dimensions
-	int p = oldbetas.n_cols;
-	int ncomp = comps.length();
-
-	// Create column indices
-	uvec colAll(p);
-	for (int i = 0; i < p; i++) colAll(i) = i;
-
-	// Standardize coefficients by mixture component
-	for (int compi = 0; compi < ncomp; compi++) {
-		uvec indx = find(ind == (compi + 1));
-
-		if (indx.size() > 0) {
-			// Get component parameters
-			List compsi = comps[compi];
-			rowvec mui = as<rowvec>(compsi[0]);
-			mat rootii = trimatu(as<mat>(compsi[1]));
-
-			// Get submatrix for this component
-			mat betai = oldbetas.submat(indx, colAll);
-
-			// Center and standardize
-			mat betai_centered = betai.each_row() - mui;
-			mat betai_std = betai_centered * rootii;
-			//mat betai_std = (rootii * betai_centered.t()).t();
-
-
-			// Update values through pointers
-			for (int j = 0; j < p; j++) {
-				for (size_t k = 0; k < indx.size(); k++) {
-					pstd_oldbetas_cols[j][indx(k)] = betai_std(k, j);
-				}
-			}
-		}
-	}
 }
 
 //--------------------------------------------------
@@ -148,6 +114,7 @@ std::vector<varbart> initializeVarBART(
 	bool   aug    = var_params.containsElementNamed("aug")    ? as<bool>(var_params["aug"])    : false;
 	double dart_t = var_params.containsElementNamed("theta")  ? as<double>(var_params["theta"]): 0.0;
 	double dart_o = var_params.containsElementNamed("omega")  ? as<double>(var_params["omega"]): 1.0;
+	size_t nmin   = var_params.containsElementNamed("nmin")   ? as<size_t>(var_params["nmin"]) : 5;
 
 	// Pratola per-tree calibration (see discussion §1.6).
 	if (nu <= 2.0)        stop("initializeVarBART: nu must be > 2");
@@ -166,6 +133,7 @@ std::vector<varbart> initializeVarBART(
 		models[j].setdata(nz, nlgt, pZt, peta_sq_cols[j], numcut);
 		models[j].setvarprior(nu_p, lambda_p);
 		models[j].setdart(dart_a, dart_b, dart_r, aug, sparse, dart_t, dart_o);
+		models[j].setleafguard(nmin, 0.0);
 	}
 	return models;
 }

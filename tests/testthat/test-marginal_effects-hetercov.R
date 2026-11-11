@@ -60,7 +60,7 @@ test_that("marginal_effects() works for rhierMnlRwMixtureHeterCov", {
     list(y = y, X = X)
   })
   Data <- list(p = p, lgtdata = lgtdata, Z = Z)
-  Prior <- list(ncomp = 1L,
+  Prior <- list(ncomp = 1L, hart_model = "direct",
                 bart    = list(num_trees = 5L),
                 vartree = list(num_trees = 5L))
   Mcmc  <- list(R = 30L, keep = 1L, nprint = 0L)
@@ -78,7 +78,7 @@ test_that("marginal_effects() works for rhierLinearMixtureHeterCov", {
     const = TRUE, het_observed = "linear",
     target_var_betabar = 1.0, target_var_eps = 0.5,
     sigma_sq = 0.5, seed = 20260513L)
-  Prior <- list(ncomp = 1L,
+  Prior <- list(ncomp = 1L, hart_model = "direct",
                 bart    = list(num_trees = 5L),
                 vartree = list(num_trees = 5L))
   Mcmc  <- list(R = 30L, keep = 1L, nprint = 0L)
@@ -99,7 +99,7 @@ test_that("marginal_effects() works for rhierNegbinRwHeterCov", {
     const = TRUE, het_observed = "linear",
     target_var_betabar = 0.5, target_var_eps = 0.25,
     alpha = 5.0, seed = 20260513L)
-  Prior <- list(ncomp = 1L,
+  Prior <- list(ncomp = 1L, hart_model = "direct",
                 bart    = list(num_trees = 5L),
                 vartree = list(num_trees = 5L))
   Mcmc  <- list(R = 30L, keep = 1L, nprint = 0L)

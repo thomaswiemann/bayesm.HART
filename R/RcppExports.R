@@ -69,8 +69,12 @@ rwishart <- function(nu, V) {
     .Call(`_bayesm_HART_rwishart`, nu, V)
 }
 
-sigma_mu_block_gibbs_R <- function(L, mu, theta, delta, Psi, nu, mubar0, Amu_scalar) {
-    .Call(`_bayesm_HART_sigma_mu_block_gibbs_R`, L, mu, theta, delta, Psi, nu, mubar0, Amu_scalar)
+normalized_kernel_R <- function(L, theta, fstar, mu, Psi, nu, mubar, Amu) {
+    .Call(`_bayesm_HART_normalized_kernel_R`, L, theta, fstar, mu, Psi, nu, mubar, Amu)
+}
+
+normalized_gibbs_R <- function(L, mu, theta, fstar, Psi, nu, mubar, Amu, nsweep = 1L, update_mu = TRUE, update_L = TRUE) {
+    .Call(`_bayesm_HART_normalized_gibbs_R`, L, mu, theta, fstar, Psi, nu, mubar, Amu, nsweep, update_mu, update_L)
 }
 
 varbart_smoke <- function(Z, eta_sq, m, nu, lambda, power, base, R_iter, burn, keep_every = 1L) {

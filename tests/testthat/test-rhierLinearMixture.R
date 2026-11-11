@@ -299,7 +299,7 @@ test_that("rhierLinearMixture runs with BART prior", {
   sim <- generate_mixture_linear_data(nreg = 30, nobs = 15, nvar = 2, nz = 3)
   out <- rhierLinearMixture(
     Data = list(regdata = sim$regdata, Z = sim$Z),
-    Prior = list(ncomp = 1, bart = list(num_trees = 10)),
+    Prior = list(ncomp = 1, hart_model = "normalized", bart = list(num_trees = 10)),
     Mcmc = list(R = 50, keep = 1, nprint = 0),
     r_verbose = FALSE
   )
@@ -318,7 +318,7 @@ test_that("rhierLinearMixture BART output dimensions are correct", {
   sim <- generate_mixture_linear_data(nreg = nreg, nobs = 10, nvar = nvar_x, nz = nz)
   out <- rhierLinearMixture(
     Data = list(regdata = sim$regdata, Z = sim$Z),
-    Prior = list(ncomp = 1, bart = list(num_trees = 10)),
+    Prior = list(ncomp = 1, hart_model = "normalized", bart = list(num_trees = 10)),
     Mcmc = list(R = R, keep = keep, nprint = 0),
     r_verbose = FALSE
   )
@@ -334,7 +334,7 @@ test_that("rhierLinearMixture BART with sparse/DART works", {
   sim <- generate_mixture_linear_data(nreg = 20, nobs = 10, nvar = 1, nz = 3)
   out <- rhierLinearMixture(
     Data = list(regdata = sim$regdata, Z = sim$Z),
-    Prior = list(ncomp = 1, bart = list(num_trees = 10, sparse = TRUE, burn = 5)),
+    Prior = list(ncomp = 1, hart_model = "normalized", bart = list(num_trees = 10, sparse = TRUE, burn = 5)),
     Mcmc = list(R = 30, keep = 1, nprint = 0),
     r_verbose = FALSE
   )
@@ -346,7 +346,7 @@ test_that("rhierLinearMixture BART with minimal trees works", {
   sim <- generate_mixture_linear_data(nreg = 15, nobs = 8, nvar = 1, nz = 2)
   out <- rhierLinearMixture(
     Data = list(regdata = sim$regdata, Z = sim$Z),
-    Prior = list(ncomp = 1, bart = list(num_trees = 2)),
+    Prior = list(ncomp = 1, hart_model = "normalized", bart = list(num_trees = 2)),
     Mcmc = list(R = 20, keep = 1, nprint = 0),
     r_verbose = FALSE
   )
@@ -365,7 +365,7 @@ test_that("rhierLinearMixture BART recovers beta (step DGP)", {
   set.seed(888)
   out <- rhierLinearMixture(
     Data = list(regdata = sim$regdata, Z = sim$Z),
-    Prior = list(ncomp = 1, bart = list(num_trees = 50)),
+    Prior = list(ncomp = 1, hart_model = "normalized", bart = list(num_trees = 50)),
     Mcmc = list(R = 2000, keep = 2, nprint = 0),
     r_verbose = FALSE
   )
@@ -440,7 +440,7 @@ test_that("predict.rhierLinearMixture DeltaZ+mu works (BART)", {
   set.seed(111)
   out <- rhierLinearMixture(
     Data = list(regdata = sim$regdata, Z = sim$Z),
-    Prior = list(ncomp = 1, bart = list(num_trees = 10)),
+    Prior = list(ncomp = 1, hart_model = "normalized", bart = list(num_trees = 10)),
     Mcmc = list(R = 30, keep = 1, nprint = 0),
     r_verbose = FALSE
   )

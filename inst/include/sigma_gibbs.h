@@ -4,36 +4,35 @@
 #include <RcppArmadillo.h>
 #include "rn.h"
 
-// Componentwise Cholesky-Gibbs block update for (mu, Sigma) under the HART
-// model.  Replaces the joint IW + MN draw in `rmultireg` for callers where
-// theta_i | mu, Sigma, delta_i ~ N(mu + L^{-1} delta_i, Sigma) with
-// L^T L = Sigma^{-1}, L lower-triangular.
+// Conjugate blocks of the normalized HART model (appendix_models,
+// app:models_computation):
 //
-// Convention: L is bayesm's `rooti^T` -- lower-triangular with
-// L^T L = Sigma^{-1}.  Caller stores `rooti = L^T` (upper-triangular) in
-// component lists.
+//   theta_i = mu + L^{-1} { f*_i + eps_i },   eps_i ~ N(0, I),
+//   L lower triangular with L^T L = Sigma^{-1},
+//   mu ~ N(mubar, Amu^{-1}),   Sigma ~ IW(nu, Psi).
 //
-// Inputs:
-//   L_inout:    D x D lower-tri, L^T L = Sigma^{-1} on entry & exit.
-//   mu_inout:   length-D mean vector, updated in place.
-//   theta:      n x D rows of unit-level parameters for this component.
-//   delta:      n x D rows of BART mean shifts (whitened-scale).
-//   Psi:        D x D prior scale matrix (IW(nu, Psi)).
-//   nu:         IW degrees of freedom.
-//   mubar0:     length-D prior mean for mu.
-//   Amu_scalar: scalar prior precision (mu | Sigma ~ N(mubar0, Sigma/Amu)).
-//   gen:        random number generator.
+// Convention: L is bayesm's rooti^T; callers store rooti = L^T.
 //
-// Cost: O(n D^2) for sufficient statistics, O(D^3) for the Cholesky sweep.
-void sigma_mu_block_gibbs(
-    arma::mat& L_inout,
-    arma::vec& mu_inout,
-    arma::mat const& theta,
-    arma::mat const& delta,
-    arma::mat const& Psi,
-    double nu,
-    arma::vec const& mubar0,
-    double Amu_scalar,
-    rn& gen);
+// draw_mu_normalized   mu | L, f*, theta        (eq:models_mu_update)
+//   P = Amu + n L^T L,   b = Amu mubar + L^T sum_i (L theta_i - f*_i).
+//
+// draw_cholesky_sweep  L | mu, f*, theta        (eq:models_cholesky_offdiag,
+//   eq:models_cholesky_diag) with x_i = theta_i - mu,
+//   V = Psi + sum_i x_i x_i^T,  M = sum_i f*_i x_i^T.
+//   Row j: L_jk ~ N((M_jk - sum_{c<=j,c!=k} V_kc L_jc) / V_kk, 1 / V_kk) for
+//   k < j, then L_jj from L^a exp(-b L^2/2 - c L) with
+//   a = nu + n - D + j - 1 (j 1-based), b = V_jj, c = sum_{c<j} V_jc L_jc - M_jj,
+//   slice sampled on log L_jj with the Jacobian included.
+//
+// Cost: O(n D^2) for the statistics, O(D^3) for the sweep.
+
+void draw_mu_normalized(arma::vec& mu, arma::mat const& L,
+                        arma::mat const& theta, arma::mat const& fstar,
+                        arma::vec const& mubar, arma::mat const& Amu,
+                        rn& gen);
+
+void draw_cholesky_sweep(arma::mat& L, arma::mat const& theta,
+                         arma::mat const& fstar, arma::vec const& mu,
+                         arma::mat const& Psi, double nu, rn& gen);
 
 #endif

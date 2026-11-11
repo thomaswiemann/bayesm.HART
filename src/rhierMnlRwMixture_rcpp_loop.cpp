@@ -1,6 +1,5 @@
 #include "bayesm.HART.h"
-#include "global_covariance_backend.h"
-#include "hetercov_backend.h"
+#include "hart_backend.h"
 #include "mnl_theta_updater.h"
 #include "unified_sampler_driver.h"
 #include <memory>
@@ -105,13 +104,10 @@ List rhierMnlRwMixture_rcpp_loop(List const& lgtdata, mat const& Z,
     // Wayne Taylor 10/01/2014
     // modified by Thomas Wiemann 2025
     //
-    // Three execution modes (mutually exclusive):
-    //   * Heter-cov: Sigma(Z_i) via modified-Cholesky tree ensembles.
-    //                Implementation lives in src/hetercov_block.cpp.
-    //   * Mix-BART : sum-of-trees Delta(Z) on top of mixture-of-normals u_i.
-    //                Implementation lives in src/mixbart_block.cpp; shared
-    //                with rhierLinearMixture and rhierNegbinRw.
-    //   * Linear   : original bayesm linear-Delta + rmixGibbs path.
+    // Covariance backends (see make_backend in hart_backend.h):
+    //   * direct      : HeterCovBackend, Sigma(Z_i) via modified Cholesky trees
+    //   * normalized  : NormalizedHartBackend, theta_i = mu + L^{-1}(f*_i + eps_i)
+    //   * none        : GlobalCovarianceBackend, bayesm linear-Delta / mixture
 
     int nlgt = lgtdata.size();
     int nvar = V.n_cols;
@@ -141,17 +137,10 @@ List rhierMnlRwMixture_rcpp_loop(List const& lgtdata, mat const& Z,
     // ====================================================================
     // Create backend + updater adapters, then run the unified MCMC loop.
     // ====================================================================
-    std::unique_ptr<CovarianceBackend> backend;
-    if (useHeterCov) {
-        backend = std::make_unique<HeterCovBackend>(
-            oldbetas, Z, mubar, Amu, R, keep,
-            bart_params, var_params, phi_params);
-    } else {
-        backend = std::make_unique<GlobalCovarianceBackend>(
-            oldbetas, Z, mubar, Amu, nu, V, a,
-            deltabar, Ad, drawdelta, useBART,
-            olddelta, oldprob, ind, R, keep, bart_params);
-    }
+    std::unique_ptr<CovarianceBackend> backend = make_backend(
+        useBART, useHeterCov, oldbetas, Z, mubar, Amu, nu, V, a,
+        deltabar, Ad, drawdelta, olddelta, oldprob, ind, R, keep,
+        bart_params, var_params, phi_params);
 
     MnlThetaUpdaterAdapter updater(oldbetas, lgtdata_vector, SignRes, s, R);
 

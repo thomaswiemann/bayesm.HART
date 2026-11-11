@@ -40,7 +40,7 @@ test_that("Basic function execution works", {
     nlgt = nlgt_test, nT = nT_test, p = p_test, nz = nz_test, nXa = 1, nXd = 0,
     beta_func_type = "linear" # Can use linear, BART fits non-linearity
   )
-  Prior_bart <- list(ncomp = 1, bart = list(num_trees = 5)) # Minimal BART
+  Prior_bart <- list(ncomp = 1, hart_model = "normalized", bart = list(num_trees = 5)) # Minimal BART
   Mcmc_bart <- list(R = R_test, keep = keep_test, nprint = 0)
 
   expect_no_error({
@@ -278,7 +278,7 @@ test_that("Prior specification handling works", {
   # --- Test BART Priors (Run without error) ---
   # Using sim_Z_noSign data
   # 1. BART defaults (just specify bart list)
-  Prior_bart_def <- list(ncomp = 1, bart = list())
+  Prior_bart_def <- list(ncomp = 1, hart_model = "normalized", bart = list())
   expect_no_error({
       fit_bart_def <- run_quick_hmnl(sim_Z_noSign, Prior_bart_def, Mcmc_test)
   }, message = "BART default prior failed")
@@ -289,7 +289,7 @@ test_that("Prior specification handling works", {
   names(fit_bart_def$bart_models)
 
   # 2. BART user overrides
-  Prior_bart_user <- list(ncomp = 1, bart = list(num_trees = 10, power = 1.5, base = 0.8))
+  Prior_bart_user <- list(ncomp = 1, hart_model = "normalized", bart = list(num_trees = 10, power = 1.5, base = 0.8))
   expect_no_error({
       fit_bart_user <- run_quick_hmnl(sim_Z_noSign, Prior_bart_user, Mcmc_test)
   }, message = "BART user-specified prior failed")
@@ -399,7 +399,7 @@ test_that("BART integration works", {
   )
 
   # --- Test BART is triggered by Prior$bart ---
-  Prior_bart <- list(ncomp = 1, bart = list(num_trees = 5))
+  Prior_bart <- list(ncomp = 1, hart_model = "normalized", bart = list(num_trees = 5))
   fit_bart <- run_quick_hmnl(sim_data_bartint, Prior_bart, Mcmc_test)
 
   expect_true(!is.null(fit_bart$bart_models), "bart_models should exist when Prior$bart is set")
@@ -419,17 +419,15 @@ test_that("BART integration works", {
   expect_true(is.null(fit_linear_miss$bart_models), "bart_models should be NULL when Prior$bart is missing")
   expect_true(!is.null(fit_linear_miss$Deltadraw), "Deltadraw should exist when Prior$bart is missing")
 
-  # --- Test Linear model runs when drawdelta=FALSE (no Z) ---
-  # BART is only applicable when Z exists (drawdelta=TRUE internally)
+  # --- Test HART without Z is rejected (drawdelta=FALSE) ---
   set.seed(403)
   sim_data_noZ <- sim_hier_mnl(
     nlgt = nlgt_test, nT = nT_test, p = p_test, nz = 0, nXa = 1, nXd = 0, seed = 404
   )
-  Prior_noZ <- list(ncomp = 1, bart = list()) # Specify bart, but nz=0
-  fit_noZ <- run_quick_hmnl(sim_data_noZ, Prior_noZ, Mcmc_test)
-
-  expect_true(is.null(fit_noZ$bart_models), "bart_models should be NULL when nz=0, even if Prior$bart is set")
-  # Deltadraw is also NULL when nz=0, so no check needed here.
+  # A HART model without Z is an error under the explicit selector.
+  Prior_noZ <- list(ncomp = 1, hart_model = "normalized", bart = list())
+  expect_error(run_quick_hmnl(sim_data_noZ, Prior_noZ, Mcmc_test),
+               regexp = "requires Data\\$Z")
 
 })
 
@@ -499,7 +497,7 @@ test_that("Output structure and content are correct", {
   expect_length(fit_linear$loglike, ndraws_out)
 
   # --- Test BART Model Output --- 
-  Prior_bart <- list(ncomp = 1, bart = list(num_trees = 5))
+  Prior_bart <- list(ncomp = 1, hart_model = "normalized", bart = list(num_trees = 5))
   fit_bart <- run_quick_hmnl(sim_data_out, Prior_bart, Mcmc_out)
 
   expect_s3_class(fit_bart, "rhierMnlRwMixture")
@@ -576,7 +574,7 @@ test_that("Edge cases run without error", {
 
   # --- BART Specifics ---
   # Minimal BART parameters (num_trees = 1)
-  Prior_bart_min <- list(ncomp = 1, bart = list(num_trees = 1))
+  Prior_bart_min <- list(ncomp = 1, hart_model = "normalized", bart = list(num_trees = 1))
   expect_no_error(run_quick_hmnl(sim_nz1, Prior_bart_min, Mcmc_edge)) # Use nz=1 data
 
 })
@@ -592,7 +590,7 @@ test_that("Reproducibility works", {
   keep_rep <- 1
   Mcmc_rep <- list(R = R_rep, keep = keep_rep, nprint = 0)
   Prior_rep <- list(ncomp = 1)
-  Prior_bart_rep <- list(ncomp = 1, bart = list(num_trees = 3))
+  Prior_bart_rep <- list(ncomp = 1, hart_model = "normalized", bart = list(num_trees = 3))
 
   # --- Linear Model ---
   set.seed(701) # Seed for data generation
@@ -677,7 +675,7 @@ test_that("beta and delta parameter recovery is reasonable", {
     # Use a non-linear function for a better BART test
     beta_func_type = "step", seed = 805
   )
-  Prior_bart_rec <- list(ncomp = 1, bart = list(num_trees = 20))
+  Prior_bart_rec <- list(ncomp = 1, hart_model = "normalized", bart = list(num_trees = 20))
 
   set.seed(806)
   fit_bart_rec <- run_quick_hmnl(sim_data_bart_rec, Prior_bart_rec, Mcmc_rec)
@@ -786,7 +784,7 @@ test_that("Mixture with ncomp = 1 parameter recovery is reasonable", {
     mixture_comps = true_comps_rec_bart,
     seed = 902
   )
-  Prior_mix_bart_rec <- list(ncomp = ncomp_rec,
+  Prior_mix_bart_rec <- list(ncomp = ncomp_rec, hart_model = "normalized",
                              bart = list(num_trees = 20))
 
   fit_mix_bart_rec <- run_quick_hmnl(sim_data_mix_bart_rec, Prior_mix_bart_rec, Mcmc_rec)
