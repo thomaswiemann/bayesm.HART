@@ -46,8 +46,8 @@ List rhierLinearMixture_rcpp_loop(List const& regdata, mat const& Z,
   cube betadraw(nreg, nvar, R/keep);
   vec loglike(R/keep);
 
-  // Warm start at the per-unit OLS slopes under the direct model.
-  if (hart_model == "direct" && Beta_init.n_rows == (uword)nreg &&
+  // Warm start at the per-unit OLS slopes under a HART model.
+  if (hart_model != "none" && Beta_init.n_rows == (uword)nreg &&
       Beta_init.n_cols == (uword)nvar) {
     oldbetas = Beta_init;
   }

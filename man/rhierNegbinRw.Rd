@@ -27,8 +27,8 @@ rhierNegbinRw(Data, Prior, Mcmc, r_verbose = TRUE)
 \item \code{b} (optional): Rate parameter for gamma prior on alpha (default: 0.1).
 \item \code{mubar} (optional): \verb{1 x nvar} prior mean vector for the normal prior (default: 0).
 \item \code{Amu} (optional): Prior precision for the normal prior on \eqn{\mu} (default: 0.01). Scalar on the bayesm paths. Under a HART model the prior is the independent \eqn{N(\bar\mu, Amu^{-1})}, and \code{Amu} may be a scalar (expanded to \code{Amu * I}) or an \verb{nvar x nvar} SPD matrix.
-\item \code{Ad} (optional): \verb{nvar*nz x nvar*nz} prior precision for vec(Delta) (default: 0.01 * I). Only used when \code{drawdelta = TRUE} and \code{useBART = FALSE}.
-\item \code{deltabar} (optional): \code{nvar*nz} prior mean for vec(Delta) (default: 0). Only used when \code{drawdelta = TRUE} and \code{useBART = FALSE}.
+\item \code{Ad} (optional): \verb{nvar*nz x nvar*nz} prior precision for vec(Delta) (default: 0.01 * I). Only used when \code{Z} is supplied and \code{hart_model = "none"}.
+\item \code{deltabar} (optional): \code{nvar*nz} prior mean for vec(Delta) (default: 0). Only used when \code{Z} is supplied and \code{hart_model = "none"}.
 \item \code{hart_model} (optional): Preference-model selector, one of \code{"none"}
 (default; bayesm constant or linear \eqn{\Delta(Z)}), \code{"normalized"}
 (HART prior on the representative unit), or \code{"direct"} (HART mean and
@@ -65,11 +65,11 @@ A list of class \code{"rhierNegbinRw"} containing:
 \item \code{betadraw}: \verb{nreg x nvar x (R/keep)} array of unit-level beta draws.
 \item \code{alphadraw}: \verb{(R/keep) x 1} vector of overdispersion draws.
 \item \code{loglike}: \verb{(R/keep) x 1} vector of log-likelihoods.
-\item \code{nmix}: Legacy list containing prior draws (omitted under heter-cov).
+\item \code{nmix}: bayesm list of \verb{(mu, rooti)} draws (omitted under \code{hart_model = "direct"}).
 \item \code{acceptrbeta}, \code{acceptralpha}: Metropolis acceptance rates (percent).
-\item If \code{drawdelta} and non-BART: \code{Deltadraw}.
-\item If BART: \code{bart_models}, \code{varcount}, \code{varprob}.
-\item If heter-cov (additional class \code{"rhierNegbinRwHeterCov"}):
+\item If \code{Z} is supplied and \code{hart_model = "none"}: \code{Deltadraw}.
+\item Under a HART model: \code{bart_models}, \code{varcount}, \code{varprob}.
+\item Under \code{hart_model = "direct"} (additional class \code{"rhierNegbinRwHeterCov"}):
 \code{var_models}, \code{phi_models} (jagged or \code{NULL}), \code{mu_draw},
 \code{mean_scale_draw}, \code{var_varcount}, \code{var_varprob}.
 }
@@ -96,20 +96,20 @@ Note: This documentation describes \code{ncomp = 1} behavior as higher-order com
 
 \subsection{HART Prior Details}{
 
-If \code{Prior$bart} is a list, \eqn{\Delta(Z_i)} is modeled via a sum-of-trees (BART) prior
-instead of a linear hierarchical specification. See \code{rhierMnlRwMixture} for complete
-details and hyperparameter definitions.
+Under \code{hart_model = "normalized"} or \code{"direct"}, \eqn{\Delta(Z_i)} is modeled
+with HART trees instead of the linear hierarchical specification. See
+\code{rhierMnlRwMixture} for the models and the hyperparameter definitions.
 }
 
-\subsection{Heteroscedastic Covariance \eqn{\Sigma(Z_i)} (experimental extension)}{
+\subsection{Direct HART (\code{hart_model = "direct"})}{
 
-When \code{Prior$vartree} is supplied, the homoscedastic prior covariance \eqn{\Sigma} is
-replaced with a unit-specific modified Cholesky decomposition where the components
-are modeled as tree ensembles. See \code{rhierMnlRwMixture} for complete details.
-
-When this extension is active, the returned object additionally inherits
-classes \code{"rhierNegbinRwHeterCov"} and \code{"bayesm.HART.HeterCov"}. \code{predict()}
-dispatches on these classes to evaluate \eqn{\Sigma(Z^*)} at any new \eqn{Z^*}.
+The prior covariance becomes the unit-specific modified Cholesky
+\eqn{\Sigma(Z_i)} with tree-ensemble components, and the mean trees act in
+coefficient units with learned scales; see \code{rhierMnlRwMixture} for the
+\code{vartree} and \code{phitree} hyperparameters. The returned object additionally
+inherits classes \code{"rhierNegbinRwHeterCov"} and \code{"bayesm.HART.HeterCov"};
+\code{predict()} dispatches on them to evaluate \eqn{\Sigma(Z^*)} at new
+\eqn{Z^*}.
 }
 }
 \note{
@@ -123,7 +123,7 @@ sim <- bayesm.HART::sim_hier_negbin(
   const = TRUE, het_observed = "linear",
   target_var_betabar = 0.5, target_var_eps = 0.25,
   alpha = 5.0)
-Prior <- list(ncomp = 1L,
+Prior <- list(ncomp = 1L, hart_model = "direct",
               bart    = list(num_trees = 20),
               vartree = list(num_trees = 20))
 Mcmc  <- list(R = 200L, keep = 1L, nprint = 0L)

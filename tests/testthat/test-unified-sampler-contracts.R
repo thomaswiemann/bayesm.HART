@@ -212,6 +212,80 @@ test_that("NegBin global output has expected field names", {
 })
 
 # ===========================================================================
+# 8.4 Schema snapshot: HART outputs for Linear and NegBin
+# ===========================================================================
+
+make_reg_sim <- function(seed, n = 20L, nvar = 2L, nz = 2L, counts = FALSE) {
+  set.seed(seed)
+  Z <- matrix(rnorm(n * nz), n, nz)
+  regdata <- lapply(seq_len(n), function(i) {
+    ni <- 15L
+    X <- matrix(rnorm(ni * nvar), ni, nvar)
+    beta <- rnorm(nvar, sd = 0.3)
+    y <- if (counts) rnbinom(ni, size = 3, mu = exp(X %*% beta))
+         else X %*% beta + rnorm(ni)
+    list(y = y, X = X)
+  })
+  list(regdata = regdata, Z = Z)
+}#MAKE_REG_SIM
+
+hart_priors <- list(
+  normalized = list(ncomp = 1, hart_model = "normalized",
+                    bart = list(num_trees = 3)),
+  direct     = list(ncomp = 1, hart_model = "direct",
+                    bart = list(num_trees = 3), vartree = list(num_trees = 3)))
+
+direct_fields <- c("bart_models", "var_models", "phi_models", "mu_draw",
+                   "mean_scale_draw", "varcount", "varprob", "var_varcount",
+                   "var_varprob", "betadraw", "loglike", "hart")
+
+test_that("Linear HART outputs have expected field names and classes", {
+  dat  <- make_reg_sim(700)
+  Mcmc <- list(R = 4, keep = 1, nprint = 0)
+  run_quiet({
+    fit_a <- rhierLinearMixture(Data = dat, Prior = hart_priors$normalized,
+                                Mcmc = Mcmc)
+    fit_b <- rhierLinearMixture(Data = dat, Prior = hart_priors$direct,
+                                Mcmc = Mcmc)
+  })
+  expect_true(all(c("betadraw", "taudraw", "loglike", "nmix", "bart_models",
+                    "varcount", "varprob", "hart") %in% names(fit_a)))
+  expect_length(fit_a$bart_models, 2L)
+  expect_equal(class(fit_a), "rhierLinearMixture")
+  expect_null(fit_a$Deltadraw)
+  expect_named(fit_b, c(direct_fields, "taudraw"), ignore.order = TRUE)
+  expect_equal(class(fit_b), c("rhierLinearMixtureHeterCov",
+                               "bayesm.HART.HeterCov", "rhierLinearMixture"))
+  expect_equal(fit_b$bart_models$treedraws$leaf_dim, 2L)
+  expect_equal(dim(fit_b$varcount), c(2L, 4L))
+  expect_equal(dim(fit_b$mean_scale_draw), c(4L, 2L))
+  expect_null(fit_b$nmix)
+})
+
+test_that("NegBin HART outputs have expected field names and classes", {
+  dat  <- make_reg_sim(701, counts = TRUE)
+  Mcmc <- list(R = 4, keep = 1, nprint = 0)
+  run_quiet({
+    fit_a <- rhierNegbinRw(Data = dat, Prior = hart_priors$normalized,
+                           Mcmc = Mcmc, r_verbose = FALSE)
+    fit_b <- rhierNegbinRw(Data = dat, Prior = hart_priors$direct,
+                           Mcmc = Mcmc, r_verbose = FALSE)
+  })
+  expect_true(all(c("betadraw", "alphadraw", "loglike", "nmix", "bart_models",
+                    "varcount", "varprob", "acceptrbeta", "acceptralpha",
+                    "hart") %in% names(fit_a)))
+  expect_length(fit_a$bart_models, 2L)
+  expect_equal(class(fit_a), "rhierNegbinRw")
+  expect_named(fit_b, c(direct_fields, "alphadraw", "acceptrbeta",
+                        "acceptralpha"), ignore.order = TRUE)
+  expect_equal(class(fit_b), c("rhierNegbinRwHeterCov",
+                               "bayesm.HART.HeterCov", "rhierNegbinRw"))
+  expect_equal(fit_b$bart_models$treedraws$leaf_dim, 2L)
+  expect_equal(dim(fit_b$mean_scale_draw), c(4L, 2L))
+  expect_null(fit_b$nmix)
+})
+
+# ===========================================================================
 # 8.2 Cross-model parity: betadraw dimensions
 # ===========================================================================
 

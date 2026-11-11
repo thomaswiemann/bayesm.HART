@@ -223,6 +223,31 @@ test_that("predict.rhierLinearMixture dispatches via marker class for heter-cov"
   }
 })
 
+# --- caches -------------------------------------------------------------------
+test_that("DeltaZ and SigmaZ caches match tree evaluation", {
+  sim   <- make_small_linear_sim(nvar = 2L, nz = 2L, nreg = 25L, nobs = 15L,
+                                 seed = 20260516L)
+  Prior <- list(ncomp = 1L, hart_model = "direct",
+                bart    = list(num_trees = 5L),
+                vartree = list(num_trees = 5L))
+  Mcmc  <- list(R = 10L, keep = 1L, nprint = 0L)
+  capture.output({
+    fit <- rhierLinearMixture(
+      Data  = list(regdata = sim$regdata, Z = sim$Z),
+      Prior = Prior, Mcmc = Mcmc, r_verbose = FALSE)
+  })
+  newdata <- list(Z = sim$Z)
+  dz <- predict(fit, newdata = newdata, type = "DeltaZ", burn = 0L,
+                r_verbose = FALSE)
+  expect_equal(dz, bayesm.HART:::pwvecbart(sim$Z, fit$bart_models$treedraws),
+               tolerance = 1e-7, ignore_attr = TRUE)
+  sz <- predict(fit, newdata = newdata, type = "SigmaZ", burn = 0L,
+                r_verbose = FALSE)
+  sz_trees <- bayesm.HART:::.calculate_sigma_z(
+    fit, newdata, burn = 0, r_verbose = FALSE, force_tree_eval = TRUE)
+  expect_equal(sz, sz_trees, tolerance = 1e-7, ignore_attr = TRUE)
+})
+
 # --- verbose banner -----------------------------------------------------------
 test_that("verbose output lists the covariance-tree priors", {
   sim   <- make_small_linear_sim()

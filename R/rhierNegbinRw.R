@@ -23,8 +23,8 @@
 #'   - `b` (optional): Rate parameter for gamma prior on alpha (default: 0.1).
 #'   - `mubar` (optional): `1 x nvar` prior mean vector for the normal prior (default: 0).
 #'   - `Amu` (optional): Prior precision for the normal prior on \eqn{\mu} (default: 0.01). Scalar on the bayesm paths. Under a HART model the prior is the independent \eqn{N(\bar\mu, Amu^{-1})}, and `Amu` may be a scalar (expanded to `Amu * I`) or an `nvar x nvar` SPD matrix.
-#'   - `Ad` (optional): `nvar*nz x nvar*nz` prior precision for vec(Delta) (default: 0.01 * I). Only used when `drawdelta = TRUE` and `useBART = FALSE`.
-#'   - `deltabar` (optional): `nvar*nz` prior mean for vec(Delta) (default: 0). Only used when `drawdelta = TRUE` and `useBART = FALSE`.
+#'   - `Ad` (optional): `nvar*nz x nvar*nz` prior precision for vec(Delta) (default: 0.01 * I). Only used when `Z` is supplied and `hart_model = "none"`.
+#'   - `deltabar` (optional): `nvar*nz` prior mean for vec(Delta) (default: 0). Only used when `Z` is supplied and `hart_model = "none"`.
 #'   - `hart_model` (optional): Preference-model selector, one of `"none"`
 #'     (default; bayesm constant or linear \eqn{\Delta(Z)}), `"normalized"`
 #'     (HART prior on the representative unit), or `"direct"` (HART mean and
@@ -62,28 +62,28 @@
 #'   Note: This documentation describes `ncomp = 1` behavior as higher-order components are not supported. \cr
 #'
 #' ## HART Prior Details
-#' If `Prior$bart` is a list, \eqn{\Delta(Z_i)} is modeled via a sum-of-trees (BART) prior
-#' instead of a linear hierarchical specification. See `rhierMnlRwMixture` for complete 
-#' details and hyperparameter definitions.
+#' Under `hart_model = "normalized"` or `"direct"`, \eqn{\Delta(Z_i)} is modeled
+#' with HART trees instead of the linear hierarchical specification. See
+#' `rhierMnlRwMixture` for the models and the hyperparameter definitions.
 #'
-#' ## Heteroscedastic Covariance \eqn{\Sigma(Z_i)} (experimental extension)
-#' When `Prior$vartree` is supplied, the homoscedastic prior covariance \eqn{\Sigma} is
-#' replaced with a unit-specific modified Cholesky decomposition where the components
-#' are modeled as tree ensembles. See `rhierMnlRwMixture` for complete details.
-#'
-#' When this extension is active, the returned object additionally inherits
-#' classes `"rhierNegbinRwHeterCov"` and `"bayesm.HART.HeterCov"`. `predict()` 
-#' dispatches on these classes to evaluate \eqn{\Sigma(Z^*)} at any new \eqn{Z^*}.
+#' ## Direct HART (`hart_model = "direct"`)
+#' The prior covariance becomes the unit-specific modified Cholesky
+#' \eqn{\Sigma(Z_i)} with tree-ensemble components, and the mean trees act in
+#' coefficient units with learned scales; see `rhierMnlRwMixture` for the
+#' `vartree` and `phitree` hyperparameters. The returned object additionally
+#' inherits classes `"rhierNegbinRwHeterCov"` and `"bayesm.HART.HeterCov"`;
+#' `predict()` dispatches on them to evaluate \eqn{\Sigma(Z^*)} at new
+#' \eqn{Z^*}.
 #'
 #' @return A list of class `"rhierNegbinRw"` containing:
 #'   - `betadraw`: `nreg x nvar x (R/keep)` array of unit-level beta draws.
 #'   - `alphadraw`: `(R/keep) x 1` vector of overdispersion draws.
 #'   - `loglike`: `(R/keep) x 1` vector of log-likelihoods.
-#'   - `nmix`: Legacy list containing prior draws (omitted under heter-cov).
+#'   - `nmix`: bayesm list of `(mu, rooti)` draws (omitted under `hart_model = "direct"`).
 #'   - `acceptrbeta`, `acceptralpha`: Metropolis acceptance rates (percent).
-#'   - If `drawdelta` and non-BART: `Deltadraw`.
-#'   - If BART: `bart_models`, `varcount`, `varprob`.
-#'   - If heter-cov (additional class `"rhierNegbinRwHeterCov"`):
+#'   - If `Z` is supplied and `hart_model = "none"`: `Deltadraw`.
+#'   - Under a HART model: `bart_models`, `varcount`, `varprob`.
+#'   - Under `hart_model = "direct"` (additional class `"rhierNegbinRwHeterCov"`):
 #'     `var_models`, `phi_models` (jagged or `NULL`), `mu_draw`,
 #'     `mean_scale_draw`, `var_varcount`, `var_varprob`.
 #'
@@ -99,7 +99,7 @@
 #'   const = TRUE, het_observed = "linear",
 #'   target_var_betabar = 0.5, target_var_eps = 0.25,
 #'   alpha = 5.0)
-#' Prior <- list(ncomp = 1L,
+#' Prior <- list(ncomp = 1L, hart_model = "direct",
 #'               bart    = list(num_trees = 20),
 #'               vartree = list(num_trees = 20))
 #' Mcmc  <- list(R = 200L, keep = 1L, nprint = 0L)
@@ -357,9 +357,7 @@ if (r_verbose) {
 }
 
 hess_i=NULL
-# Per-unit MLE betas (collected for heter-cov lambda calibration; harmless
-# overhead for non-heter-cov paths).  Default to pooled MLE on convergence
-# failure so lambda_default = mean(apply(Beta_init, 2, var)) stays finite.
+# Per-unit MLEs; the pooled MLE where a unit's optimizer fails.
 Beta_init = matrix(rep(beta_mle, nreg), nrow = nreg, ncol = nvar, byrow = TRUE)
 if(nobs > 1000){
   sind=sample(c(1:nobs),size=1000)
@@ -381,14 +379,13 @@ for (i in 1:nreg) {
         Beta_init[i, ] = mle2$par
     } else {
         hess_i[[i]] = list(hess=diag(rep(1,nvar)))
-        # Beta_init[i, ] keeps its pooled-MLE default.
     }
    if(i%%50 ==0 & r_verbose) cat("  completed unit #",i,fill=TRUE)	
    fsh()
 }
 
-# Warm start at the per-unit MLEs under the direct model.
-if (useHeterCov) Beta = Beta_init
+# Warm start at the per-unit MLEs under a HART model.
+if (useBART) Beta = Beta_init
 
 # ---- Mixture initialization (mirrors MNL/linear) ----
 ninc=floor(nreg/ncomp)
