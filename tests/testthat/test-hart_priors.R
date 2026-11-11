@@ -16,7 +16,7 @@ test_that(".hart_config defaults to the bayesm paths", {
   expect_null(cfg$phitree)
   expect_false(cfg$full_cov)
   expect_true(cfg$store_trees)
-  # "none" with no Z is the bayesm constant-mean path, not an error.
+  # No Z under "none" is bayesm's constant-mean path.
   expect_equal(cfg_of(list(ncomp = 1), drawdelta = FALSE)$model, "none")
 })#TEST_THAT
 
@@ -39,9 +39,11 @@ test_that("tree lists without a HART selector are errors", {
 })#TEST_THAT
 
 test_that("HART models require Z", {
-  expect_error(cfg_of(list(ncomp = 1, hart_model = "normalized"), drawdelta = FALSE),
+  expect_error(cfg_of(list(ncomp = 1, hart_model = "normalized"),
+                      drawdelta = FALSE),
                regexp = "requires Data\\$Z")
-  expect_error(cfg_of(list(ncomp = 1, hart_model = "direct"), drawdelta = FALSE),
+  expect_error(cfg_of(list(ncomp = 1, hart_model = "direct"),
+                      drawdelta = FALSE),
                regexp = "requires Data\\$Z")
 })#TEST_THAT
 

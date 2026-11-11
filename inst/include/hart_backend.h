@@ -5,22 +5,12 @@
 #include "bayesm.HART.h"
 #include "covariance_backend.h"
 
-// Shared state for the tree-based (HART) covariance backends.
-//
-// Holds what every HART backend needs regardless of preference model: the
-// unit coefficients the updater writes, the transposed characteristics Z^T
-// (unit i is column i, the layout bart::setdata expects), the problem
-// dimensions, the keep-time tree flag, the RNG, and the per-unit prior-mean
-// cache the unified driver reads through prior_mean().
-//
-// Subclasses implement draw_iteration(), precision_root(), store(), pack()
-// and capabilities().  They must refresh prior_mean_ at the end of every
-// draw_iteration().
-//
-// Implementations:
-//   HeterCovBackend        - stage 0: pre-plan modified-Cholesky kernel
-//   NormalizedHartBackend  - stage 1: theta_i = mu + S{f*(Z_i) + eps_i}
-//   DirectHartBackend      - stage 4: theta_i = mu + f(Z_i) + S_i eps_i
+// Shared state of the tree-based (HART) covariance backends: the unit
+// coefficients the updater writes, Z^T in the column layout bart::setdata
+// expects, the dimensions, the keep-time tree flag, the RNG, and the per-unit
+// prior means the driver reads through prior_mean().  Subclasses implement
+// draw_iteration(), precision_root(), store(), pack(), capabilities(), and
+// refresh prior_mean_ at the end of every draw_iteration().
 class HartBackend : public CovarianceBackend {
 protected:
     arma::mat const&       theta_;       // n x D unit coefficients (driver-owned)
@@ -41,15 +31,20 @@ protected:
     // lifetime of the backend.
     double* pZt() { return Zt_.memptr(); }
 
+    // Optional logical entry of a parameter List.
+    static bool list_flag(Rcpp::List const& p, const char* name, bool def) {
+        return p.containsElementNamed(name) ? Rcpp::as<bool>(p[name]) : def;
+    }
+
 public:
     arma::vec const& prior_mean(int i) const override { return prior_mean_[i]; }
 };
 
-// Select the covariance backend for one sampler run (shared by the MNL,
-// Linear, and NegBin loop files):
-//   useHeterCov            -> HeterCovBackend        (direct, pre-plan kernel)
-//   useBART && !useHeterCov -> NormalizedHartBackend  (normalized HART)
-//   otherwise              -> GlobalCovarianceBackend (bayesm paths)
+// Covariance backend for one sampler run (shared by the MNL, Linear, and
+// NegBin loop files):
+//   useHeterCov             -> HeterCovBackend         (direct)
+//   useBART && !useHeterCov -> NormalizedHartBackend   (normalized)
+//   otherwise               -> GlobalCovarianceBackend (bayesm paths)
 std::unique_ptr<CovarianceBackend> make_backend(
     bool useBART, bool useHeterCov,
     arma::mat& oldbetas, arma::mat const& Z,

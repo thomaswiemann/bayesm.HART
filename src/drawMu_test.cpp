@@ -1,5 +1,4 @@
-// TEMPORARY SHIM: drives drawMuHeterCov on synthetic D and Phi values so we
-// can verify the empirical posterior matches the analytic
+// Test harness: drawMuHeterCov on prescribed D and phi values against
 //   mu | . ~ N( V_post (Amu mubar0 + sum_i Sigma(Z_i)^{-1} theta_i),
 //               V_post )
 // with V_post^{-1} = Amu + sum_i Sigma(Z_i)^{-1}.

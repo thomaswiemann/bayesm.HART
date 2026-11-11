@@ -36,10 +36,9 @@ public:
 //
 //   nmin    = 5   - hard lower bound on raw observation counts per leaf,
 //                   matching the historical hard-coded threshold in heterbd.
-//   ess_min = 0.0 - no effective-sample-size guard; turn on (e.g. ess_min=5)
-//                   for varying-coefficient (phi-tree) heterbart updates where
-//                   raw counts no longer measure information about the leaf
-//                   parameter.  See discussions/2026-05-12-phibart-vs-heterbart.md.
+//   ess_min = 0.0 - no effective-sample-size guard; positive for the phi-tree
+//                   heterbart updates, where raw counts do not measure the
+//                   information about the leaf parameter.
 class pinfo
 {
 public:

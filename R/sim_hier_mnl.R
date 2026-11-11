@@ -287,8 +287,6 @@ sim_hier_mnl <- function(
                          base = 1) # Assuming base alternative is 1
 
     ## ---- 6c. Simulate choices y_i ----
-    # Assumes simmnlwX function is available (e.g., from this package)
-    # Need to handle case where nT = 1 correctly within simmnlwX if necessary
     out_choices <- .simmnlwX(ni[i], X, beta_true[i, ])
 
     ## ---- 6d. Store results for unit i ----
@@ -358,7 +356,7 @@ sim_hier_mnl <- function(
   }
 }
 
-# Note: Assumes nz >= 5
+# Requires nz >= 5.
 .beta_Z_friedman <- function(Zi, coefs = c(10, 20, 10, 5), shift = 0, scale = 8) {
   # Zi: vector for one individual (uses first 5 elements)
   # Returns a scalar value based on Friedman benchmark function

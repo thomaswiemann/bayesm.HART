@@ -135,9 +135,9 @@ test_that("vartree only with ncoef == 1 stays diagonal (scalar case)", {
   expect_equal(dim(fit$mu_draw), c(20L, 1L))
 })
 
-# --- Phase 2: vartree + phitree ---------------------------------------------
-test_that("Phase 2 (vartree + phitree) returns jagged phi_models", {
-  # nvar = 2 so we have one off-diagonal phi_{2,1}(.) tree
+# --- vartree + phitree ------------------------------------------------------
+test_that("vartree + phitree returns jagged phi_models", {
+  # nvar = 2: one off-diagonal tree phi_21.
   sim   <- make_small_negbin_sim(nvar = 2L, nz = 2L,
                                  nreg = 25L, nobs = 15L,
                                  seed = 20260514L)

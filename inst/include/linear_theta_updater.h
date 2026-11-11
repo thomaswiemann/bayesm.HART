@@ -7,14 +7,6 @@
 // Linear theta updater: conjugate Gaussian via runiregG + tau draw.
 class LinearThetaUpdaterAdapter : public ThetaUpdater {
 public:
-    arma::mat& oldbetas_;
-    std::vector<moments> const& regdata_;
-    arma::vec tau_;
-    arma::mat taudraw_;
-    double nu_e_;
-    arma::vec const& ssq_;
-    int nreg_, nvar_, R_, keep_;
-
     LinearThetaUpdaterAdapter(
         arma::mat& oldbetas,
         std::vector<moments> const& regdata,
@@ -27,6 +19,15 @@ public:
     UpdaterPackPayload pack() override;
     AcceptanceMetrics acceptance_metrics() const override;
     double current_loglike() const override;
+
+protected:
+    arma::mat& oldbetas_;
+    std::vector<moments> const& regdata_;
+    arma::vec tau_;
+    arma::mat taudraw_;
+    double nu_e_;
+    arma::vec const& ssq_;
+    int nreg_, nvar_, R_, keep_;
 };
 
 #endif

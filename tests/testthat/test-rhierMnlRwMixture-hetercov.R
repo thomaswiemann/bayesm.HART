@@ -109,7 +109,7 @@ test_that("vartree only with nvar > 1 auto-promotes to full Cholesky", {
                  "varcount", "varprob", "var_varcount", "var_varprob",
                  "betadraw", "loglike", "SignRes", "acceptrbeta", "hart"),
                ignore.order = TRUE)
-  # Auto-promotion: phi_models is now non-null and properly jagged.
+  # phi_models is jagged: entry j holds j - 1 trees.
   expect_length(fit$phi_models, sim$nvar)
   for (j in seq_len(sim$nvar)) {
     if (j == 1L) {
@@ -126,8 +126,7 @@ test_that("vartree only with nvar > 1 auto-promotes to full Cholesky", {
 })
 
 test_that("vartree only with nvar == 1 stays diagonal (scalar case)", {
-  # When nvar == 1 there are no off-diagonals to model, so phi_models is
-  # legitimately NULL and Sigma(Z) is just d_1(Z).  Auto-promotion is a no-op.
+  # nvar == 1: no off-diagonals, Sigma(Z) = d_1(Z).
   sim <- make_small_sim(nvar = 1L)
   Prior <- list(ncomp = 1L, hart_model = "direct",
                 bart    = list(num_trees = 5L),
@@ -146,16 +145,8 @@ test_that("vartree only with nvar == 1 stays diagonal (scalar case)", {
   expect_equal(dim(fit$mu_draw), c(20L, 1L))
 })
 
-test_that("DART (sparse=TRUE) on vartree concentrates var_varprob away from uniform", {
-  # Validates the full DART pipeline (parse Prior$vartree$sparse + burn ->
-  # initializeVarBART:setdart -> startdart at burn+1).  Phi-tree DART is plumbed
-  # via the same mechanism (s.phi_sparse / s.phi_burn / startdart in
-  # hetercov_draw_iter); validating the var path confirms the activation.
-  #
-  # Robust check: under a uniform Dirichlet over `nz` columns, each varprob
-  # entry has expected value 1/nz.  DART, post-activation, drives varprob away
-  # from uniform whenever ANY column is more informative than others; we don't
-  # over-specify which one wins (sample-size noise can shuffle the winner).
+test_that("DART on vartree moves var_varprob away from uniform", {
+  # Only Z[, 1] drives the variance; after activation var_varprob leaves 1/nz.
   set.seed(20260513L)
   nlgt <- 30L; nz <- 5L; nvar <- 1L; p <- 3L; T_i <- 6L
   Z <- cbind(runif(nlgt, -1, 1), matrix(runif(nlgt * (nz - 1L), -1, 1), nlgt, nz - 1L))
@@ -173,24 +164,21 @@ test_that("DART (sparse=TRUE) on vartree concentrates var_varprob away from unif
   Prior <- list(ncomp = 1L, hart_model = "direct",
                 bart    = list(num_trees = 5L),
                 vartree = list(num_trees = 20L, sparse = TRUE, burn = 5L))
-  Mcmc  <- list(R = 60L, keep = 1L, nprint = 0L)
+  Mcmc  <- list(R = 150L, keep = 1L, nprint = 0L)
 
   capture.output({
     fit <- rhierMnlRwMixture(Data = Data, Prior = Prior, Mcmc = Mcmc,
                              r_verbose = FALSE)
   })
-  vp_post <- apply(fit$var_varprob[, 1, 30:60], 1, mean)
-  # If DART is active, the *most* selected column should poll meaningfully
-  # above uniform (1/nz = 0.2) and the *least* selected should be squeezed
-  # below uniform.  Both directions must be present for a true non-uniform
-  # posterior over Z columns -- a sufficient signature of DART activation.
+  vp_post <- apply(fit$var_varprob[, 1, 51:150], 1, mean)
+  # Largest column above uniform, smallest below.
   expect_true(max(vp_post) > 1.5 * (1 / nz),
               info = sprintf("max vp=%.3f, uniform=%.3f", max(vp_post), 1 / nz))
   expect_true(min(vp_post) < (1 / nz),
               info = sprintf("min vp=%.3f, uniform=%.3f", min(vp_post), 1 / nz))
 })
 
-test_that("Phase 2 (vartree + phitree) runs end-to-end and returns jagged phi_models", {
+test_that("vartree + phitree returns jagged phi_models", {
   sim <- make_small_sim()
   Prior <- list(ncomp = 1L, hart_model = "direct",
                 bart    = list(num_trees = 5L),

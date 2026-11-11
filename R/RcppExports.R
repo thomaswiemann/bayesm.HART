@@ -13,8 +13,32 @@ cpwbart_mnl <- function(trees, cutpoints, X) {
     .Call(`_bayesm_HART_cpwbart_mnl`, trees, cutpoints, X)
 }
 
+cpwvecbart <- function(treedraws, xt) {
+    .Call(`_bayesm_HART_cpwvecbart`, treedraws, xt)
+}
+
 drawMuHeterCov_test <- function(oldbetas, mubar0, Amu, D_vals, Phi_vals, diagonal, n_draws) {
     .Call(`_bayesm_HART_drawMuHeterCov_test`, oldbetas, mubar0, Amu, D_vals, Phi_vals, diagonal, n_draws)
+}
+
+veclh_R <- function(P, b, n, C) {
+    .Call(`_bayesm_HART_veclh_R`, P, b, n, C)
+}
+
+vecdrawnodemu_R <- function(P, b, C, ndraw) {
+    .Call(`_bayesm_HART_vecdrawnodemu_R`, P, b, C, ndraw)
+}
+
+vecbart_chain_R <- function(Zt, y, Q, m, C, alpha, beta, nmin, numcut, niter, sparse = FALSE, burn = 0L) {
+    .Call(`_bayesm_HART_vecbart_chain_R`, Zt, y, Q, m, C, alpha, beta, nmin, numcut, niter, sparse, burn)
+}
+
+vclh_R <- function(P, b, tau) {
+    .Call(`_bayesm_HART_vclh_R`, P, b, tau)
+}
+
+vcbart_chain_R <- function(Zt, y, a, v, m, tau, alpha, beta, nmin, numcut, niter, sparse = FALSE, burn = 0L) {
+    .Call(`_bayesm_HART_vcbart_chain_R`, Zt, y, a, v, m, tau, alpha, beta, nmin, numcut, niter, sparse, burn)
 }
 
 llmnl <- function(beta, y, X) {

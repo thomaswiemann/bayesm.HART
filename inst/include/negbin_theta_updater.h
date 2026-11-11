@@ -12,21 +12,6 @@ double llnegbinpooled(std::vector<moments> const& regdata_vector,
 // NegBin theta updater: RW-MH for beta_i + alpha MH block.
 class NegbinThetaUpdaterAdapter : public ThetaUpdater {
 public:
-    arma::mat& oldbetas_;
-    std::vector<moments> const& regdata_;
-    arma::vec oldlpostbeta_, clpostbeta_;
-    int nacceptbeta_, nacceptalpha_;
-    double sbeta_, alpha_, alphacroot_;
-    double a_prior_, b_prior_;
-    bool fixalpha_;
-    arma::vec alphadraw_;
-    arma::mat A_work_;
-    arma::mat U_work_;
-    arma::mat eye_work_;
-    arma::vec oldbeta_work_;
-    arma::vec betac_work_;
-    int nreg_, nvar_, R_, keep_;
-
     NegbinThetaUpdaterAdapter(
         arma::mat& oldbetas,
         std::vector<moments> const& regdata,
@@ -42,7 +27,23 @@ public:
     double current_loglike() const override;
     void post_iteration() override { draw_alpha(); }
 
-    // Alpha MH step (called via post_iteration after per-unit loop)
+protected:
+    arma::mat& oldbetas_;
+    std::vector<moments> const& regdata_;
+    arma::vec oldlpostbeta_, clpostbeta_;
+    int nacceptbeta_, nacceptalpha_;
+    double sbeta_, alpha_, alphacroot_;
+    double a_prior_, b_prior_;
+    bool fixalpha_;
+    arma::vec alphadraw_;
+    arma::mat A_work_;
+    arma::mat U_work_;
+    arma::mat eye_work_;
+    arma::vec oldbeta_work_;
+    arma::vec betac_work_;
+    int nreg_, nvar_, R_, keep_;
+
+    // Alpha MH step (called via post_iteration after the per-unit loop)
     void draw_alpha();
 };
 

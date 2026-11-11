@@ -9,6 +9,23 @@
 // and drawDelta.  Shared by the MNL, Linear, and NegBin loop files.
 class GlobalCovarianceBackend : public CovarianceBackend {
 public:
+    GlobalCovarianceBackend(
+        arma::mat& oldbetas, arma::mat const& Z,
+        arma::mat const& mubar, arma::mat const& Amu,
+        double nu, arma::mat const& V, arma::vec const& a,
+        arma::vec const& deltabar, arma::mat const& Ad,
+        bool drawdelta,
+        arma::mat olddelta, arma::vec oldprob, arma::vec ind,
+        int R, int keep);
+
+    void draw_iteration(int rep) override;
+    arma::mat const& precision_root(int i) const override;
+    arma::vec const& prior_mean(int i) const override;
+    void store(int mkeep) override;
+    BackendPackPayload pack() override;
+    BackendCapabilities capabilities() const override;
+
+protected:
     arma::mat& oldbetas_;
     Rcpp::List oldcomp_;
     arma::vec  oldprob_, ind_;
@@ -32,21 +49,6 @@ public:
     bool drawdelta_;
     int nreg_, nz_, nvar_, R_, keep_;
 
-    GlobalCovarianceBackend(
-        arma::mat& oldbetas, arma::mat const& Z,
-        arma::mat const& mubar, arma::mat const& Amu,
-        double nu, arma::mat const& V, arma::vec const& a,
-        arma::vec const& deltabar, arma::mat const& Ad,
-        bool drawdelta,
-        arma::mat olddelta, arma::vec oldprob, arma::vec ind,
-        int R, int keep);
-
-    void draw_iteration(int rep) override;
-    arma::mat const& precision_root(int i) const override;
-    arma::vec const& prior_mean(int i) const override;
-    void store(int mkeep) override;
-    BackendPackPayload pack() override;
-    BackendCapabilities capabilities() const override;
     void refresh_component_cache();
 };
 

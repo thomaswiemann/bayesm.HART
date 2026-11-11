@@ -247,10 +247,8 @@ test_that("rhierLinearMixture recovers beta (linear DGP, moderate R)", {
   }
 })
 
-test_that("rhierLinearMixture precision matrix convention is correct (M3.2 bug check)", {
-  # This test uses nvar = 2 (ncoef = 3) with an asymmetric Cholesky root to
-  # ensure that the precision matrix is computed as rootpi * t(rootpi) and
-  # not t(rootpi) * rootpi.
+test_that("rhierLinearMixture precision matrix is rootpi * t(rootpi)", {
+  # An asymmetric root distinguishes rootpi * t(rootpi) from t(rootpi) * rootpi.
   set.seed(42)
   nreg <- 1
   nobs <- 10
@@ -260,7 +258,7 @@ test_that("rhierLinearMixture precision matrix convention is correct (M3.2 bug c
   beta_true <- c(1.5, -0.5, 0.8)
   y <- X %*% beta_true + rnorm(nobs, 0, 0.5)
   
-  # Asymmetric V ensures R'R != RR'
+  # Asymmetric V: R'R != RR'.
   Sigma_k <- matrix(c(1, 0.8, 0.2, 
                       0.8, 2, -0.5,
                       0.2, -0.5, 1.5), 3, 3)

@@ -252,9 +252,7 @@ if(length(a_mix) != ncomp) {pandterm("Requires dim(a_mix)= ncomp (no of componen
 
 # ---- HART preference model (see R/hart_priors.R) ----
 # Prior$hart_model selects "none" (bayesm paths), "normalized", or "direct".
-# Stage 0: both HART models run on the pre-plan kernels behind useBART /
-# useHeterCov.  Variance-tree lambda defaults use per-unit MLE betas
-# (Beta_init, computed below).
+# Variance-tree lambda defaults use the per-unit MLE betas (Beta_init below).
 useBART     <- cfg$model != "none"
 useHeterCov <- cfg$model == "direct"
 bart_params <- cfg$bart
@@ -389,8 +387,7 @@ for (i in 1:nreg) {
    fsh()
 }
 
-# Covariance-tree hyperparameters (Beta_init now available for the
-# data-calibrated lambda default; see R/hart_priors.R).
+# Covariance-tree hyperparameters; lambda defaults from Beta_init.
 if (useHeterCov) {
   cfg$vartree <- .parse_var_params(cfg$vartree, Beta_init, nz)
   if (cfg$full_cov) cfg$phitree <- .parse_phi_params(cfg$phitree, nz, nu, nvar)
@@ -398,8 +395,7 @@ if (useHeterCov) {
   phi_params <- cfg$phitree %||% list()
   if (r_verbose)
     .print_hart_covariance(cfg, lambda_user_supplied = !is.null(Prior$vartree$lambda))
-  # Warm-start MCMC at per-unit MLEs under heter-cov; the BART path keeps the
-  # original pooled-MLE start for backward compatibility.
+  # Warm start at the per-unit MLEs.
   Beta = Beta_init
 }
 
@@ -454,8 +450,6 @@ draws=rhierNegbinRw_rcpp_loop(regdata, hess_i, Z, Beta, deltabar,
 ###################################################################
 
 # === Format output ===
-# Normalize Betadraw -> betadraw for consistency with shared predict helpers
-# (Now handled directly in C++)
 attributes(draws$alphadraw)$class=c("bayesm.mat","mcmc")
 attributes(draws$alphadraw)$mcpar=c(1,R,keep)
 draws <- .finish_hart_fit(draws, cfg, z_map, R, keep,

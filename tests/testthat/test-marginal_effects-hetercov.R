@@ -1,15 +1,7 @@
 # ==============================================================================
-# marginal_effects() smoke tests under heter-cov for all three model families.
-#
-# These tests verify that:
-#   1. The generic dispatches correctly on heter-cov subclasses
-#      (rhierMnlRwMixtureHeterCov / rhierLinearMixtureHeterCov /
-#       rhierNegbinRwHeterCov inherit from their respective base classes).
-#   2. .marginal_effects_impl() picks `predict_type = "DeltaZ+mu"` for objects
-#      that carry mu in `mu_draw` (heter-cov) just as it does for those that
-#      carry it in `nmix$compdraw` (linear / mix-BART).
-#   3. summary() returns a well-formed `summary.marginal_effects` object.
-#   4. Effects vary across grid points (sanity: not constant in z).
+# marginal_effects() under heter-cov for the three model families: dispatch on
+# the HeterCov subclasses, predict_type = "DeltaZ+mu" from mu_draw, a
+# well-formed summary, and effects that vary in z.
 # ==============================================================================
 
 library(testthat)

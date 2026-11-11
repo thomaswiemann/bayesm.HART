@@ -3,13 +3,6 @@
 using namespace arma;
 using namespace Rcpp;
 
-namespace {
-bool store_trees_flag(List const& bart_params) {
-    return bart_params.containsElementNamed("store_trees")
-        ? as<bool>(bart_params["store_trees"]) : true;
-}
-}
-
 HeterCovBackend::HeterCovBackend(
     mat& oldbetas, mat const& Z,
     mat const& mubar, mat const& Amu,
@@ -17,7 +10,7 @@ HeterCovBackend::HeterCovBackend(
     List const& bart_params,
     List const& var_params,
     List const& phi_params)
-    : HartBackend(oldbetas, Z, R, keep, store_trees_flag(bart_params)),
+    : HartBackend(oldbetas, Z, R, keep, list_flag(bart_params, "store_trees", true)),
       mubar_(mubar), Amu_(Amu),
       bart_params_(bart_params), var_params_(var_params),
       phi_params_(phi_params)
@@ -37,8 +30,7 @@ void HeterCovBackend::draw_iteration(int rep) {
                        bart_params_, var_params_, phi_params_,
                        rep, gen_);
 
-    // Cache per-unit kernels once per iteration for reference-based access
-    // from the unified sampler driver.
+    // Per-unit kernels read by the driver.
     for (int i = 0; i < n_; i++) {
         cov::cov_eval ev{hcs_.var_models, hcs_.phi_models, (size_t)i};
         rootpi_cache_[i] = cov::rootpi(ev);

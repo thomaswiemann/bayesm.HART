@@ -49,12 +49,9 @@ void diag_kernel(mat const& V, mat const& M, mat const& L, uword j,
 }
 
 // Slice sampler on u = log L_jj for
-//   pi(u) propto exp{(a + 1) u - b e^{2u} / 2 - c e^u}.
-// The density is unimodal for a > -1 (b t^2 + c t - (a + 1) = 0 has exactly
-// one positive root t = e^u), so stepping out with a randomized budget plus
-// shrinkage is valid.  Shrinkage terminates with probability one because u0
-// lies inside the slice; the iteration cap turns a numerical breakdown into
-// an explicit error rather than a silent rejection.
+//   pi(u) propto exp{(a + 1) u - b e^{2u} / 2 - c e^u},
+// unimodal for a > -1 (b t^2 + c t - (a + 1) = 0 has one positive root
+// t = e^u); stepping out with a randomized budget, then shrinkage.
 double slice_log_diag(double u0, double a, double b, double c,
                       double w, int max_steps, rn& gen) {
     auto logp = [&](double u) -> double {
@@ -110,7 +107,7 @@ void draw_cholesky_sweep(mat& L, mat const& theta, mat const& fstar,
 }
 
 // ---------------------------------------------------------------------------
-// R-facing test harness (tests/testthat/test-sigma-gibbs-cholesky.R).
+// Test harness
 // ---------------------------------------------------------------------------
 
 // Kernel parameters at the supplied state: for every (j, k < j) the Gaussian

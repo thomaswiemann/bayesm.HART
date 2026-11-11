@@ -149,7 +149,7 @@ test_that("Input validation works", {
 
   bad_prior_mubar <- valid_prior; bad_prior_mubar$mubar <- matrix(0, nrow = 1, ncol = ncoef_val + 1)
   expect_error(capture.output(rhierMnlRwMixture(Data = valid_data, Prior = bad_prior_mubar, Mcmc = valid_mcmc)),
-               regexp = "mubar must have ncomp cols") # Note: error msg seems wrong, checks nvar
+               regexp = "mubar must have ncomp cols")
 
   bad_prior_amu <- valid_prior; bad_prior_amu$Amu <- matrix(0, nrow = 2, ncol = 1)
   expect_error(capture.output(rhierMnlRwMixture(Data = valid_data, Prior = bad_prior_amu, Mcmc = valid_mcmc)),
@@ -375,9 +375,6 @@ test_that("Sign restriction handling works", {
   expect_true(all(betadraw_mix[, 2, ] < 0),
               info = "All draws should respect negative restriction (mixed) for coef 2")
 
-  # Note: Optimization and Hessian checks are harder to verify directly
-  # in unit tests without accessing internal states or specific outputs.
-  # Relying on successful run and draw verification provides indirect evidence.
 
 })
 
@@ -625,12 +622,9 @@ test_that("Reproducibility works", {
   # Compare key outputs (no Deltadraw for BART)
   # Comparing bart_models directly might be tricky due to environments/pointers?
   # Compare summaries or components if direct comparison fails reliably.
-  # For now, compare the other outputs.
   expect_equal(fit1_bart$betadraw, fit2_bart$betadraw, info = "BART betadraw not reproducible")
   expect_equal(fit1_bart$nmix, fit2_bart$nmix, info = "BART nmix not reproducible")
   expect_equal(fit1_bart$loglike, fit2_bart$loglike, info = "BART loglike not reproducible")
-  # We can't easily compare bart_models for perfect equality due to how they store trees
-  # but the other components being equal strongly suggests reproducibility.
 
 })
 
@@ -822,7 +816,7 @@ test_that("Mixture with ncomp = 1 parameter recovery is reasonable", {
   true_comps_rec_ordered_bart <- true_comps_rec_bart[true_order_bart]
 
   # --- Compare ordered components ---
-  # Compare Mu vectors -- unidentified, skipping for now
+  # Mixture means are unidentified and not compared.
 #   expect_equal(mu_means_ordered_bart[, 1], true_comps_rec_ordered_bart[[1]]$mu,
 #                tolerance = 0.5, # Still using loose tolerance
 #                label = "Mixture: Ordered mu for component 1 doesn't match true")

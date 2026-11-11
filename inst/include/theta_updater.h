@@ -21,9 +21,9 @@ struct AcceptanceMetrics {
 //   prior_mean independently.
 //
 // Implementations:
-//   MnlThetaUpdater    - RW-MH with SignRes support
-//   LinearThetaUpdater - conjugate Gaussian via runiregG
-//   NegbinThetaUpdater - RW-MH for beta_i + alpha MH block
+//   MnlThetaUpdaterAdapter    - RW-MH with SignRes support
+//   LinearThetaUpdaterAdapter - conjugate Gaussian via runiregG
+//   NegbinThetaUpdaterAdapter - RW-MH for beta_i + alpha MH block
 class ThetaUpdater {
 public:
     virtual ~ThetaUpdater() = default;

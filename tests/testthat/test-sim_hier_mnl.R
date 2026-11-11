@@ -95,12 +95,9 @@ test_that("Basic linear simulation works correctly", {
   expect_equal(dims$ncomp, 1)
 
   # --- Check relationship beta = betabar + eps (for first person) ---
-  # Note: This requires knowing the generated mixture component
-  # We know ncomp=1, so eps ~ N(mu, Sigma = (rooti'rooti)^-1)
+  # ncomp = 1: eps ~ N(mu, Sigma) with Sigma = (rooti' rooti)^-1.
   mu1 <- true_params$mixture_comps[[1]]$mu
-  # Calculating Sigma requires inverting rooti etc., maybe too complex for basic test
-  # Instead, check if beta - betabar is roughly centered around mu
-  # For ncomp=1 and default sigma_inv_diag=1, mu should be zeros
+  # beta - betabar is centered at mu (zero under the default sigma_inv_diag).
   expect_equal(mu1, rep(0, ncoef_test))
   # Calculate residuals
   eps_est <- sim_data$true_values$beta_true - sim_data$true_values$betabar_true

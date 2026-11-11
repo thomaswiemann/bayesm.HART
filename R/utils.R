@@ -23,7 +23,6 @@ calculate_mnl_probs_from_beta <- function(X_i, beta_is, p) {
     
     max_utils_is <- apply(utils_mat_is, 1, max) # Vector length T_i
     
-    # Explicitly replicate the row maximums into a T_i x p matrix
     max_utils_rep_mat <- matrix(max_utils_is, nrow = T_i, ncol = p, byrow = FALSE)
     
     exp_utils_is <- exp(utils_mat_is - max_utils_rep_mat)
@@ -34,14 +33,8 @@ calculate_mnl_probs_from_beta <- function(X_i, beta_is, p) {
     return(probs_mat_is)
 }#CALCULATE_MNL_PROBS_FROM_BETA
 
-# Null Coalescing Operator (internal)
-#
-# Provides a default value if the left-hand side expression evaluates to NULL.
-# Behaves like `rlang::%||%`.  Not exported and not documented via roxygen --
-# `\name` cannot legally contain `%`, `|`, or `@`, so an Rd file would fail
-# `R CMD check` (see WARN "checking Rd files").
-#
-# Usage: a %||% b  ->  a if !is.null(a) else b
+# Null-coalescing operator: a if !is.null(a) else b.  No roxygen block because
+# `%` is not a legal Rd name.
 `%||%` <- function(a, b) {
   if (is.null(a)) b else a
 }#%||%
@@ -55,8 +48,7 @@ calculate_mnl_probs_from_beta <- function(X_i, beta_is, p) {
   if (!is.matrix(Z)) stop("Internal error: Z must be a matrix.")
   if (nrow(Z) < 1L) stop("Internal error: Z must have at least one row.")
 
-  # 17 significant digits is sufficient to preserve exact double identity for
-  # values generated/retained within the same R session object.
+  # 17 significant digits reproduce a double exactly.
   row_key <- apply(Z, 1, function(r) paste(sprintf("%.17g", r), collapse = "\r"))
   keep_unique <- !duplicated(row_key)
 
@@ -75,11 +67,8 @@ calculate_mnl_probs_from_beta <- function(X_i, beta_is, p) {
   )
 }
 
-# Shared cache assembly: moves DeltaZ/SigmaZ draws from the raw C++ output
-# into the hart_cache attribute, reshapes SigmaZ flat → 4D, and attaches
-# z_map metadata.  Called identically by all three R wrappers.
-#
-# NOTE: modifies `draws` in-place (NULLs out raw flat fields) and returns it.
+# Move the DeltaZ/SigmaZ draws from the C++ output into the hart_cache
+# attribute (SigmaZ reshaped to 4D) together with the z_map metadata.
 .assemble_hart_cache <- function(draws, z_map) {
   cache <- attr(draws, "hart_cache", exact = TRUE)
   if (is.null(cache)) cache <- list()
@@ -133,9 +122,7 @@ calculate_mnl_probs_from_beta <- function(X_i, beta_is, p) {
     attributes(draws$nmix)$class <- "bayesm.nmix"
     class(draws) <- base_class
   }
-  # Metadata records the model identity, schema, coefficient ordering, and
-  # the resolved priors.  bayesm-path fits ("none") are left exactly as bayesm
-  # returns them.
+  # HART metadata; bayesm-path fits carry none.
   if (cfg$model != "none") {
     draws$hart <- list(model      = cfg$model,
                        schema     = 1L,

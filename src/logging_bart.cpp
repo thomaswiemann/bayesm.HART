@@ -73,7 +73,7 @@ namespace bart_logging {
 		Logger::log("delta", "\nTraversing tree " + std::to_string(tree_index) +
 			" for observation " + std::to_string(obs_index));
 
-		// We can walk up from the node to reconstruct the path
+		// Walk up from the node to reconstruct the path.
 		std::vector<tree_p> path;
 		tree_p current = node;
 		while (current) {

@@ -11,10 +11,8 @@
 // The driver does NOT own: covariance algebra (backend), likelihood logic (updater).
 //
 // oldbetas is passed by mutable reference: updater writes, backend reads.
-// betadraw and loglike are filled at keep steps.
-//
-// After this returns, the caller handles output assembly (Phase 1: existing
-// code; Phase 4+: SamplerOutputBuilder).
+// betadraw and loglike are filled at keep steps; the caller assembles the
+// output.
 void run_unified_sampler(
     int R, int keep, int nprint, int nreg,
     CovarianceBackend& backend,

@@ -49,9 +49,8 @@ std::vector<bart> initializeBART(
 
 //--------------------------------------------------
 // Heteroscedastic standardization: tilde_theta_i = D(Z_i)^{-1/2} L(Z_i) (theta_i - mu).
-// Single function handles both the diagonal case (Phase 1; pass empty
-// phi_models) and the full Cholesky case (Phase 2; pass populated phi_models)
-// by routing every per-unit operation through cov::mahalanobis.
+// Diagonal case (empty phi_models) and full Cholesky case alike go through
+// cov::mahalanobis.
 void update_stdoldbetas_het(
 	mat const& oldbetas,
 	std::vector<double*>& pstd_oldbetas_cols,
@@ -144,12 +143,9 @@ std::vector<varbart> initializeVarBART(
 // phi_models[j].size() == j (so phi_models[0] is empty, phi_models[1] has
 // length 1, etc.).
 //
-// Per discussions/2026-05-12-phibart-vs-heterbart.md, phi_jk(z) is fit via a
-// varying-coefficient -> heteroscedastic mean-regression transform that lets
-// us reuse heterbart unchanged for the leaf draw and birth/death MH.  The
-// only adjustment is the leaf-size guard: raw counts are not informative
-// about phi when c_i^{(k)} is small, so we add an effective-sample-size
-// floor (default ess_min = 5; configurable via phi_params$ess_min).
+// phi_jk(z) is fit as a heteroscedastic mean regression (heterbart) with an
+// effective-sample-size leaf floor (phi_params$ess_min, default 5), since raw
+// counts are uninformative about phi when c_i^{(k)} is small.
 std::vector<std::vector<heterbart>> initializePhiBART(
 	double* pZt, size_t nlgt, size_t nz,
 	std::vector<std::vector<double*>> const& py_cols,
@@ -217,9 +213,7 @@ vec drawMuHeterCov(
 	if (mubar0.n_elem != p)                stop("drawMuHeterCov: mubar0 has wrong length");
 	if (d_models.size() != p)              stop("drawMuHeterCov: d_models has wrong length");
 
-	// Accept either a full p x p prior precision Amu, or a 1 x 1 scalar
-	// precision (the default convention used by rhierMnlRwMixture's wrapper);
-	// in the scalar case we expand to scalar * I_p.
+	// Amu: p x p precision, or a 1 x 1 scalar expanded to scalar * I_p.
 	mat Amu_full;
 	if (Amu.n_rows == p && Amu.n_cols == p) {
 		Amu_full = Amu;

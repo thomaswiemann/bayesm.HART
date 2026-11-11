@@ -10,6 +10,7 @@
 #include "bart.h"    
 #include "heterbart.h"   
 #include "varbart.h"
+#include "vecbart.h"
 #include "cov_helpers.h"
 #include "rn.h"      
 #include "common.h"
@@ -97,8 +98,7 @@ std::vector<varbart> initializeVarBART(
 // MCMC iteration).
 //
 // phi_params: num_trees, power, base, tau, [numcut, sparse, ...].  Sets
-// pi.nmin = 2 and pi.ess_min = ess_min (default 5.0) per the
-// varying-coefficient transform; see discussions/2026-05-12-phibart-vs-heterbart.md.
+// pi.nmin = 2 and pi.ess_min = ess_min (default 5.0).
 std::vector<std::vector<heterbart>> initializePhiBART(
     double* pZt, size_t nlgt, size_t nz,
     std::vector<std::vector<double*>> const& py_cols,

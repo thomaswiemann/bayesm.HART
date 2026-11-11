@@ -264,15 +264,14 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
   if(sum(dim(V)==c(nvar,nvar)) !=2) pandterm("Invalid V in prior")
   # ---------------------------------------------------------------------------
   # HART preference model.  Prior$hart_model selects "none" (bayesm paths),
-  # "normalized", or "direct"; see R/hart_priors.R.  Stage 0: both HART models
-  # run on the pre-plan kernels behind the useBART / useHeterCov flags.
+  # "normalized", or "direct"; see R/hart_priors.R.
   # ---------------------------------------------------------------------------
   useBART     <- cfg$model != "none"
   useHeterCov <- cfg$model == "direct"
   bart_params <- cfg$bart
-  var_params  <- list()    # placeholder forwarded to C++ when useHeterCov=FALSE
-  phi_params  <- list()    # placeholder forwarded to C++ when !cfg$full_cov
-  Ad = deltabar = NULL     # Set to NULL if unused
+  var_params  <- list()    # parsed below under useHeterCov
+  phi_params  <- list()    # parsed below under cfg$full_cov
+  Ad = deltabar = NULL
   if (!useBART) {
     if(is.null(Prior$Ad) & drawdelta) {Ad=BayesmConstant.A*diag(nvar*nz)} else {Ad=Prior$Ad}
     if(drawdelta) {if(ncol(Ad) != nvar*nz | nrow(Ad) != nvar*nz) {pandterm("Ad must be nvar*nz x nvar*nz")}}
@@ -489,8 +488,7 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
     bart_params = list(0)
   }
   # ---------------------------------------------------------------------------
-  # Covariance-tree hyperparameters.  oldbetas (per-unit MLE betas) are now
-  # available for the data-calibrated lambda default (see R/hart_priors.R).
+  # Covariance-tree hyperparameters; lambda defaults from oldbetas.
   # ---------------------------------------------------------------------------
   if (useHeterCov) {
     cfg$vartree <- .parse_var_params(cfg$vartree, oldbetas, nz)

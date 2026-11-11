@@ -25,7 +25,7 @@ using namespace arma;
 struct HeterCovState {
     // ---- Shape parameters --------------------------------------------------
     int  nlgt, nz, nvar, R, keep;
-    bool useFullCov;          // true iff phi_params is non-empty (Phase 2)
+    bool useFullCov;          // true iff phi_params is non-empty
     size_t n_pairs;           // = nvar*(nvar-1)/2 if useFullCov else 0
 
     // DART configuration: mean / variance / phi trees independently configured.
@@ -90,7 +90,7 @@ void hetercov_init(HeterCovState& s,
 //
 //     Step A : drawMuHeterCov                   -> s.mu_post
 //     Step C : variance trees d_j               -> var_models[j]
-//     Step D': phi_jk trees (Phase 2 only)      -> phi_models[j][k]
+//     Step D': phi_jk trees (full covariance)   -> phi_models[j][k]
 //     Step B : mean trees delta_j               -> bart_models[j]
 //     end    : recompute s.delta_Z = Sigma(Z_i)^{1/2} delta_i
 //

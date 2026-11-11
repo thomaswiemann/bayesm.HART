@@ -5,7 +5,7 @@
 
 # Normalize and validate predictive mode for unified predictive API work.
 .resolve_predict_mode <- function(mode = "coefficients") {
-  # Backward-compatible alias: "structural" -> "coefficients".
+  # "structural" is an alias of "coefficients".
   if (identical(mode, "structural")) mode <- "coefficients"
   valid_modes <- c("coefficients", "prior", "posterior")
   if (!(mode %in% valid_modes)) {

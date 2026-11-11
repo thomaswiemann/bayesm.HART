@@ -11,9 +11,8 @@
  *  with L(Z_i) unit lower-triangular, L_{jk} = -phi_{jk}(Z_i) for k < j,
  *  and D(Z_i) = diag(d_1(Z_i), ..., d_D(Z_i)) with d_j > 0.
  *
- *  The diagonal-only case (Phase 1) is signalled by an empty `phi` vector;
- *  every primitive degenerates to the diagonal arithmetic, no branching needed
- *  by the caller.
+ *  An empty `phi` vector is the diagonal case; every primitive reduces to the
+ *  diagonal arithmetic.
  */
 #ifndef GUARD_cov_helpers_h
 #define GUARD_cov_helpers_h
@@ -53,9 +52,8 @@ struct cov_eval {
 // Primitives — all in-place where it is safe to be in-place.
 //
 // apply_L:        v <- L v        =>  v_j <- v_j - sum_{k<j} phi_jk(Z_i) v_k.
-//                 NOTE: writes must not contaminate later reads, so the sweep
-//                 runs from j = dim()-1 down to 0 (each v_j depends only on
-//                 v_0,...,v_{j-1}, which the sweep has not yet touched).
+//                 The sweep runs from j = dim()-1 down to 0, so each v_j
+//                 reads only the untouched v_0, ..., v_{j-1}.
 //
 // apply_L_inv:    solve L y = v in place.  L is unit lower-triangular, so
 //                 forward substitution: y_j = v_j + sum_{k<j} phi_jk(Z_i) y_k.

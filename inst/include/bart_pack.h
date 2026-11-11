@@ -27,6 +27,17 @@ static List pack_bart_entry_(B& model, std::stringstream& tss) {
     );
 }
 
+// Vector-leaf ensemble (vecbart): pack_bart_entry_ plus the leaf dimension
+// (stream header "nkeep m p D").
+template <class B>
+static List pack_vecbart_entry_(B& model, std::stringstream& tss) {
+    List out = pack_bart_entry_(model, tss);
+    List td  = out["treedraws"];
+    td["leaf_dim"] = (int)model.getD();
+    out["treedraws"] = td;
+    return out;
+}
+
 // Flat List(nvar) of per-dimension model entries (bart, varbart).
 template <class B>
 static List pack_bart_list_(int nvar,

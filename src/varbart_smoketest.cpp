@@ -1,6 +1,4 @@
-// TEMPORARY SMOKE TEST SHIM (to be removed after Phase 0 verification).
-// Exposes varbart::draw on a fixed (Z, eta_sq) dataset so we can confirm
-// in R that the product-of-trees ensemble recovers a known d(z) function.
+// Test harness: varbart::draw on a fixed (Z, eta_sq) data set.
 
 #include "bayesm.HART.h"
 

@@ -8,14 +8,13 @@ library(testthat)
 # Helper Function to Generate Data and Fit Model Quickly
 # ==============================================================================
 
-# Similar to the one in test-predict, ensures nz > 0
+# Data with nz > 0 and a short fit.
 run_quick_model_for_mfx_test <- function(R = 50, keep = 1, useBART = FALSE) {
-  set.seed(654) # Ensure reproducibility for tests
+  set.seed(654)
   sim_data <- sim_hier_mnl(
     nlgt = 25, nT = 8, p = 3, nz = 5, nXa = 1, nXd = 0, const = TRUE,
-    # Use linear function to avoid potential Friedman simulation issues for now
     beta_func_type = "linear",
-    beta_func_args = list() # Let sim_hier_mnl use default Delta
+    beta_func_args = list()
   )
   dims <- sim_data$true_values$dimensions
   ncoef <- dims$ncoef

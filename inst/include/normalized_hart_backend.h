@@ -34,7 +34,7 @@ public:
         return {true, false, true};
     }
 
-private:
+protected:
     // Priors
     arma::vec  mubar_;
     arma::mat  Amu_, Psi_;

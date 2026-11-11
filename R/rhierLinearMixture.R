@@ -242,9 +242,8 @@ if(sum(dim(V)==c(nvar,nvar)) != 2) pandterm("Invalid V in prior")
 
 # ---- HART preference model (see R/hart_priors.R) ----
 # Prior$hart_model selects "none" (bayesm paths), "normalized", or "direct".
-# Stage 0: both HART models run on the pre-plan kernels behind useBART /
-# useHeterCov.  Variance-tree lambda defaults and the MCMC warm start use
-# per-unit OLS slopes (computed below once XpX/Xpy are available).
+# Variance-tree lambda defaults and the warm start use the per-unit OLS
+# slopes (computed below once XpX/Xpy are available).
 useBART     <- cfg$model != "none"
 useHeterCov <- cfg$model == "direct"
 bart_params <- cfg$bart
@@ -352,10 +351,8 @@ if (drawdelta && useBART) {
 
 oldprob=rep(1/ncomp,ncomp)
 
-# Per-unit OLS slopes: used as the lambda baseline for vartree auto-calibration
-# under heter-cov, and also as the C++ warm-start for `oldbetas` (avoids the
-# zero-init pathology where d_j(.) trees fit to inflated squared residuals).
-# Falls back to zeros if XpX is singular for a unit.
+# Per-unit OLS slopes: lambda baseline for vartree and warm start for
+# oldbetas; zero for a unit with singular XpX.
 Beta_init <- matrix(0, nrow = nreg, ncol = nvar)
 if (useHeterCov) {
   Beta_init <- t(vapply(regdata, function(rd)

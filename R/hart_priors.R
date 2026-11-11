@@ -1,28 +1,17 @@
 # ==============================================================================
 # HART Prior Configuration
 # ==============================================================================
-# One validated configuration for the HART preference models, shared by
-# rhierMnlRwMixture, rhierLinearMixture, and rhierNegbinRw.  All functions are
-# package-internal.
+# Internal configuration of the HART preference models, shared by
+# rhierMnlRwMixture, rhierLinearMixture, and rhierNegbinRw.
 #
 #   Prior$hart_model = "none"        bayesm paths: constant or linear Delta(Z)
 #                    = "normalized"  theta_i = mu + S {f*(Z_i) + eps_i}
 #                    = "direct"      theta_i = mu + f(Z_i) + S_i eps_i
 #
-# The selector is explicit.  Supplying a tree list (`bart`, `vartree`,
-# `phitree`) without a HART value of `hart_model` is an error, and every tree
-# list is optional under a HART model because all hyperparameters have
-# defaults.
-#
-# Status (discussions/2026-11-10-hart-package-update-plan.md): "normalized"
-# runs on NormalizedHartBackend (stage 1); "direct" still runs on the pre-plan
-# HeterCovBackend until stage 4.  Variance- and phi-tree parsing still needs
-# the warm-start coefficients (data-calibrated lambda), so the wrappers call
-# .parse_var_params() / .parse_phi_params() after the warm start and store the
-# result back into cfg$vartree / cfg$phitree.
-#
-# Under a HART model the prior on mu is the independent N(mubar, Amu^{-1});
-# .hart_Amu() builds the nvar x nvar precision from Prior$Amu.
+# The tree lists bart, vartree, phitree are optional and require a HART value
+# of hart_model.  vartree and phitree are parsed after the warm start because
+# their defaults depend on the warm-start coefficients.  Under a HART model
+# mu ~ N(mubar, Amu^{-1}), independent of Sigma.
 
 .hart_models <- c("none", "normalized", "direct")
 
@@ -66,26 +55,26 @@
   cfg
 }#.HART_CONFIG
 
-# Reject inconsistent selector / tree-list combinations.  Most diagnostic
-# check first: a tree list without a HART selector, then the data requirement,
-# then model-specific lists.
+# Reject inconsistent selector / tree-list combinations.
 .validate_hart <- function(Prior, model, nvar, drawdelta) {
   has <- c(bart    = !is.null(Prior$bart),
            vartree = !is.null(Prior$vartree),
            phitree = !is.null(Prior$phitree))
+  msg_cov <- paste("Prior$vartree and Prior$phitree require",
+                   "Prior$hart_model = 'direct'.")
   if (model == "none") {
     if (has["bart"])
-      pandterm("Prior$bart requires Prior$hart_model = 'normalized' or 'direct'.")
-    if (has["vartree"] || has["phitree"])
-      pandterm("Prior$vartree and Prior$phitree require Prior$hart_model = 'direct'.")
+      pandterm(paste("Prior$bart requires Prior$hart_model = 'normalized'",
+                     "or 'direct'."))
+    if (has["vartree"] || has["phitree"]) pandterm(msg_cov)
     return(invisible(NULL))
   }
   if (!drawdelta)
     pandterm(paste0("Prior$hart_model = '", model, "' requires Data$Z."))
   if (model == "normalized" && (has["vartree"] || has["phitree"]))
-    pandterm("Prior$vartree and Prior$phitree require Prior$hart_model = 'direct'.")
+    pandterm(msg_cov)
   if (model == "direct" && has["phitree"] && nvar == 1L)
-    pandterm("Prior$phitree requires nvar > 1 (no off-diagonal terms when nvar == 1).")
+    pandterm("Prior$phitree requires nvar > 1 (no off-diagonal terms).")
   invisible(NULL)
 }#.VALIDATE_HART
 
@@ -109,14 +98,15 @@
 
 # Hyperparameters --------------------------------------------------------------
 
-# Mean-tree hyperparameters with defaults.  `nz` sets the default DART `rho`.
+# Mean-tree hyperparameters with defaults.  `tau` is the ensemble scale (leaf
+# sd tau / sqrt(num_trees)); `nz` sets the default DART `rho`.
 .parse_bart_params <- function(bart_list, nz) {
   num_trees <- bart_list$num_trees %||% 200
   list(
     num_trees = num_trees,
     power     = bart_list$power  %||% 2.0,
     base      = bart_list$base   %||% 0.95,
-    tau       = bart_list$tau    %||% 1.0,   # ensemble scale; leaf sd tau/sqrt(H)
+    tau       = bart_list$tau    %||% 1.0,
     numcut    = bart_list$numcut %||% 100,
     nmin      = bart_list$nmin   %||% 5L,
     sparse    = bart_list$sparse %||% FALSE,
@@ -132,7 +122,7 @@
 
 # Variance-tree hyperparameters: chi^{-2} leaf prior plus DART.  `oldbetas`
 # (per-unit warm-start coefficients) calibrates `lambda` when the user did not
-# supply one; stage 4 replaces this with the appendix's fixed (a_v, v0).
+# supply one.
 .parse_var_params <- function(prior_vartree, oldbetas, nz) {
   lambda_default <- mean(apply(oldbetas, 2, var))
   if (!is.finite(lambda_default) || lambda_default <= 0) lambda_default <- 1.0
@@ -157,8 +147,7 @@
 
 # Off-diagonal (phi) tree hyperparameters: N(0, tau^2) leaves plus DART.  The
 # default leaf sd matches the implied inverse-Wishart(nu) scale of the
-# off-diagonal Cholesky entries; stage 4 replaces this with the appendix's
-# ensemble-scale convention and drops `ess_min`.
+# off-diagonal Cholesky entries.
 .parse_phi_params <- function(prior_phitree, nz, nu, nvar) {
   num_trees <- as.integer(prior_phitree$num_trees %||% 40L)
   if (nvar > 1) {
@@ -189,8 +178,7 @@
 
 # Printing ---------------------------------------------------------------------
 
-# Verbose summary of the mean-tree prior, printed with the wrappers' setup
-# information when a HART model is selected.
+# Print the mean-tree prior (verbose wrapper output).
 .print_hart_prior <- function(cfg) {
   b <- cfg$bart
   cat(sprintf("\nHART prior (hart_model = '%s'):\n", cfg$model))
@@ -213,8 +201,7 @@
   invisible(NULL)
 }#.PRINT_HART_PRIOR
 
-# Verbose summary of the covariance-tree priors (direct model), printed once
-# the variance- and phi-tree lists are parsed.
+# Print the covariance-tree priors (direct model, verbose wrapper output).
 .print_hart_covariance <- function(cfg, lambda_user_supplied) {
   cat("\nHeteroscedastic Sigma(Z) enabled (",
       if (cfg$full_cov) "full Cholesky" else "diagonal", ")\n", sep = "")

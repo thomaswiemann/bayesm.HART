@@ -14,17 +14,6 @@ mnlMetropOnceOut mnlMetropOnce_con(arma::vec const& y, arma::mat const& X,
 // MNL theta updater: RW-MH with SignRes support + incroot proposal tuning.
 class MnlThetaUpdaterAdapter : public ThetaUpdater {
 public:
-    arma::mat& oldbetas_;
-    std::vector<moments> const& lgtdata_;
-    arma::vec const& SignRes_;
-    arma::vec oldll_;
-    int nacceptbeta_;
-    double s_;
-    arma::mat hess_plus_prec_work_;
-    arma::mat incroot_work_;
-    arma::mat eye_work_;
-    int nlgt_, nvar_, R_;
-
     MnlThetaUpdaterAdapter(
         arma::mat& oldbetas,
         std::vector<moments> const& lgtdata,
@@ -37,6 +26,18 @@ public:
     UpdaterPackPayload pack() override;
     AcceptanceMetrics acceptance_metrics() const override;
     double current_loglike() const override;
+
+protected:
+    arma::mat& oldbetas_;
+    std::vector<moments> const& lgtdata_;
+    arma::vec const& SignRes_;
+    arma::vec oldll_;
+    int nacceptbeta_;
+    double s_;
+    arma::mat hess_plus_prec_work_;
+    arma::mat incroot_work_;
+    arma::mat eye_work_;
+    int nlgt_, nvar_, R_;
 };
 
 #endif

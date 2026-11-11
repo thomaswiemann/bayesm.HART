@@ -202,7 +202,7 @@ test_that("rhierNegbinRw with fixalpha keeps alpha constant", {
   expect_true(all(out$alphadraw == alpha_fixed))
 })
 
-test_that("rhierNegbinRw precision matrix convention is correct (M4.2 bug check)", {
+test_that("rhierNegbinRw precision matrix is rootpi * t(rootpi)", {
   set.seed(42)
   nreg <- 1
   nobs <- 15
@@ -216,7 +216,7 @@ test_that("rhierNegbinRw precision matrix convention is correct (M4.2 bug check)
   alpha <- 5.0
   y <- rnbinom(nobs, size=alpha, mu=mu)
   
-  # Asymmetric V ensures R'R != RR'
+  # Asymmetric V: R'R != RR'.
   Sigma_k <- matrix(c(1, 0.8, 0.2, 
                       0.8, 2, -0.5,
                       0.2, -0.5, 1.5), 3, 3)

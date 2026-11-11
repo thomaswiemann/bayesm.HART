@@ -1,6 +1,4 @@
-// TEMPORARY SHIM (to be removed once Phase 1 integration tests subsume it).
-// Drives cov_helpers primitives on synthetic D and phi values so we can
-// compare against a brute-force armadillo reference in R.
+// Test harness: cov_helpers primitives on prescribed D and phi values.
 //
 // Follows the bart ownership invariants documented in inst/include/bart.h:
 //   * std::vector<bart-subclass> is sized once via default construction.

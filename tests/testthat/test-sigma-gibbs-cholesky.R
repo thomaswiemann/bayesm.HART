@@ -26,8 +26,8 @@ log_joint <- function(L, mu, theta, fstar, Psi, nu, mubar, Amu) {
   log_iw + log_jac + log_mu + log_lik
 }#LOG_JOINT
 
-# A small problem with nothing special: nonzero mu, nondiagonal L, nonzero f*,
-# non-identity Psi, non-diagonal Amu.
+# Generic problem: nonzero mu, nondiagonal L, nonzero f*, non-identity Psi,
+# non-diagonal Amu.
 make_problem <- function(seed = 1L, D = 3L, n = 15L) {
   set.seed(seed)
   L <- diag(c(1.3, 0.7, 1.1))
@@ -57,7 +57,9 @@ run_chain <- function(theta, fstar, Psi, nu, mubar, Amu, n_iter, burn,
                               update_L = update_L)
     L <- out$L; mu <- as.vector(out$mu)
     L_chain[r, , ] <- L; mu_chain[r, ] <- mu
-    if (r > burn) { Sigma_sum <- Sigma_sum + solve(crossprod(L)); kept <- kept + 1L }
+    if (r > burn) {
+      Sigma_sum <- Sigma_sum + solve(crossprod(L)); kept <- kept + 1L
+    }
   }#FOR
   list(L_chain = L_chain, mu_chain = mu_chain, Sigma_mean = Sigma_sum / kept,
        mu_mean = colMeans(mu_chain[(burn + 1):n_iter, , drop = FALSE]))
@@ -92,7 +94,8 @@ test_that("diagonal kernels match the joint density", {
     L1 <- pb$L; L1[j, j] <- pb$L[j, j] * exp(rnorm(1, sd = 0.5))
     dJ <- with(pb, log_joint(L1, mu, theta, fstar, Psi, nu, mubar, Amu) -
                    log_joint(L,  mu, theta, fstar, Psi, nu, mubar, Amu))
-    kern <- function(x) k$diag_a[j] * log(x) - 0.5 * k$diag_b[j] * x^2 - k$diag_c[j] * x
+    kern <- function(x)
+      k$diag_a[j] * log(x) - 0.5 * k$diag_b[j] * x^2 - k$diag_c[j] * x
     expect_equal(dJ, kern(L1[j, j]) - kern(pb$L[j, j]), tolerance = 1e-8,
                  label = sprintf("L[%d,%d] kernel difference", j, j))
   }
@@ -117,7 +120,8 @@ test_that("mu kernel matches the joint density", {
   n <- nrow(pb$theta)
   expect_equal(k$mu_prec, pb$Amu + n * crossprod(pb$L))
   s <- colSums(pb$theta %*% t(pb$L) - pb$fstar)
-  expect_equal(as.vector(k$mu_b), as.vector(pb$Amu %*% pb$mubar + t(pb$L) %*% s))
+  expect_equal(as.vector(k$mu_b),
+               as.vector(pb$Amu %*% pb$mubar + t(pb$L) %*% s))
 })#TEST_THAT
 
 ## ----------------------------------------------------------------------------
@@ -136,7 +140,7 @@ test_that("mu draws follow the conditional at a pinned L", {
   expect_equal(cov(draws), V, tolerance = 0.15)
 })#TEST_THAT
 
-test_that("f* = 0 at a pinned mu reproduces the IW(nu + n, Psi + S) posterior", {
+test_that("f* = 0 at a pinned mu reproduces the IW(nu + n, Psi + S) law", {
   set.seed(123)
   D <- 3; n <- 200
   Sigma_true <- diag(c(1, 2, 0.5))
@@ -145,13 +149,15 @@ test_that("f* = 0 at a pinned mu reproduces the IW(nu + n, Psi + S) posterior", 
            matrix(mu_true, n, D, byrow = TRUE)
   fstar <- matrix(0, n, D)
   nu <- D + 2; Psi <- diag(D)
-  fit <- run_chain(theta, fstar, Psi, nu, mubar = rep(0, D), Amu = 0.01 * diag(D),
-                   n_iter = 4000L, burn = 1000L, L_init = diag(D), mu_init = mu_true,
-                   update_mu = FALSE, seed = 42L)
+  fit <- run_chain(theta, fstar, Psi, nu, mubar = rep(0, D),
+                   Amu = 0.01 * diag(D), n_iter = 4000L, burn = 1000L,
+                   L_init = diag(D), mu_init = mu_true, update_mu = FALSE,
+                   seed = 42L)
   S <- crossprod(theta - matrix(mu_true, n, D, byrow = TRUE))
   Sigma_iw_mean <- (Psi + S) / (nu + n - D - 1)
   expect_equal(diag(fit$Sigma_mean), diag(Sigma_iw_mean), tolerance = 0.05)
-  expect_lt(max(abs(fit$Sigma_mean - Sigma_iw_mean)) / max(abs(Sigma_iw_mean)), 0.10)
+  expect_lt(max(abs(fit$Sigma_mean - Sigma_iw_mean)) / max(abs(Sigma_iw_mean)),
+            0.10)
 })#TEST_THAT
 
 test_that("n = 0 reproduces the Bartlett prior diagonals", {
@@ -164,7 +170,8 @@ test_that("n = 0 reproduces the Bartlett prior diagonals", {
     # L_jj ~ chi_{nu - D + j}: E = sqrt(2) Gamma((k+1)/2) / Gamma(k/2).
     k <- nu - D + j
     expected_mean <- sqrt(2) * exp(lgamma((k + 1) / 2) - lgamma(k / 2))
-    expect_equal(mean(fit$L_chain[1001:8000, j, j]), expected_mean, tolerance = 0.05,
+    expect_equal(mean(fit$L_chain[1001:8000, j, j]), expected_mean,
+                 tolerance = 0.05,
                  label = sprintf("L[%d,%d] mean ~ chi_%d", j, j, k))
   }
   for (j in 2:D) for (k in 1:(j - 1))
@@ -213,7 +220,8 @@ test_that("rhierLinearMixture normalized path runs end-to-end", {
                          het_observed = "linear", seed = 2030)
   fit <- rhierLinearMixture(
     Data = list(regdata = sim$regdata, Z = sim$Z),
-    Prior = list(ncomp = 1, hart_model = "normalized", bart = list(num_trees = 5)),
+    Prior = list(ncomp = 1, hart_model = "normalized",
+                 bart = list(num_trees = 5)),
     Mcmc  = list(R = 30, keep = 1, nprint = 0), r_verbose = FALSE)
   expect_equal(fit$hart$model, "normalized")
   expect_equal(fit$hart$priors$Amu, 0.01 * diag(ncol(fit$betadraw)))

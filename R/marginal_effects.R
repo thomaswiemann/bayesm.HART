@@ -41,7 +41,6 @@ marginal_effects <- function(object, z_values, Z, burn = 0, verbose = TRUE,
   if (missing(z_values) || !is.matrix(z_values) || !is.numeric(z_values)) {
     stop("'z_values' must be a numeric matrix.")
   }
-  # Ensure Z and z_values have compatible columns (nz)
   nz <- ncol(Z)
   if (ncol(z_values) != nz) {
       stop(paste0("Number of columns in 'z_values' (", ncol(z_values),
@@ -636,7 +635,6 @@ plot.summary.marginal_effects <- function(
   }
 
   # --- 6. Create Plot (ggplot2) ---
-  # Use !!rlang::sym() or .data[[ ]] to handle variable column name
   p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = .data[[plot_axis_var]]))
 
   # Add CI ribbon

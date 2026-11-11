@@ -72,7 +72,7 @@ void hetercov_init(HeterCovState& s,
     s.peta_sq_cols.resize(nvar);
     for (int j = 0; j < nvar; j++) s.peta_sq_cols[j] = s.eta_sq_buf.colptr(j);
 
-    // ---- Phi-tree streams + buffers (Phase 2 only) -------------------------
+    // ---- Phi-tree streams + buffers (full covariance) ----------------------
     if (s.useFullCov) {
         s.Y_phi.zeros(nlgt, s.n_pairs);
         s.sigma_phi_buf.zeros(nlgt);
@@ -168,10 +168,8 @@ void hetercov_draw_iter(HeterCovState& s,
     // Step C: variance trees d_j | mu, theta, current delta, phi.
     //   Compute eta_i = L (theta_i - mu) - D^{1/2} delta_i once per unit
     //   using the CURRENT bart_models (delta) and phi_models, then draw.
-    //   Working in the (delta, d, phi) tuple of fundamental tree outputs
-    //   (not delta_Z) avoids dropping cross terms when both delta_Z and phi
-    //   are non-zero -- see discussions/2026-05-12-cholesky-trees-implementation.md
-    //   "subtle pitfalls" section.
+    //   Working in (delta, d, phi) rather than delta_Z keeps the cross terms
+    //   when both delta_Z and phi are non-zero.
     // ====================================================================
     for (int i = 0; i < nlgt; i++) {
         cov::cov_eval ev{s.var_models, s.phi_models, (size_t)i};
@@ -187,9 +185,9 @@ void hetercov_draw_iter(HeterCovState& s,
     for (int j = 0; j < nvar; j++) s.var_models[j].draw(gen);
 
     // ====================================================================
-    // Step D' (Phase 2 only): phi_jk | mu, theta, current delta, NEW d, OTHER phi.
-    //   Per discussions/2026-05-12-phibart-vs-heterbart.md, fit each phi_jk
-    //   via the varying-coefficient -> heterbart transform
+    // Step D' (full covariance): phi_jk | mu, theta, current delta, new d,
+    //   other phi, each phi_jk fit via the varying-coefficient -> heterbart
+    //   transform
     //
     //     r_i = phi_jk(Z_i) * c_i^{(k)} + eta_i^{(j)}     (data model)
     //     Y_i = r_i / c_i^{(k)},  sigma_i = sqrt(d_j) / |c_i^{(k)}|.
@@ -197,8 +195,8 @@ void hetercov_draw_iter(HeterCovState& s,
     //     r_i = (theta_j - mu_j) - sqrt(d_j) delta_j
     //           - sum_{m<j, m != k} phi_jm (theta_m - mu_m)
     //
-    //   c_i^{(k)} clamp: |c| >= 1e-8.  ESS guard inside heterbd ensures
-    //   clamped observations contribute negligibly to splits.
+    //   c_i^{(k)} clamp: |c| >= 1e-8; the ESS guard in heterbd keeps clamped
+    //   observations out of splits.
     // ====================================================================
     if (s.useFullCov) {
         const double eps = 1e-8;

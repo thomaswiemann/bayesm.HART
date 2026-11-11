@@ -5,18 +5,12 @@
 using namespace arma;
 using namespace Rcpp;
 
-namespace {
-bool flag(List const& p, const char* name, bool def) {
-    return p.containsElementNamed(name) ? as<bool>(p[name]) : def;
-}
-}
-
 NormalizedHartBackend::NormalizedHartBackend(
     mat const& theta, mat const& Z, vec const& mubar, mat const& Amu,
     double nu, mat const& Psi, int R, int keep, List const& bart_params)
-    : HartBackend(theta, Z, R, keep, flag(bart_params, "store_trees", true)),
+    : HartBackend(theta, Z, R, keep, list_flag(bart_params, "store_trees", true)),
       mubar_(mubar), Amu_(Amu), Psi_(Psi), nu_(nu), bart_params_(bart_params),
-      sparse_(flag(bart_params, "sparse", false)),
+      sparse_(list_flag(bart_params, "sparse", false)),
       burn_(sparse_ ? as<int>(bart_params["burn"]) : 0)
 {
     if ((int)Amu_.n_rows != D_ || (int)Amu_.n_cols != D_)
@@ -24,8 +18,7 @@ NormalizedHartBackend::NormalizedHartBackend(
     if ((int)mubar_.n_elem != D_)
         stop("NormalizedHartBackend: mubar must have length nvar.");
 
-    // Complete valid starting state: mu at the coefficient means, Sigma at
-    // the prior scale Psi / nu, every tree a stump at zero.
+    // Start: mu at the coefficient means, Sigma = Psi / nu, stump trees.
     mu_ = n_ > 0 ? vec(mean(theta_, 0).t()) : mubar_;
     rooti_ = solve(trimatu(chol(Psi_ / nu_)), eye<mat>(D_, D_));
     L_ = rooti_.t();

@@ -120,7 +120,6 @@ test_that("predict works for BART model (nz > 0)", {
   expect_equal(dim(pred_deltaz), c(dims$nlgt, dims$ncoef, n_draws))
   
   # Check plausibility (mean prediction vs true betabar)
-  # Note: Correlation might be lower for BART with few draws
   mean_pred_deltaz <- apply(pred_deltaz, c(1, 2), mean)
   # Check only the coefficient affected by Friedman for stronger correlation
   coef_idx <- sim_data_bart$true_values$true_params$beta_func_args$coef_index

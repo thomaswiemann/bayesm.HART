@@ -57,8 +57,7 @@ void GlobalCovarianceBackend::draw_iteration(int /*rep*/) {
     }
     refresh_component_cache();
 
-    // Per-unit prior means once per iteration so the driver can consume
-    // const references without per-unit allocation.
+    // Per-unit prior means read by the driver.
     for (int i = 0; i < nreg_; i++) {
         int k = static_cast<int>(ind_[i]) - 1;
         unit_prior_mean_cache_[i] = comp_mu_cache_[k];
