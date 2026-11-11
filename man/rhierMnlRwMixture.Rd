@@ -26,12 +26,12 @@ Should NOT contain an intercept and should be centered.
 \item \code{Ad} (optional): Prior precision matrix for \code{vec(Delta)} (default: \code{0.01 * I}). Ignored if HART is used.
 \item \code{mubar} (optional): \verb{nvar x 1} prior mean vector for the normal prior (default: 0 if unrestricted, 2 if restricted).
 \item \code{Amu} (optional): Prior precision for the normal prior on \eqn{\mu} (default: 0.01 if unrestricted, 0.1 if restricted). Scalar on the bayesm paths. Under a HART model the prior is the independent \eqn{N(\bar\mu, Amu^{-1})}, and \code{Amu} may be a scalar (expanded to \code{Amu * I}) or an \verb{nvar x nvar} SPD matrix.
-\item \code{nu} (optional): Degrees of freedom for IW prior on component \code{Sigma} (default: \code{nvar+3} if unrestricted, \code{nvar+15} if restricted).
-\item \code{V} (optional): Location matrix for IW prior on component \code{Sigma} (default: \code{nu * I} or scaled based on restriction).
+\item \code{nu} (optional): Degrees of freedom for IW prior on component \code{Sigma} (default: \code{nvar+3} if unrestricted, \code{nvar+15} if restricted). Not used under \code{hart_model = "direct"}.
+\item \code{V} (optional): Location matrix for IW prior on component \code{Sigma} (default: \code{nu * I} or scaled based on restriction). Not used under \code{hart_model = "direct"}.
 \item \code{SignRes} (optional): \verb{nvar x 1} vector of sign restrictions. Must contain values of 0, -1, or 1. The value 0 means no restriction, -1 ensures the coefficient is negative, and 1 ensures the coefficient is positive. For example, \code{SignRes = c(0,1,-1)} means the first coefficient is unconstrained, the second will be positive, and the third will be negative. Default: \code{rep(0, nvar)}.
 \item \code{hart_model} (optional): Preference-model selector, one of \code{"none"} (default; the bayesm constant or linear \eqn{\Delta(Z)} paths), \code{"normalized"} (HART prior on the representative consumer, \eqn{\theta_i = \mu + S\{f^*(Z_i) + \varepsilon_i\}}), or \code{"direct"} (HART mean and covariance trees, \eqn{\theta_i = \mu + f(Z_i) + S_i \varepsilon_i}). Both HART models require \code{Z}. The tree lists below are optional under a HART model and are an error under \code{"none"}.
 \item \code{bart} (optional): List of hyperparameters for the HART mean trees (\code{hart_model = "normalized"} or \code{"direct"}). See Details.
-\item \code{vartree} (optional, \code{hart_model = "direct"} only): List of hyperparameters for the product-of-trees variance models on the Modified Cholesky diagonal \eqn{d_j(\cdot)}. Compatible with \code{SignRes}. See "Heteroscedastic Covariance" in Details.
+\item \code{vartree} (optional, \code{hart_model = "direct"} only): List of hyperparameters for the product-of-trees variance models on the Modified Cholesky diagonal \eqn{d_j(\cdot)}. Compatible with \code{SignRes}. See "Direct HART" in Details.
 \item \code{phitree} (optional, \code{hart_model = "direct"} and \code{nvar > 1} only): List of hyperparameters for the sum-of-trees models on the Modified Cholesky off-diagonals \eqn{\phi_{jk}(\cdot)}. The off-diagonal ensembles always exist when \code{nvar > 1}; this list only sets their hyperparameters.
 }}
 
@@ -51,15 +51,17 @@ A list containing:
 \itemize{
 \item \code{Deltadraw}: If \code{Z} provided and \code{bart=NULL}, \verb{(R/keep) x (nz * nvar)} matrix of \code{vec(Delta)} draws.
 \item \code{betadraw}: \verb{nlgt x nvar x (R/keep)} array of unit-level \code{beta_i} draws.
-\item \code{nmix}: Legacy list containing prior draws (omitted when \code{vartree} is supplied).
+\item \code{nmix}: bayesm list of \verb{(mu, rooti)} draws (omitted under \code{hart_model = "direct"}).
 \item \code{loglike}: \verb{(R/keep) x 1} vector of log-likelihood values at kept draws.
 \item \code{SignRes}: \verb{nvar x 1} vector of sign restrictions used.
 \item \code{acceptrbeta}: Metropolis acceptance rate (percent) for the unit-level
 MNL random-walk updates of \code{beta_i}.
-\item \code{bart_models}: If HART used, list of length \code{nvar} containing tree structures and related parameters for the mean trees \eqn{\delta_j(\cdot)}.
-\item \code{var_models} (only with \code{vartree}): list of length \code{nvar} of variance-tree ensembles for \eqn{d_j(\cdot)} (product of trees with \eqn{\chi^{-2}} leaves).
-\item \code{phi_models} (only with \code{vartree} + \code{phitree}): jagged list of length \code{nvar}. \code{phi_models[[1]]} is \code{NULL}; for \code{j > 1}, \code{phi_models[[j]]} is a list of length \code{j-1} containing the sum-of-trees ensemble for \eqn{\phi_{jk}(\cdot)}.
-\item \code{mu_draw} (only with \code{vartree}): \verb{(R/keep) x nvar} matrix of \eqn{\mu} draws (single-component path).
+\item \code{bart_models}: Under \code{hart_model = "normalized"}, a list of length \code{nvar} of scalar tree ensembles for \eqn{f^*_d(\cdot)}. Under \code{hart_model = "direct"}, one vector-leaf ensemble (\code{treedraws} with \code{leaf_dim = nvar}) for \eqn{f(\cdot)}.
+\item \code{varcount}, \code{varprob}: Split counts and selection probabilities per characteristic; \verb{nz x nvar x (R/keep)} under \code{"normalized"}, \verb{nz x (R/keep)} under \code{"direct"}.
+\item \code{var_models} (\code{hart_model = "direct"}): list of length \code{nvar} of variance-tree ensembles for \eqn{d_j(\cdot)}, with \code{var_varcount}, \code{var_varprob}.
+\item \code{phi_models} (\code{hart_model = "direct"}, \code{nvar > 1}): jagged list of length \code{nvar}. \code{phi_models[[1]]} is \code{NULL}; for \code{j > 1}, \code{phi_models[[j]]} is a list of length \code{j-1} containing the sum-of-trees ensemble for \eqn{\phi_{jk}(\cdot)}.
+\item \code{mu_draw} (\code{hart_model = "direct"}): \verb{(R/keep) x nvar} matrix of \eqn{\mu} draws.
+\item \code{mean_scale_draw} (\code{hart_model = "direct"}): \verb{(R/keep) x nvar} matrix of \eqn{\tau_d^2} draws.
 }
 }
 \description{
@@ -107,8 +109,9 @@ consumer using a scaled vector of \code{nvar} sum-of-trees models.
 \itemize{
 \item \code{num_trees}: Number of trees H in each sum-of-trees model (default: 200).
 \item \code{power}, \code{base}: Parameters for the tree structure prior. The probability of a node at depth \code{q} splitting is \eqn{\alpha(1+q)^{-\beta}}, where \code{base}=\eqn{\alpha} and \code{power}=\eqn{\beta}. Defaults are \code{base=0.95}, \code{power=2}, which strongly favors shallow trees.
-\item \code{tau}: Prior scale of each sum-of-trees factor on the standardized coordinates. Terminal leaf coefficients are \eqn{\lambda_{dhg} \sim N(0, \tau^2 / H)}, so \eqn{\tau} is the prior standard deviation of \eqn{f^*_d(Z)}. Default \eqn{\tau = 1}.
+\item \code{tau} (\code{hart_model = "normalized"}): Prior scale of each sum-of-trees factor on the standardized coordinates. Terminal leaf coefficients are \eqn{\lambda_{dhg} \sim N(0, \tau^2 / H)}, so \eqn{\tau} is the prior standard deviation of \eqn{f^*_d(Z)}. Default \eqn{\tau = 1}. Under \code{hart_model = "direct"} the scales are learned; see \code{a_tau}, \code{tau0} below.
 \item \code{numcut}: Number of grid points for proposing splitting rules for continuous variables (default: 100).
+\item \code{nmin}: Minimum number of units in each child of a split (default: 5).
 \item \code{sparse}: If \code{TRUE}, use the Dirichlet HART prior to induce sparsity in variable selection (default: \code{FALSE}).
 }
 
@@ -121,30 +124,29 @@ consumer using a scaled vector of \code{nvar} sum-of-trees models.
 }
 }
 
-\subsection{Heteroscedastic Covariance \eqn{\Sigma(Z_i)} (experimental extension)}{
+\subsection{Direct HART (\code{hart_model = "direct"})}{
 
-Wiemann (2025) treats \eqn{\Sigma} as global with an inverse-Wishart prior, used as a fixed factor-model loading \eqn{\Sigma^{1/2}}. When \code{Prior$vartree} is supplied, the package replaces this with unit-specific
-\deqn{\Sigma(Z_i)^{-1} = L(Z_i)^\top D(Z_i)^{-1} L(Z_i)}
-where \eqn{L(Z_i)} is unit lower-triangular with \eqn{L_{jk} = -\phi_{jk}(Z_i)} for \eqn{k < j} and \eqn{D(Z_i) = \mathrm{diag}(d_1(Z_i), \ldots, d_D(Z_i))}, \eqn{d_j > 0}. Each \eqn{d_j(\cdot)} is modeled as a product of trees with \eqn{\chi^{-2}} leaves (Pratola et al., 2020); each \eqn{\phi_{jk}(\cdot)} (when \code{Prior$phitree} is supplied) is modeled as a sum of trees with \eqn{N(0, \tau^2)} leaves. Only the single-component path (\code{ncomp = 1}) is supported in this mode.
+The direct model places the trees in coefficient units and lets the covariance vary with \eqn{Z}:
+\deqn{\theta_i = \mu + f(Z_i) + S_i \varepsilon_i, \qquad \Sigma(Z_i) = S_i S_i^\top = L(Z_i)^{-1} D(Z_i) L(Z_i)^{-\top},}
+where \eqn{f(Z)} is a sum of \code{num_trees} trees with vector leaves \eqn{m_{hg} \sim N(0, \mathrm{diag}(\tau_1^2, \ldots, \tau_D^2) / H)} on one shared partition, \eqn{L(Z_i)} is unit lower-triangular with \eqn{L_{jk} = -\phi_{jk}(Z_i)} for \eqn{k < j}, and \eqn{D(Z_i) = \mathrm{diag}(d_1(Z_i), \ldots, d_D(Z_i))}. Each \eqn{d_j(\cdot)} is a product of trees with inverse-gamma leaves (Pratola et al., 2020); each \eqn{\phi_{jk}(\cdot)} is a sum of trees with normal leaves. The prior is not invariant to the ordering of the columns of \code{X}, which is recorded in \code{hart$coef_names}. \code{Prior$nu} and \code{Prior$V} are not used.
+
+\strong{\code{Prior$bart} under the direct model}: \code{num_trees} (200), \code{power} (2), \code{base} (0.95), \code{numcut} (100), \code{nmin} (5), the DART fields, and the scale hyperprior \eqn{\tau_d^2 \sim IG(a_\tau, (a_\tau - 1)\tau_{0d}^2)} through \code{a_tau} (3) and \code{tau0} (1; length 1 or \code{nvar}), so that \eqn{E[\tau_d^2] = \tau_{0d}^2}. \code{tau} is not used.
 
 \strong{\code{Prior$vartree} parameters} (defaults shown):
 \itemize{
-\item \code{num_trees} (40): Number of trees per dimension \eqn{m'}.
-\item \code{nu} (10), \code{lambda} (auto-calibrated from \eqn{\mathrm{var}(\theta_i)}): Baseline parameters of the \eqn{\chi^{-2}} prior. Pratola per-tree calibration is applied internally.
-\item \code{power} (2), \code{base} (0.95), \code{numcut} (100): Tree-structure prior parameters.
+\item \code{num_trees} (40), \code{power} (2), \code{base} (0.95), \code{numcut} (100), \code{nmin} (5): Tree-structure prior parameters.
+\item \code{a_v} (3), \code{v0} (1 unrestricted, 0.1 sign-restricted; length 1 or \code{nvar}): Leaves are \eqn{s \sim IG(a_v, b_{vj})} with \eqn{b_{vj} = (a_v - 1) v_{0j}^{1/H_v}}, so that \eqn{E[d_j(Z)] = v_{0j}}; \code{a_v > 2} gives a finite prior variance.
 \item DART hyperparameters (\code{sparse}, \code{a}, \code{b}, \code{rho}, \code{theta}, \code{omega}, \code{aug}, \code{burn}): same meaning as \code{Prior$bart}.
 }
 
 \strong{\code{Prior$phitree} parameters} (defaults shown):
 \itemize{
-\item \code{num_trees} (40): Number of trees per \eqn{(j,k)} pair \eqn{m''}.
-\item \code{tau} (\eqn{1/\sqrt{m''}}): Prior standard deviation of leaf \eqn{\lambda_{jkh}}.
-\item \code{power} (2), \code{base} (0.95), \code{numcut} (100): Tree-structure prior parameters.
-\item \code{nmin} (2), \code{ess_min} (5): Leaf-admissibility floors. The default \code{ess_min = 5} requires the effective sample size \eqn{\sum_{i \in \ell} (\theta_i^{(k)} - \mu^{(k)})^2 / d_j(Z_i)} of each candidate leaf to exceed 5; \code{nmin = 2} is the corresponding raw-count floor.
+\item \code{num_trees} (40), \code{power} (2), \code{base} (0.95), \code{numcut} (100), \code{nmin} (5): Tree-structure prior parameters.
+\item \code{tau} (1): Ensemble scale; leaves are \eqn{N(0, \tau^2 / H_\phi)}.
 \item DART hyperparameters: same meaning as \code{Prior$bart}.
 }
 
-When this extension is active, the returned object additionally inherits class \code{"rhierMnlRwMixtureHeterCov"} and contains slots \code{var_models}, \code{phi_models} (jagged, lower-triangular; \code{NULL} if \code{nvar == 1}), and \code{mu_draw} (single-component posterior mean draws). \code{predict()} dispatches on this class to evaluate \eqn{\Sigma(Z^*)} at new \eqn{Z^*}.
+The returned object additionally inherits class \code{"rhierMnlRwMixtureHeterCov"} and contains \code{mu_draw}, \code{mean_scale_draw}, \code{var_models}, and \code{phi_models} (jagged; \code{NULL} if \code{nvar == 1}). \code{predict()} dispatches on this class to evaluate \eqn{\Sigma(Z^*)} at new \eqn{Z^*}.
 }
 
 \subsection{Sign Restrictions}{

@@ -76,7 +76,7 @@
 #'   - If BART: `bart_models`, `varcount`, `varprob`.
 #'   - If heter-cov (additional class `"rhierLinearMixtureHeterCov"`):
 #'     `var_models`, `phi_models` (jagged or `NULL`), `mu_draw`,
-#'     `var_varcount`, `var_varprob`.
+#'     `mean_scale_draw`, `var_varcount`, `var_varprob`.
 #'
 #' @seealso [predict.rhierLinearMixture()], [marginal_effects.rhierLinearMixture()]
 #'
@@ -242,13 +242,11 @@ if(sum(dim(V)==c(nvar,nvar)) != 2) pandterm("Invalid V in prior")
 
 # ---- HART preference model (see R/hart_priors.R) ----
 # Prior$hart_model selects "none" (bayesm paths), "normalized", or "direct".
-# Variance-tree lambda defaults and the warm start use the per-unit OLS
-# slopes (computed below once XpX/Xpy are available).
 useBART     <- cfg$model != "none"
 useHeterCov <- cfg$model == "direct"
 bart_params <- cfg$bart
-var_params  <- list()
-phi_params  <- list()
+var_params  <- cfg$vartree %||% list()
+phi_params  <- cfg$phitree %||% list()
 # ---- end HART preference model ----
 
 if(is.null(Prior$Ad) & drawdelta) {Ad=BayesmConstant.A*diag(nvar*nz)}
@@ -300,6 +298,7 @@ cat("a ",fill=TRUE)
 print(a)
 if (useBART) {
   .print_hart_prior(cfg)
+  if (useHeterCov) .print_hart_covariance(cfg)
 } else if(drawdelta) {
   cat("deltabar",fill=TRUE)
   print(deltabar)
@@ -351,20 +350,14 @@ if (drawdelta && useBART) {
 
 oldprob=rep(1/ncomp,ncomp)
 
-# Per-unit OLS slopes: lambda baseline for vartree and warm start for
-# oldbetas; zero for a unit with singular XpX.
+# Per-unit OLS slopes as the warm start under the direct model; zero for a
+# unit with singular XpX.
 Beta_init <- matrix(0, nrow = nreg, ncol = nvar)
 if (useHeterCov) {
   Beta_init <- t(vapply(regdata, function(rd)
     tryCatch(as.numeric(solve(rd$XpX, rd$Xpy)),
              error = function(e) rep(0, nvar)),
     numeric(nvar)))
-  cfg$vartree <- .parse_var_params(cfg$vartree, Beta_init, nz)
-  if (cfg$full_cov) cfg$phitree <- .parse_phi_params(cfg$phitree, nz, nu, nvar)
-  var_params <- cfg$vartree
-  phi_params <- cfg$phitree %||% list()
-  if (r_verbose)
-    .print_hart_covariance(cfg, lambda_user_supplied = !is.null(Prior$vartree$lambda))
 }
 
 ###################################################################
@@ -375,8 +368,8 @@ if (useHeterCov) {
 draws = rhierLinearMixture_rcpp_loop(regdata, Z, deltabar,
     Ad, mubar, Amu, nu, V, nu.e, ssq, R, keep, nprint, drawdelta,
     as.matrix(olddelta), a, oldprob, ind, tau,
-    useBART, bart_params,
-    useHeterCov, var_params, phi_params, Beta_init)
+    cfg$model, bart_params,
+    var_params, phi_params, Beta_init)
 ###################################################################
 
 #

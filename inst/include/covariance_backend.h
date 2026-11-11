@@ -24,7 +24,7 @@ struct BackendPackPayload {
 //   Returned references remain valid until the next draw_iteration() call.
 //
 // Implementations: GlobalCovarianceBackend (bayesm paths), NormalizedHartBackend,
-// HeterCovBackend (direct HART).
+// DirectHartBackend.
 class CovarianceBackend {
 public:
     virtual ~CovarianceBackend() = default;

@@ -2,6 +2,7 @@
 #define HART_BACKEND_H
 
 #include <memory>
+#include <string>
 #include "bayesm.HART.h"
 #include "covariance_backend.h"
 
@@ -40,13 +41,11 @@ public:
     arma::vec const& prior_mean(int i) const override { return prior_mean_[i]; }
 };
 
-// Covariance backend for one sampler run (shared by the MNL, Linear, and
-// NegBin loop files):
-//   useHeterCov             -> HeterCovBackend         (direct)
-//   useBART && !useHeterCov -> NormalizedHartBackend   (normalized)
-//   otherwise               -> GlobalCovarianceBackend (bayesm paths)
+// Covariance backend for one sampler run, by Prior$hart_model (shared by
+// the MNL, Linear, and NegBin loop files): "direct" -> DirectHartBackend,
+// "normalized" -> NormalizedHartBackend, "none" -> GlobalCovarianceBackend.
 std::unique_ptr<CovarianceBackend> make_backend(
-    bool useBART, bool useHeterCov,
+    std::string const& hart_model,
     arma::mat& oldbetas, arma::mat const& Z,
     arma::mat const& mubar, arma::mat const& Amu,
     double nu, arma::mat const& V, arma::vec const& a,

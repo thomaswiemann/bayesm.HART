@@ -96,25 +96,18 @@ List rhierMnlRwMixture_rcpp_loop(List const& lgtdata, mat const& Z,
     double nu, mat const& V, double s,
     int R, int keep, int nprint, bool drawdelta,
     mat olddelta, vec const& a, vec oldprob, mat oldbetas, vec ind, vec const& SignRes,
-    bool useBART, List const& bart_params,
-    bool useHeterCov,
-    List const& var_params,
-    List const& phi_params) {
+    std::string const& hart_model, List const& bart_params,
+    List const& var_params, List const& phi_params) {
 
     // Wayne Taylor 10/01/2014
     // modified by Thomas Wiemann 2025
     //
-    // Covariance backends (see make_backend in hart_backend.h):
-    //   * direct      : HeterCovBackend, Sigma(Z_i) via modified Cholesky trees
-    //   * normalized  : NormalizedHartBackend, theta_i = mu + L^{-1}(f*_i + eps_i)
-    //   * none        : GlobalCovarianceBackend, bayesm linear-Delta / mixture
+    // Covariance backend by hart_model (make_backend in hart_backend.h).
 
     int nlgt = lgtdata.size();
     int nvar = V.n_cols;
-
-    // Validation for the heter-cov path.
-    if (useHeterCov && !useBART)    stop("useHeterCov requires useBART = TRUE");
-    if (useHeterCov && !drawdelta)  stop("useHeterCov requires drawdelta = TRUE");
+    if (hart_model != "none" && !drawdelta)
+        stop("hart_model = '%s' requires Z.", hart_model.c_str());
 
     List lgtdatai;
 
@@ -138,7 +131,7 @@ List rhierMnlRwMixture_rcpp_loop(List const& lgtdata, mat const& Z,
     // Create backend + updater adapters, then run the unified MCMC loop.
     // ====================================================================
     std::unique_ptr<CovarianceBackend> backend = make_backend(
-        useBART, useHeterCov, oldbetas, Z, mubar, Amu, nu, V, a,
+        hart_model, oldbetas, Z, mubar, Amu, nu, V, a,
         deltabar, Ad, drawdelta, olddelta, oldprob, ind, R, keep,
         bart_params, var_params, phi_params);
 

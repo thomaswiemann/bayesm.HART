@@ -85,7 +85,7 @@
 #'   - If BART: `bart_models`, `varcount`, `varprob`.
 #'   - If heter-cov (additional class `"rhierNegbinRwHeterCov"`):
 #'     `var_models`, `phi_models` (jagged or `NULL`), `mu_draw`,
-#'     `var_varcount`, `var_varprob`.
+#'     `mean_scale_draw`, `var_varcount`, `var_varprob`.
 #'
 #' @seealso [predict.rhierNegbinRw()], [marginal_effects.rhierNegbinRw()]
 #'
@@ -252,12 +252,11 @@ if(length(a_mix) != ncomp) {pandterm("Requires dim(a_mix)= ncomp (no of componen
 
 # ---- HART preference model (see R/hart_priors.R) ----
 # Prior$hart_model selects "none" (bayesm paths), "normalized", or "direct".
-# Variance-tree lambda defaults use the per-unit MLE betas (Beta_init below).
 useBART     <- cfg$model != "none"
 useHeterCov <- cfg$model == "direct"
 bart_params <- cfg$bart
-var_params  <- list()
-phi_params  <- list()
+var_params  <- cfg$vartree %||% list()
+phi_params  <- cfg$phitree %||% list()
 # ---- end HART preference model ----
 
 # Delta prior (for non-BART drawdelta path)
@@ -306,6 +305,7 @@ cat(" ",fill=TRUE)
 cat("Prior Parameters:",fill=TRUE)
 if (useBART) {
   .print_hart_prior(cfg)
+  if (useHeterCov) .print_hart_covariance(cfg)
 } else {
   cat("deltabar",fill=TRUE)
   print(deltabar)
@@ -387,17 +387,8 @@ for (i in 1:nreg) {
    fsh()
 }
 
-# Covariance-tree hyperparameters; lambda defaults from Beta_init.
-if (useHeterCov) {
-  cfg$vartree <- .parse_var_params(cfg$vartree, Beta_init, nz)
-  if (cfg$full_cov) cfg$phitree <- .parse_phi_params(cfg$phitree, nz, nu, nvar)
-  var_params <- cfg$vartree
-  phi_params <- cfg$phitree %||% list()
-  if (r_verbose)
-    .print_hart_covariance(cfg, lambda_user_supplied = !is.null(Prior$vartree$lambda))
-  # Warm start at the per-unit MLEs.
-  Beta = Beta_init
-}
+# Warm start at the per-unit MLEs under the direct model.
+if (useHeterCov) Beta = Beta_init
 
 # ---- Mixture initialization (mirrors MNL/linear) ----
 ninc=floor(nreg/ncomp)
@@ -445,8 +436,8 @@ draws=rhierNegbinRw_rcpp_loop(regdata, hess_i, Z, Beta, deltabar,
                               drawdelta, as.matrix(olddelta), a_mix,
                               oldprob, ind,
                               alpha, fixalpha,
-                              useBART, bart_params,
-                              useHeterCov, var_params, phi_params)
+                              cfg$model, bart_params,
+                              var_params, phi_params)
 ###################################################################
 
 # === Format output ===

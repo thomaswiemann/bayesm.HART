@@ -3,6 +3,7 @@
 #include <sstream>
 #include "vecbart.h"
 #include "vcbart.h"
+#include "direct_hart_backend.h"
 
 using namespace Rcpp;
 using namespace arma;
@@ -137,7 +138,7 @@ Rcpp::List vcbart_chain_R(arma::mat const& Zt, arma::vec const& y,
 
     vcbart f(m);
     f.setprior(alpha, beta, tau);
-    f.setleafguard(nmin, 0.0);
+    f.setleafguard(nmin);
     f.setdata(p, n, Zc.memptr(), yc.memptr(), numcut);
     f.setdart(0.5, 1.0, (double)p, false, sparse, 0.0, 1.0);
 
@@ -170,4 +171,106 @@ Rcpp::List vcbart_chain_R(arma::mat const& Zt, arma::vec const& y,
                         Named("nv")        = nv,
                         Named("pv")        = pv,
                         Named("treedraws") = treedraws);
+}
+
+// (L, D) at prescribed d (length D) and phi (D x D, strictly lower part):
+// rootpi and L v through stump ensembles.
+// [[Rcpp::export]]
+Rcpp::List cov_eval_R(arma::vec const& d, arma::mat const& phi,
+                      arma::vec const& v, bool diagonal) {
+    size_t D = d.n_elem;
+    mat Zt(1, 1, fill::zeros);
+    vec y(1, fill::zeros);
+    std::vector<varbart> dm(D);
+    std::vector<std::vector<vcbart>> pm;
+    for (size_t j = 0; j < D; j++) {
+        dm[j] = varbart(1);
+        dm[j].setdata(1, 1, Zt.memptr(), y.memptr(), 2);
+        dm[j].setvarprior(3.0, 1.0, d(j));
+    }
+    if (!diagonal) {
+        pm.resize(D);
+        for (size_t j = 1; j < D; j++) {
+            pm[j] = std::vector<vcbart>(j);
+            for (size_t k = 0; k < j; k++) {
+                pm[j][k] = vcbart(1);
+                pm[j][k].gettree(0).settheta(phi(j, k));
+                pm[j][k].setdata(1, 1, Zt.memptr(), y.memptr(), 2);
+            }
+        }
+    }
+    cov::cov_eval ev{dm, pm, 0};
+    vec Lv = v;
+    cov::apply_L(Lv, ev);
+    return List::create(Named("rootpi") = cov::rootpi(ev), Named("Lv") = Lv);
+}
+
+namespace {
+
+// Direct-model backend with pinnable blocks and readable state.
+struct DirectHartProbe : DirectHartBackend {
+    using DirectHartBackend::DirectHartBackend;
+    void run(LogicalVector const& u) { sweep(u[0], u[1], u[2], u[3], u[4]); }
+    vec const& mu() const { return mu_; }
+    vec const& tau2() const { return tau2_; }
+    mat const& f() const { return f_.allfit(); }
+    mat const& v() const { return vmat_; }
+    mat phi_at(int i) const {
+        mat P(D_, D_, fill::zeros);
+        if (full_cov_)
+            for (int j = 1; j < D_; j++)
+                for (int k = 0; k < j; k++) P(j, k) = phi_[j][k].f(i);
+        return P;
+    }
+    List state() const {
+        cube Q(D_, D_, n_);
+        mat pm(n_, D_);
+        for (int i = 0; i < n_; i++) {
+            Q.slice(i) = Q_[i];
+            pm.row(i)  = prior_mean_[i].t();
+        }
+        vec ss = f_.leaf_sumsq();
+        return List::create(Named("mu")   = NumericVector(mu_.begin(), mu_.end()),
+                            Named("tau2") = NumericVector(tau2_.begin(), tau2_.end()),
+                            Named("f") = f_.allfit(), Named("v") = vmat_,
+                            Named("phi") = phi_at(0), Named("Q") = Q,
+                            Named("prior_mean") = pm,
+                            Named("nleaves") = (int)f_.nleaves(),
+                            Named("leaf_sumsq") = NumericVector(ss.begin(), ss.end()));
+    }
+};
+
+}  // namespace
+
+// Direct-model blocks on fixed theta: `warm` full sweeps, then `nsweep`
+// sweeps with the blocks (mu, v, phi, f, tau) switched by `update`.  Returns
+// per-sweep mu and tau^2, f and v at every unit, phi at unit 1, and the final
+// state.
+// [[Rcpp::export]]
+Rcpp::List direct_hart_R(arma::mat const& theta, arma::mat const& Z,
+                         arma::vec const& mubar, arma::mat const& Amu,
+                         Rcpp::List const& bart_params,
+                         Rcpp::List const& var_params,
+                         Rcpp::List const& phi_params,
+                         int warm, int nsweep,
+                         Rcpp::LogicalVector const& update) {
+    if (update.size() != 5) stop("direct_hart_R: update needs 5 entries.");
+    int n = theta.n_rows, D = theta.n_cols;
+    LogicalVector all(5, true);
+    DirectHartProbe b(theta, Z, mubar, Amu, warm + nsweep, 1,
+                      bart_params, var_params, phi_params);
+    for (int r = 0; r < warm; r++) b.run(all);
+    mat mu(nsweep, D), tau2(nsweep, D);
+    cube f(n, D, nsweep), v(n, D, nsweep), phi(D, D, nsweep);
+    for (int r = 0; r < nsweep; r++) {
+        b.run(update);
+        mu.row(r)    = b.mu().t();
+        tau2.row(r)  = b.tau2().t();
+        f.slice(r)   = b.f();
+        v.slice(r)   = b.v();
+        phi.slice(r) = b.phi_at(0);
+    }
+    return List::create(Named("mu") = mu, Named("tau2") = tau2,
+                        Named("f") = f, Named("v") = v, Named("phi") = phi,
+                        Named("state") = b.state());
 }

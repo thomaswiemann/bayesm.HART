@@ -3,9 +3,10 @@
 
 library(testthat)
 
-cfg_of <- function(Prior, nvar = 2L, nz = 2L, drawdelta = TRUE) {
+cfg_of <- function(Prior, nvar = 2L, nz = 2L, drawdelta = TRUE, ...) {
   bayesm.HART:::.hart_config(Prior, nvar = nvar, nz = nz,
-                             drawdelta = drawdelta, coef_names = c("a", "b"))
+                             drawdelta = drawdelta, coef_names = c("a", "b"),
+                             ...)
 }#CFG_OF
 
 test_that(".hart_config defaults to the bayesm paths", {
@@ -50,8 +51,9 @@ test_that("HART models require Z", {
 test_that("normalized model: bart optional, covariance lists rejected", {
   cfg <- cfg_of(list(ncomp = 1, hart_model = "normalized"))
   expect_equal(cfg$model, "normalized")
-  expect_equal(cfg$bart$num_trees, 200)
+  expect_equal(cfg$bart$num_trees, 200L)
   expect_equal(cfg$bart$tau, 1)
+  expect_null(cfg$bart$a_tau)
   expect_equal(cfg$bart$nmin, 5L)
   expect_true(cfg$bart$store_trees)
   expect_null(cfg$vartree)
@@ -61,14 +63,25 @@ test_that("normalized model: bart optional, covariance lists rejected", {
   expect_error(cfg_of(list(ncomp = 1, hart_model = "normalized",
                            phitree = list())),
                regexp = "require Prior\\$hart_model = 'direct'")
+  expect_error(cfg_of(list(ncomp = 1, hart_model = "normalized",
+                           bart = list(a_tau = 3))),
+               regexp = "a_tau")
 })#TEST_THAT
 
-test_that("direct model: all tree lists optional, phi iff nvar > 1", {
+test_that("direct model: appendix defaults, phi iff nvar > 1", {
   cfg <- cfg_of(list(ncomp = 1, hart_model = "direct"))
   expect_equal(cfg$model, "direct")
   expect_true(cfg$full_cov)
-  expect_equal(cfg$vartree, list())       # parsed later by the wrapper
-  expect_equal(cfg$phitree, list())
+  expect_null(cfg$bart[["tau"]])
+  expect_equal(cfg$bart$a_tau, 3)
+  expect_equal(cfg$bart$tau0, c(1, 1))
+  expect_equal(cfg$vartree$num_trees, 40L)
+  expect_equal(cfg$vartree$a_v, 3)
+  expect_equal(cfg$vartree$v0, c(1, 1))
+  expect_equal(cfg$vartree$nmin, 5L)
+  expect_equal(cfg$phitree$num_trees, 40L)
+  expect_equal(cfg$phitree$tau, 1)
+  expect_equal(cfg$phitree$nmin, 5L)
   cfg1 <- cfg_of(list(ncomp = 1, hart_model = "direct"), nvar = 1L)
   expect_false(cfg1$full_cov)
   expect_null(cfg1$phitree)
@@ -77,20 +90,41 @@ test_that("direct model: all tree lists optional, phi iff nvar > 1", {
                regexp = "requires nvar > 1")
 })#TEST_THAT
 
+test_that("direct model rejects normalized-model and removed fields", {
+  direct <- function(...) cfg_of(list(ncomp = 1, hart_model = "direct", ...))
+  expect_error(direct(bart = list(tau = 1)), regexp = "Prior\\$bart\\$tau")
+  expect_error(direct(vartree = list(lambda = 1)), regexp = "lambda")
+  expect_error(direct(vartree = list(nu = 10)), regexp = "nu")
+  expect_error(direct(phitree = list(ess_min = 5)), regexp = "ess_min")
+  expect_error(direct(vartree = list(a_v = 1)), regexp = "greater than 1")
+  expect_error(direct(bart = list(tau0 = c(1, 2, 3))),
+               regexp = "length 1 or nvar")
+  expect_message(direct(nu = 5), regexp = "not used")
+})#TEST_THAT
+
 test_that("user hyperparameters and store_trees are passed through", {
   cfg <- cfg_of(list(ncomp = 1, hart_model = "direct", store_trees = FALSE,
-                     bart = list(num_trees = 10, power = 1.5, nmin = 2L),
-                     vartree = list(num_trees = 7L)))
+                     bart = list(num_trees = 10, power = 1.5, nmin = 2L,
+                                 a_tau = 4, tau0 = c(0.5, 2)),
+                     vartree = list(num_trees = 7L, v0 = 0.3),
+                     phitree = list(tau = 0.5)))
   expect_false(cfg$store_trees)
   expect_false(cfg$bart$store_trees)
-  expect_equal(cfg$bart$num_trees, 10)
+  expect_equal(cfg$bart$num_trees, 10L)
   expect_equal(cfg$bart$power, 1.5)
   expect_equal(cfg$bart$nmin, 2L)
-  expect_equal(cfg$bart$tau, 1)
-  expect_equal(cfg$vartree, list(num_trees = 7L))
+  expect_equal(cfg$bart$a_tau, 4)
+  expect_equal(cfg$bart$tau0, c(0.5, 2))
+  expect_equal(cfg$vartree$num_trees, 7L)
+  expect_equal(cfg$vartree$v0, c(0.3, 0.3))
+  expect_equal(cfg$phitree$tau, 0.5)
   expect_equal(cfg$coef_names, c("a", "b"))
   expect_equal(cfg$nvar, 2L)
   expect_equal(cfg$nz, 2L)
+  # Per-coordinate default scale (sign-restricted coordinates).
+  cfg2 <- cfg_of(list(ncomp = 1, hart_model = "direct"),
+                 v0_default = c(0.1, 1))
+  expect_equal(cfg2$vartree$v0, c(0.1, 1))
 })#TEST_THAT
 
 test_that(".hart_Amu builds the independent-prior precision", {
@@ -109,26 +143,6 @@ test_that(".hart_Amu builds the independent-prior precision", {
   expect_error(bayesm.HART:::.hart_Amu(matrix(c(1, 2, 2, 1), 2, 2), 2L,
                                        default = 0.01),
                regexp = "symmetric positive definite")
-})#TEST_THAT
-
-test_that(".parse_var_params and .parse_phi_params supply defaults", {
-  oldbetas <- matrix(c(1, 2, 3, 4, 6, 8), ncol = 2)
-  v <- bayesm.HART:::.parse_var_params(list(), oldbetas, nz = 3L)
-  expect_equal(v$num_trees, 40L)
-  expect_equal(v$nu, 10)
-  expect_equal(v$lambda, mean(apply(oldbetas, 2, var)))
-  expect_equal(v$nmin, 5L)
-  expect_equal(v$rho, 3L)
-  v_user <- bayesm.HART:::.parse_var_params(list(lambda = 0.3, nmin = 1L),
-                                            oldbetas, nz = 3L)
-  expect_equal(v_user$lambda, 0.3)
-  expect_equal(v_user$nmin, 1L)
-
-  p <- bayesm.HART:::.parse_phi_params(list(), nz = 3L, nu = 5, nvar = 2L)
-  expect_equal(p$num_trees, 40L)
-  expect_equal(p$nmin, 2L)
-  expect_equal(p$ess_min, 5)
-  expect_true(p$tau > 0)
 })#TEST_THAT
 
 test_that("fitted objects carry hart metadata only for HART models", {
@@ -158,6 +172,7 @@ test_that("fitted objects carry hart metadata only for HART models", {
   expect_null(fit_norm$hart$priors$vartree)
   expect_equal(fit_dir$hart$model, "direct")
   expect_equal(fit_dir$hart$priors$vartree$num_trees, 3L)
+  expect_equal(fit_dir$hart$priors$vartree$a_v, 3)
   expect_true(is.list(fit_dir$hart$priors$phitree))
   expect_s3_class(fit_dir, "bayesm.HART.HeterCov")
 })#TEST_THAT

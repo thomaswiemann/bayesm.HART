@@ -33,23 +33,17 @@ List rhierNegbinRw_rcpp_loop(List const& regdata, List const& hessdata, mat cons
                              bool drawdelta, mat olddelta, vec const& a_mix,
                              vec oldprob, vec ind,
                              double alpha, bool fixalpha,
-                             bool useBART, List const& bart_params,
-                             bool useHeterCov,
+                             std::string const& hart_model,
+                             List const& bart_params,
                              List const& var_params,
                              List const& phi_params){
 
 // Wayne Taylor 12/01/2014
-// Modified by Thomas Wiemann 2025 -- HART/BART support, mixture-of-normals,
-//   plus heter-cov branch (modified-Cholesky tree ensembles for Sigma(Z_i)).
-//
-// Covariance backends (see make_backend in hart_backend.h):
-//   * direct      : HeterCovBackend, Sigma(Z_i) via modified Cholesky trees
-//   * normalized  : NormalizedHartBackend, theta_i = mu + L^{-1}(f*_i + eps_i)
-//   * none        : GlobalCovarianceBackend, bayesm linear-Delta / mixture
+// Modified by Thomas Wiemann 2025 -- HART support.
+// Covariance backend by hart_model (make_backend in hart_backend.h).
 
-  // Heter-cov path validation.
-  if (useHeterCov && !useBART)   stop("useHeterCov requires useBART = TRUE");
-  if (useHeterCov && !drawdelta) stop("useHeterCov requires drawdelta = TRUE");
+  if (hart_model != "none" && !drawdelta)
+    stop("hart_model = '%s' requires Z.", hart_model.c_str());
 
   int nreg = regdata.size();
   int nvar = V.n_cols;
@@ -77,7 +71,7 @@ List rhierNegbinRw_rcpp_loop(List const& regdata, List const& hessdata, mat cons
   // Create backend + updater adapters, then run the unified MCMC loop.
   // ====================================================================
   std::unique_ptr<CovarianceBackend> backend = make_backend(
-      useBART, useHeterCov, oldbetas, Z, mubar, Amu, nu, V, a_mix,
+      hart_model, oldbetas, Z, mubar, Amu, nu, V, a_mix,
       deltabar, Ad, drawdelta, olddelta, oldprob, ind, R, keep,
       bart_params, var_params, phi_params);
 

@@ -9,9 +9,11 @@
 #                    = "direct"      theta_i = mu + f(Z_i) + S_i eps_i
 #
 # The tree lists bart, vartree, phitree are optional and require a HART value
-# of hart_model.  vartree and phitree are parsed after the warm start because
-# their defaults depend on the warm-start coefficients.  Under a HART model
-# mu ~ N(mubar, Amu^{-1}), independent of Sigma.
+# of hart_model.  Under a HART model mu ~ N(mubar, Amu^{-1}), independent of
+# Sigma.  `tau` is an ensemble scale (leaf sd tau / sqrt(num_trees)).  Under
+# the direct model the mean scales are tau_d^2 ~ IG(a_tau, (a_tau - 1) tau0_d^2)
+# and the variance leaves IG(a_v, (a_v - 1) v0_j^{1/H_v}), so E[v_j(Z)] = v0_j.
+# User lists are read with `[[` (exact names: tau vs tau0, a vs a_v).
 
 .hart_models <- c("none", "normalized", "direct")
 
@@ -24,10 +26,12 @@
 # @param nz Number of characteristics (0 when Data$Z is absent).
 # @param drawdelta TRUE iff Data$Z was supplied.
 # @param coef_names Column names of X, recorded as the coefficient ordering.
+# @param v0_default Prior mean of v_j(Z) per coefficient (direct model).
 # @return A list with model, nvar, nz, coef_names, store_trees, full_cov, and
 #   the tree lists bart, vartree, phitree (NULL when unused).
-.hart_config <- function(Prior, nvar, nz, drawdelta, coef_names = NULL) {
-  model <- Prior$hart_model %||% "none"
+.hart_config <- function(Prior, nvar, nz, drawdelta, coef_names = NULL,
+                         v0_default = 1) {
+  model <- Prior[["hart_model"]] %||% "none"
   if (!is.character(model) || length(model) != 1L || !(model %in% .hart_models))
     pandterm(paste0("Prior$hart_model must be one of: ",
                     paste0("'", .hart_models, "'", collapse = ", "), "."))
@@ -37,44 +41,62 @@
               nvar        = as.integer(nvar),
               nz          = as.integer(nz),
               coef_names  = coef_names,
-              store_trees = isTRUE(Prior$store_trees %||% TRUE),
+              store_trees = isTRUE(Prior[["store_trees"]] %||% TRUE),
               full_cov    = FALSE,
               bart        = NULL,
               vartree     = NULL,
               phitree     = NULL)
   if (model == "none") return(cfg)
 
-  cfg$bart <- .parse_bart_params(Prior$bart %||% list(), nz)
+  cfg$bart <- .parse_bart_params(Prior[["bart"]] %||% list(), nz, model, nvar)
   cfg$bart$store_trees <- cfg$store_trees
   if (model == "direct") {
     # Off-diagonal ensembles exist iff there is more than one coefficient.
     cfg$full_cov <- nvar > 1L
-    cfg$vartree  <- Prior$vartree %||% list()   # parsed after the warm start
-    cfg$phitree  <- if (cfg$full_cov) Prior$phitree %||% list() else NULL
+    cfg$vartree  <- .parse_var_params(Prior[["vartree"]] %||% list(), nz,
+                                      nvar, v0_default)
+    cfg$phitree  <- if (cfg$full_cov)
+      .parse_phi_params(Prior[["phitree"]] %||% list(), nz) else NULL
   }
   cfg
 }#.HART_CONFIG
 
 # Reject inconsistent selector / tree-list combinations.
 .validate_hart <- function(Prior, model, nvar, drawdelta) {
-  has <- c(bart    = !is.null(Prior$bart),
-           vartree = !is.null(Prior$vartree),
-           phitree = !is.null(Prior$phitree))
+  bart <- Prior[["bart"]]; vartree <- Prior[["vartree"]]
+  phitree <- Prior[["phitree"]]
   msg_cov <- paste("Prior$vartree and Prior$phitree require",
                    "Prior$hart_model = 'direct'.")
   if (model == "none") {
-    if (has["bart"])
+    if (!is.null(bart))
       pandterm(paste("Prior$bart requires Prior$hart_model = 'normalized'",
                      "or 'direct'."))
-    if (has["vartree"] || has["phitree"]) pandterm(msg_cov)
+    if (!is.null(vartree) || !is.null(phitree)) pandterm(msg_cov)
     return(invisible(NULL))
   }
   if (!drawdelta)
     pandterm(paste0("Prior$hart_model = '", model, "' requires Data$Z."))
-  if (model == "normalized" && (has["vartree"] || has["phitree"]))
-    pandterm(msg_cov)
-  if (model == "direct" && has["phitree"] && nvar == 1L)
-    pandterm("Prior$phitree requires nvar > 1 (no off-diagonal terms).")
+  if (model == "normalized") {
+    if (!is.null(vartree) || !is.null(phitree)) pandterm(msg_cov)
+    if (!is.null(bart[["a_tau"]]) || !is.null(bart[["tau0"]]))
+      pandterm(paste("Prior$bart$a_tau and Prior$bart$tau0 require",
+                     "Prior$hart_model = 'direct'; use Prior$bart$tau."))
+  }
+  if (model == "direct") {
+    if (!is.null(phitree) && nvar == 1L)
+      pandterm("Prior$phitree requires nvar > 1 (no off-diagonal terms).")
+    if (!is.null(bart[["tau"]]))
+      pandterm(paste("Prior$bart$tau is not used under Prior$hart_model =",
+                     "'direct'; set Prior$bart$a_tau and Prior$bart$tau0."))
+    if (!is.null(vartree[["nu"]]) || !is.null(vartree[["lambda"]]))
+      pandterm(paste("Prior$vartree$nu and Prior$vartree$lambda are not",
+                     "used; set Prior$vartree$a_v and Prior$vartree$v0."))
+    if (!is.null(phitree[["ess_min"]]))
+      pandterm(paste("Prior$phitree$ess_min is not used; leaf admissibility",
+                     "is Prior$phitree$nmin."))
+    if (!is.null(Prior[["nu"]]) || !is.null(Prior[["V"]]))
+      message("Prior$nu and Prior$V are not used under hart_model = 'direct'.")
+  }
   invisible(NULL)
 }#.VALIDATE_HART
 
@@ -98,83 +120,69 @@
 
 # Hyperparameters --------------------------------------------------------------
 
-# Mean-tree hyperparameters with defaults.  `tau` is the ensemble scale (leaf
-# sd tau / sqrt(num_trees)); `nz` sets the default DART `rho`.
-.parse_bart_params <- function(bart_list, nz) {
-  num_trees <- bart_list$num_trees %||% 200
+# Tree-structure and DART fields shared by every tree list.
+.parse_tree_params <- function(x, nz, num_trees, nmin) {
   list(
-    num_trees = num_trees,
-    power     = bart_list$power  %||% 2.0,
-    base      = bart_list$base   %||% 0.95,
-    tau       = bart_list$tau    %||% 1.0,
-    numcut    = bart_list$numcut %||% 100,
-    nmin      = bart_list$nmin   %||% 5L,
-    sparse    = bart_list$sparse %||% FALSE,
-    theta     = bart_list$theta  %||% 0.0,
-    omega     = bart_list$omega  %||% 1.0,
-    a         = bart_list$a      %||% 0.5,
-    b         = bart_list$b      %||% 1.0,
-    rho       = bart_list$rho    %||% nz,
-    aug       = bart_list$aug    %||% FALSE,
-    burn      = bart_list$burn   %||% 100
+    num_trees = as.integer(x[["num_trees"]] %||% num_trees),
+    power     = x[["power"]]  %||% 2.0,
+    base      = x[["base"]]   %||% 0.95,
+    numcut    = as.integer(x[["numcut"]] %||% 100L),
+    nmin      = as.integer(x[["nmin"]]   %||% nmin),
+    sparse    = isTRUE(x[["sparse"]] %||% FALSE),
+    theta     = x[["theta"]]  %||% 0.0,
+    omega     = x[["omega"]]  %||% 1.0,
+    a         = x[["a"]]      %||% 0.5,
+    b         = x[["b"]]      %||% 1.0,
+    rho       = x[["rho"]]    %||% nz,
+    aug       = isTRUE(x[["aug"]] %||% FALSE),
+    burn      = as.integer(x[["burn"]] %||% 100L)
   )
+}#.PARSE_TREE_PARAMS
+
+# Mean-tree hyperparameters: `tau` under the normalized model, the scale
+# hyperprior (a_tau, tau0) under the direct model.
+.parse_bart_params <- function(bart_list, nz, model, nvar) {
+  out <- .parse_tree_params(bart_list, nz, num_trees = 200L, nmin = 5L)
+  if (model == "direct") {
+    out$a_tau <- .check_shape(bart_list[["a_tau"]] %||% 3, "Prior$bart$a_tau")
+    out$tau0  <- .check_scale(bart_list[["tau0"]] %||% 1, nvar,
+                              "Prior$bart$tau0")
+  } else {
+    out$tau <- bart_list[["tau"]] %||% 1.0
+  }
+  out
 }#.PARSE_BART_PARAMS
 
-# Variance-tree hyperparameters: chi^{-2} leaf prior plus DART.  `oldbetas`
-# (per-unit warm-start coefficients) calibrates `lambda` when the user did not
-# supply one.
-.parse_var_params <- function(prior_vartree, oldbetas, nz) {
-  lambda_default <- mean(apply(oldbetas, 2, var))
-  if (!is.finite(lambda_default) || lambda_default <= 0) lambda_default <- 1.0
-  list(
-    num_trees = as.integer(prior_vartree$num_trees %||% 40L),
-    power     = prior_vartree$power  %||% 2.0,
-    base      = prior_vartree$base   %||% 0.95,
-    nu        = prior_vartree$nu     %||% 10.0,
-    lambda    = prior_vartree$lambda %||% lambda_default,
-    numcut    = prior_vartree$numcut %||% 100L,
-    nmin      = prior_vartree$nmin   %||% 5L,
-    sparse    = prior_vartree$sparse %||% FALSE,
-    theta     = prior_vartree$theta  %||% 0.0,
-    omega     = prior_vartree$omega  %||% 1.0,
-    a         = prior_vartree$a      %||% 0.5,
-    b         = prior_vartree$b      %||% 1.0,
-    rho       = prior_vartree$rho    %||% nz,
-    aug       = prior_vartree$aug    %||% FALSE,
-    burn      = prior_vartree$burn   %||% 100L
-  )
+# Variance-tree hyperparameters: v_j(Z) = prod_h s_jh, s ~ IG(a_v, b_vj).
+.parse_var_params <- function(prior_vartree, nz, nvar, v0_default = 1) {
+  out <- .parse_tree_params(prior_vartree, nz, num_trees = 40L, nmin = 5L)
+  out$a_v <- .check_shape(prior_vartree[["a_v"]] %||% 3, "Prior$vartree$a_v")
+  out$v0  <- .check_scale(prior_vartree[["v0"]] %||% v0_default, nvar,
+                          "Prior$vartree$v0")
+  out
 }#.PARSE_VAR_PARAMS
 
-# Off-diagonal (phi) tree hyperparameters: N(0, tau^2) leaves plus DART.  The
-# default leaf sd matches the implied inverse-Wishart(nu) scale of the
-# off-diagonal Cholesky entries.
-.parse_phi_params <- function(prior_phitree, nz, nu, nvar) {
-  num_trees <- as.integer(prior_phitree$num_trees %||% 40L)
-  if (nvar > 1) {
-    i_vec <- 2:nvar
-    V_phi_bar <- (2 / (nvar * (nvar - 1))) *
-      sum((i_vec - 1) / (nu - nvar + i_vec - 2))
-    tau_default <- sqrt(V_phi_bar / num_trees)
-  } else {
-    tau_default <- 1.0 / sqrt(num_trees)
-  }
-  list(
-    num_trees = num_trees,
-    power     = prior_phitree$power   %||% 2.0,
-    base      = prior_phitree$base    %||% 0.95,
-    tau       = prior_phitree$tau     %||% tau_default,
-    numcut    = prior_phitree$numcut  %||% 100L,
-    sparse    = prior_phitree$sparse  %||% FALSE,
-    theta     = prior_phitree$theta   %||% 0.0,
-    omega     = prior_phitree$omega   %||% 1.0,
-    a         = prior_phitree$a       %||% 0.5,
-    b         = prior_phitree$b       %||% 1.0,
-    rho       = prior_phitree$rho     %||% nz,
-    aug       = prior_phitree$aug     %||% FALSE,
-    nmin      = prior_phitree$nmin    %||% 2L,
-    ess_min   = prior_phitree$ess_min %||% 5.0
-  )
+# Off-diagonal tree hyperparameters: leaves N(0, tau^2 / H_phi).
+.parse_phi_params <- function(prior_phitree, nz) {
+  out <- .parse_tree_params(prior_phitree, nz, num_trees = 40L, nmin = 5L)
+  out$tau <- prior_phitree[["tau"]] %||% 1.0
+  out
 }#.PARSE_PHI_PARAMS
+
+# Inverse-gamma shape; > 1 so the prior mean exists.
+.check_shape <- function(a, name) {
+  if (!is.numeric(a) || length(a) != 1L || !is.finite(a) || a <= 1)
+    pandterm(paste0(name, " must be a scalar greater than 1."))
+  as.numeric(a)
+}#.CHECK_SHAPE
+
+# Positive scale of length 1 (recycled) or nvar.
+.check_scale <- function(x, nvar, name) {
+  if (!is.numeric(x) || !(length(x) %in% c(1L, nvar)) ||
+      any(!is.finite(x)) || any(x <= 0))
+    pandterm(paste0(name, " must be positive, of length 1 or nvar."))
+  rep_len(as.numeric(x), nvar)
+}#.CHECK_SCALE
 
 # Printing ---------------------------------------------------------------------
 
@@ -182,37 +190,41 @@
 .print_hart_prior <- function(cfg) {
   b <- cfg$bart
   cat(sprintf("\nHART prior (hart_model = '%s'):\n", cfg$model))
-  cat(sprintf("num_trees = %d\n", as.integer(b$num_trees)))
+  cat(sprintf("num_trees = %d\n", b$num_trees))
   cat(sprintf("power = %g\n", b$power))
   cat(sprintf("base = %g\n", b$base))
-  cat(sprintf("tau = %g\n", b$tau))
-  cat(sprintf("numcut = %d\n", as.integer(b$numcut)))
-  cat(sprintf("nmin = %d\n", as.integer(b$nmin)))
+  if (cfg$model == "direct") {
+    cat(sprintf("a_tau = %g\n", b$a_tau))
+    cat("tau0 =", format(b$tau0), "\n")
+  } else {
+    cat(sprintf("tau = %g\n", b$tau))
+  }
+  cat(sprintf("numcut = %d\n", b$numcut))
+  cat(sprintf("nmin = %d\n", b$nmin))
   cat(sprintf("sparse = %d\n", b$sparse))
-  if (isTRUE(b$sparse)) {
+  if (b$sparse) {
     cat(sprintf("theta = %g\n", b$theta))
     cat(sprintf("omega = %g\n", b$omega))
     cat(sprintf("a = %g\n", b$a))
     cat(sprintf("b = %g\n", b$b))
     cat(sprintf("rho = %g\n", b$rho))
-    cat(sprintf("aug = %g\n", b$aug))
-    cat(sprintf("burn = %d\n", as.integer(b$burn)))
+    cat(sprintf("aug = %d\n", b$aug))
+    cat(sprintf("burn = %d\n", b$burn))
   }
   invisible(NULL)
 }#.PRINT_HART_PRIOR
 
 # Print the covariance-tree priors (direct model, verbose wrapper output).
-.print_hart_covariance <- function(cfg, lambda_user_supplied) {
-  cat("\nHeteroscedastic Sigma(Z) enabled (",
-      if (cfg$full_cov) "full Cholesky" else "diagonal", ")\n", sep = "")
+.print_hart_covariance <- function(cfg) {
   v <- cfg$vartree
-  cat(sprintf("  vartree:   num_trees=%d  nu=%g  lambda=%g (%s)\n",
-              v$num_trees, v$nu, v$lambda,
-              if (lambda_user_supplied) "user" else "auto-calibrated"))
+  cat("\nCovariance trees (",
+      if (cfg$full_cov) "full Cholesky" else "diagonal", "):\n", sep = "")
+  cat(sprintf("  vartree: num_trees = %d, a_v = %g, v0 = %s\n",
+              v$num_trees, v$a_v, paste(format(v$v0), collapse = " ")))
   if (cfg$full_cov) {
     p <- cfg$phitree
-    cat(sprintf("  phitree:   num_trees=%d  tau=%g  nmin=%d  ess_min=%g\n",
-                p$num_trees, p$tau, p$nmin, p$ess_min))
+    cat(sprintf("  phitree: num_trees = %d, tau = %g, nmin = %d\n",
+                p$num_trees, p$tau, p$nmin))
   }
   invisible(NULL)
 }#.PRINT_HART_COVARIANCE

@@ -32,7 +32,7 @@
 // bart ownership invariants
 // =====================================================================
 //
-// `bart` (and its subclasses heterbart / varbart) holds raw `new[]` buffers
+// `bart` (and its subclasses varbart / vcbart) holds raw `new[]` buffers
 // (allfit, r, ftemp) and raw pointers (x, y) into externally-owned data.
 // To keep that bookkeeping sane:
 //
@@ -85,11 +85,8 @@ public:
    void setpi(pinfo& pi) {this->pi = pi;}
    void setprior(double alpha, double beta, double tau)
       {pi.alpha=alpha; pi.mybeta = beta; pi.tau=tau;}
-   // Tighten the birth/death leaf-size guard.  Defaults (5, 0.0) preserve
-   // the original behavior; phi-tree heterbart updates set ess_min > 0
-   // to reject splits with insufficient effective sample size.
-   void setleafguard(size_t nmin, double ess_min)
-      {pi.nmin = nmin; pi.ess_min = ess_min;}
+   // Birth/death admissibility floor: units per child leaf.
+   void setleafguard(size_t nmin) {pi.nmin = nmin;}
    void setdart(double _a, double _b, double _rho, bool _aug, bool _dart, 
 		double _theta=0., double _omega=1.) {
      this->a=_a; this->b=_b; this->rho=_rho; this->aug=_aug; 

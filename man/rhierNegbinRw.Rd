@@ -71,7 +71,7 @@ A list of class \code{"rhierNegbinRw"} containing:
 \item If BART: \code{bart_models}, \code{varcount}, \code{varprob}.
 \item If heter-cov (additional class \code{"rhierNegbinRwHeterCov"}):
 \code{var_models}, \code{phi_models} (jagged or \code{NULL}), \code{mu_draw},
-\code{var_varcount}, \code{var_varprob}.
+\code{mean_scale_draw}, \code{var_varcount}, \code{var_varprob}.
 }
 }
 \description{

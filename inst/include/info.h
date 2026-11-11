@@ -30,20 +30,10 @@ public:
    double *y; // ith y is *(y+i) or y[i]
 };
 //prior and mcmc
-//
-// nmin / ess_min control the minimum-leaf-size guard used by birth/death MH
-// (see heterbd.cpp).  Defaults preserve original behavior:
-//
-//   nmin    = 5   - hard lower bound on raw observation counts per leaf,
-//                   matching the historical hard-coded threshold in heterbd.
-//   ess_min = 0.0 - no effective-sample-size guard; positive for the phi-tree
-//                   heterbart updates, where raw counts do not measure the
-//                   information about the leaf parameter.
 class pinfo
 {
 public:
-   pinfo(): pbd(1.0),pb(.5),alpha(.95),mybeta(2.0),tau(1.0),
-            nmin(5),ess_min(0.0) {}
+   pinfo(): pbd(1.0),pb(.5),alpha(.95),mybeta(2.0),tau(1.0),nmin(5) {}
 //mcmc info
    double pbd; //prob of birth/death
    double pb;  //prob of birth
@@ -51,14 +41,12 @@ public:
    double alpha;
    double mybeta;
    double tau;
-//birth/death leaf-size guards
-   size_t nmin;     // raw min observations per leaf
-   double ess_min;  // min effective sample size = sum_{i in leaf} w_i
+   size_t nmin; //min units per child leaf in birth/death
    void pr() {
       cout << "pbd,pb: " << pbd << ", " << pb << std::endl;
       cout << "alpha,beta,tau: " << alpha <<
              ", " << mybeta << ", " << tau << std::endl;
-      cout << "nmin,ess_min: " << nmin << ", " << ess_min << std::endl;
+      cout << "nmin: " << nmin << std::endl;
    }
 };
 

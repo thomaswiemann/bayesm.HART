@@ -10,7 +10,7 @@
  *                                                           hyperparameters)
  *
  *  Inherits all bookkeeping from `bart` (xinfo, dinfo, allfit, r, ftemp, dart).
- *  Differences from `bart` / `heterbart`:
+ *  Differences from `bart`:
  *   1. Backfitting is **multiplicative**:   allfit /= ftemp;  ...;  allfit *= ftemp.
  *   2. Tree update uses chi^-2 conjugacy:   varbd  + vardrmu.
  *   3. Leaf draws return s^2 > 0 directly (no scaling argument).
@@ -39,9 +39,11 @@ public:
    double getnu()     const { return nu; }
    double getlambda() const { return lambda; }
 
-   // Set chi^-2 prior, collapse all trees to stumps with leaf lambda^{1/m},
-   // and recompute allfit (= product of stumps = lambda) if data is set.
+   // Set the Inv-chi^2(nu, lambda) leaf prior and collapse every tree to a
+   // stump with leaf `init` (default lambda^{1/m}, so the product is lambda);
+   // allfit is recomputed if data is set.
    void setvarprior(double nu_, double lambda_);
+   void setvarprior(double nu_, double lambda_, double init);
 
    // Multiplicative backfitting sweep: one MH step per tree, then chi^-2 leaf draw.
    // No sigma argument — variance residuals e_i^2 = y[i] / allfit_{-l}(i)

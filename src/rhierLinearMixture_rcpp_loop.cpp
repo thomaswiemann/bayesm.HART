@@ -10,24 +10,18 @@ List rhierLinearMixture_rcpp_loop(List const& regdata, mat const& Z,
                                   double nu, mat const& V, double nu_e, vec const& ssq,
                                   int R, int keep, int nprint, bool drawdelta,
                                   mat olddelta, vec const& a, vec oldprob, vec ind, vec tau,
-                                  bool useBART, List const& bart_params,
-                                  bool useHeterCov,
+                                  std::string const& hart_model,
+                                  List const& bart_params,
                                   List const& var_params,
                                   List const& phi_params,
                                   mat const& Beta_init){
 
 // Wayne Taylor 10/02/2014
-// Modified by Thomas Wiemann 2025 -- HART/BART support, mixture-of-normals,
-//   plus heter-cov branch (modified-Cholesky tree ensembles for Sigma(Z_i)).
-//
-// Covariance backends (see make_backend in hart_backend.h):
-//   * direct      : HeterCovBackend, Sigma(Z_i) via modified Cholesky trees
-//   * normalized  : NormalizedHartBackend, theta_i = mu + L^{-1}(f*_i + eps_i)
-//   * none        : GlobalCovarianceBackend, bayesm linear-Delta / mixture
+// Modified by Thomas Wiemann 2025 -- HART support.
+// Covariance backend by hart_model (make_backend in hart_backend.h).
 
-  // Heter-cov path validation.
-  if (useHeterCov && !useBART)   stop("useHeterCov requires useBART = TRUE");
-  if (useHeterCov && !drawdelta) stop("useHeterCov requires drawdelta = TRUE");
+  if (hart_model != "none" && !drawdelta)
+    stop("hart_model = '%s' requires Z.", hart_model.c_str());
 
   int nreg = regdata.size();
   int nvar = V.n_cols;
@@ -52,8 +46,9 @@ List rhierLinearMixture_rcpp_loop(List const& regdata, mat const& Z,
   cube betadraw(nreg, nvar, R/keep);
   vec loglike(R/keep);
 
-  // Warm-start at per-unit OLS slopes (passed from R) for heter-cov path.
-  if (useHeterCov && Beta_init.n_rows == (uword)nreg && Beta_init.n_cols == (uword)nvar) {
+  // Warm start at the per-unit OLS slopes under the direct model.
+  if (hart_model == "direct" && Beta_init.n_rows == (uword)nreg &&
+      Beta_init.n_cols == (uword)nvar) {
     oldbetas = Beta_init;
   }
 
@@ -61,7 +56,7 @@ List rhierLinearMixture_rcpp_loop(List const& regdata, mat const& Z,
   // Create backend + updater adapters, then run the unified MCMC loop.
   // ====================================================================
   std::unique_ptr<CovarianceBackend> backend = make_backend(
-      useBART, useHeterCov, oldbetas, Z, mubar, Amu, nu, V, a,
+      hart_model, oldbetas, Z, mubar, Amu, nu, V, a,
       deltabar, Ad, drawdelta, olddelta, oldprob, ind, R, keep,
       bart_params, var_params, phi_params);
 

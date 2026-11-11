@@ -5,9 +5,9 @@
  *
  *  used for the modified-Cholesky off-diagonals phi_jk(Z) where the regressor
  *  a_i is another coordinate's residual and var_i its innovation variance
- *  (appendix_sampler, app:hs_phi).  Subclass of `bart` exactly as heterbart
- *  is: same data and ownership rules; draw() takes the regressor and variance
- *  arrays per sweep.  f(i) returns f(x_i), not a_i f(x_i).
+ *  (appendix_sampler, app:hs_phi).  Subclass of `bart` like varbart: same
+ *  data and ownership rules; draw() takes the regressor and variance arrays
+ *  per sweep.  f(i) returns f(x_i), not a_i f(x_i).
  */
 #ifndef GUARD_vcbart_h
 #define GUARD_vcbart_h

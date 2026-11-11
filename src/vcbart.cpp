@@ -10,7 +10,7 @@ void vcbart::pr()
    bart::pr();
 }
 //--------------------------------------------------
-// Backfitting sweep (as heterbart::draw).  The partial residual removes the
+// Backfitting sweep (as bart::draw).  The partial residual removes the
 // other trees' contribution scaled by the regressor:
 //   r_i = y_i - a_i * sum_{b != j} g_b(x_i).
 void vcbart::draw(double* reg, double* var, rn& gen)

@@ -22,7 +22,7 @@ test_that("vclh matches the exact leaf marginal up to unit constants", {
                tolerance = 1e-10)
   # A leaf with no information (all regressors zero) has marginal one.
   expect_equal(vclh_R(0, 0, tau), 0)
-  # Same kernel as heterbart's weighted mean at w = a^2 / v, ytilde = y / a.
+  # Same kernel as heterlh's weighted mean at w = a^2 / v, ytilde = y / a.
   w <- a^2 / v
   expect_equal(c(P, b), c(sum(w), sum(w * (y / a))))
 })#TEST_THAT

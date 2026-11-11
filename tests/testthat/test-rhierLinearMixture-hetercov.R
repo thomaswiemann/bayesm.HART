@@ -6,7 +6,7 @@
 #   * end-to-end execution via the user wrapper,
 #   * class assignment ("bayesm.HART.HeterCov" marker) and return-slot shape,
 #   * predict.* dispatch on the marker class for "DeltaZ" and "DeltaZ+mu",
-#   * lambda auto-calibration message under r_verbose = TRUE.
+#   * the covariance-tree banner under r_verbose = TRUE.
 #
 # Recovery accuracy is exercised by dev/smoke-heter-linear.R.
 
@@ -90,6 +90,7 @@ test_that("vartree only with nvar > 1 auto-promotes to full Cholesky", {
   expect_s3_class(fit, "rhierLinearMixture")
 
   expected_slots <- c("bart_models", "var_models", "phi_models", "mu_draw",
+                      "mean_scale_draw",
                       "varcount", "varprob", "var_varcount", "var_varprob",
                       "betadraw", "taudraw", "loglike", "hart")
   expect_named(fit, expected_slots, ignore.order = TRUE)
@@ -97,14 +98,14 @@ test_that("vartree only with nvar > 1 auto-promotes to full Cholesky", {
   expect_null(fit$Deltadraw)
 
   ncoef <- ncol(sim$regdata[[1]]$X)
-  # Auto-promotion: phi_models is non-null and jagged.
+  # phi_models is jagged.
   expect_length(fit$phi_models, ncoef)
   expect_length(fit$phi_models[[2]], 1L)
 
   expect_equal(dim(fit$mu_draw),  c(20L, ncoef))
   expect_equal(dim(fit$betadraw), c(length(sim$regdata), ncoef, 20L))
   expect_equal(dim(fit$taudraw),  c(20L, length(sim$regdata)))
-  expect_length(fit$bart_models, ncoef)
+  expect_equal(fit$bart_models$treedraws$leaf_dim, ncoef)
   expect_length(fit$var_models,  ncoef)
 
   expect_s3_class(fit$mu_draw, "mcmc")
@@ -131,7 +132,7 @@ test_that("vartree only with ncoef == 1 stays diagonal (scalar case)", {
 
   expect_s3_class(fit, "rhierLinearMixtureHeterCov")
   expect_null(fit$phi_models)
-  expect_length(fit$bart_models, 1L)
+  expect_equal(fit$bart_models$treedraws$leaf_dim, 1L)
   expect_length(fit$var_models,  1L)
   expect_equal(dim(fit$mu_draw), c(20L, 1L))
 })
@@ -222,12 +223,12 @@ test_that("predict.rhierLinearMixture dispatches via marker class for heter-cov"
   }
 })
 
-# --- lambda auto-calibration --------------------------------------------------
-test_that("auto-calibrated lambda is announced when Prior$vartree$lambda is NULL", {
+# --- verbose banner -----------------------------------------------------------
+test_that("verbose output lists the covariance-tree priors", {
   sim   <- make_small_linear_sim()
   Prior <- list(ncomp = 1L, hart_model = "direct",
                 bart    = list(num_trees = 5L),
-                vartree = list(num_trees = 5L))   # no lambda -> auto
+                vartree = list(num_trees = 5L))
   Mcmc  <- list(R = 6L, keep = 1L, nprint = 0L)
 
   out <- capture.output({
@@ -237,10 +238,8 @@ test_that("auto-calibrated lambda is announced when Prior$vartree$lambda is NULL
   })
 
   expect_s3_class(fit, "rhierLinearMixtureHeterCov")
-  expect_true(any(grepl("auto-calibrated", out)),
-              info = "expected lambda auto-calibration line in verbose output")
-  expect_true(any(grepl("Heteroscedastic Sigma", out)),
-              info = "expected heter-cov banner in verbose output")
+  expect_true(any(grepl("Covariance trees", out)))
+  expect_true(any(grepl("vartree: num_trees = 5", out)))
 })
 
 # --- OLS warm-start verification ---------------------------------------------
@@ -249,8 +248,6 @@ test_that("Beta_init warm-start gives finite betadraws even with tiny R", {
   Prior <- list(ncomp = 1L, hart_model = "direct",
                 bart    = list(num_trees = 5L),
                 vartree = list(num_trees = 5L))
-  # Tiny R: zero-init would give wildly inflated d_j(.) on iter 0; warm-start
-  # via per-unit OLS keeps everything finite from the first sample.
   Mcmc  <- list(R = 2L, keep = 1L, nprint = 0L)
 
   capture.output({

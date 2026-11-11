@@ -32,17 +32,18 @@ make_mnl_sim <- function(seed = 42L, nlgt = 10L, nvar = 2L, nz = 2L,
 # ===========================================================================
 
 test_that("cov_helpers roundtrip: rootpi * t(rootpi) == Sigma^{-1}", {
-  # Use the exported C++ test harness for cov_helpers
   D_vals <- c(2.0, 3.0)
   Phi_vals <- matrix(c(0, 0.5, 0, 0), 2, 2)
   v <- c(1.0, 2.0)
-  mu <- c(0.0, 0.0)
 
-  res <- cov_helpers_test(D_vals, Phi_vals, v, mu, diagonal = FALSE)
+  res <- cov_eval_R(D_vals, Phi_vals, v, diagonal = FALSE)
 
-  # Contract: rootpi * t(rootpi) = Sigma^{-1} (must be symmetric PD)
+  # rootpi * t(rootpi) = L^T D^{-1} L with L = I - lower(phi).
+  L <- diag(2); L[2, 1] <- -0.5
   rootpi <- res$rootpi
   Q <- rootpi %*% t(rootpi)
+  expect_equal(Q, t(L) %*% diag(1 / D_vals) %*% L, tolerance = 1e-12)
+  expect_equal(res$Lv, L %*% v, tolerance = 1e-12, ignore_attr = TRUE)
   expect_true(isSymmetric(Q, tol = 1e-10),
               label = "rootpi * t(rootpi) must be symmetric")
   evals <- eigen(Q, symmetric = TRUE, only.values = TRUE)$values
@@ -58,9 +59,8 @@ test_that("cov_helpers diagonal case: rootpi * t(rootpi) == diag(1/D)", {
   D_vals <- c(4.0, 9.0)
   Phi_vals <- matrix(0, 2, 2)
   v <- c(1.5, -0.5)
-  mu <- c(0, 0)
 
-  res <- cov_helpers_test(D_vals, Phi_vals, v, mu, diagonal = TRUE)
+  res <- cov_eval_R(D_vals, Phi_vals, v, diagonal = TRUE)
 
   rootpi <- res$rootpi
   Q <- rootpi %*% t(rootpi)

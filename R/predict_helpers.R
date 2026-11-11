@@ -65,7 +65,8 @@
 
 .has_tree_payload <- function(object) {
   if (inherits(object, "bayesm.HART.HeterCov")) {
-    return(!is.null(object$bart_models) && !is.null(object$var_models))
+    return(!is.null(object$bart_models$treedraws) &&
+             !is.null(object$var_models))
   }
   !is.null(object$bart_models)
 }
@@ -79,10 +80,8 @@
 #   (b) Sum-of-trees, fixed Sigma (object$bart_models, object$nmix):
 #         Delta(Z*) = Sigma_r^{1/2} sum-of-trees(Z*),   with Sigma_r^{1/2}
 #         derived from nmix$compdraw[[r]][[1]]$rooti (= Sigma_r^{-1/2}).
-#   (c) Heteroscedastic Sigma(Z*) (object inherits "bayesm.HART.HeterCov"):
-#         Delta(Z*) = Sigma(Z*)^{1/2} sum-of-trees(Z*) where
-#         Sigma(Z*)^{1/2} = L(Z*)^{-1} D(Z*)^{1/2} is rebuilt per draw from
-#         var_models (product-of-trees -> d) and phi_models (sum-of-trees -> phi).
+#   (c) Direct HART (object inherits "bayesm.HART.HeterCov"):
+#         Delta(Z*) = f(Z*), the vector-leaf sum of trees in coefficient units.
 .calculate_delta_z <- function(object, newdata, burn, r_verbose,
                                hetercov_comps = NULL,
                                force_tree_eval = FALSE, ...) {
@@ -199,47 +198,25 @@
   return(pred)
 }
 
-# Heter-cov path uses precomputed components from .hetercov_components(); see
-# below for the data layout.  Sigma(Z*)^{1/2} = L^{-1} D^{1/2} acts on a vector
-# in O(D^2): scale by sqrt(d), then apply unit-lower-triangular inverse
-# (L y = x solved by forward substitution; L = I - lower(phi)).
+# Direct HART: Delta(Z*) = f(Z*) from the vector-leaf ensemble; the
+# covariance trees do not enter.
 .delta_z_hetercov <- function(object, Z, npred, nvar, ndraws_total, r_verbose,
                               hetercov_comps = NULL) {
-  comps <- if (is.null(hetercov_comps))
+  comps <- hetercov_comps %||%
     .hetercov_components(object, Z, npred, nvar, ndraws_total, r_verbose)
-  else
-    hetercov_comps
-  pred     <- array(0, dim = c(npred, nvar, ndraws_total))
-  use_full <- comps$use_full
-  for (s in seq_len(ndraws_total)) {
-    for (i in seq_len(npred)) {
-      d_is <- comps$d_arr[i, , s]
-      if (any(!is.finite(d_is))) {
-        stop(sprintf("DeltaZ heter-cov prediction failed at draw %d, unit %d: non-finite d(Z) values.",
-                     s, i))
-      }
-      x <- comps$delta_arr[i, , s] * sqrt(d_is)  # D^{1/2} delta
-      if (use_full) {
-        for (j in 2:nvar) {
-          x[j] <- x[j] + sum(comps$phi_arr[i, j, seq_len(j - 1), s] *
-                             x[seq_len(j - 1)])
-        }
-      }
-      pred[i, , s] <- x
-    }
-  }
-  return(pred)
-}
+  comps$delta_arr
+}#.DELTA_Z_HETERCOV
 
-# Evaluate every BART / varBART / phi-BART ensemble in `object` at newdata
-# locations Z.  Returns a list of (npred x nvar x ndraws_total) arrays plus a
-# (npred x nvar x nvar x ndraws_total) phi_arr (or NULL if diagonal-only).
-# Centralized so that .delta_z_hetercov() and the heter-cov prior choice_probs path
-# can share a single tree-evaluation pass.
+# Evaluate the direct-model ensembles at Z: delta_arr = f(Z) from the
+# vector-leaf trees (npred x nvar x ndraws), d_arr from the variance trees,
+# and phi_arr (npred x nvar x nvar x ndraws, NULL when diagonal) from the
+# off-diagonal trees.  One tree-evaluation pass shared by the DeltaZ, SigmaZ,
+# and prior predictive paths.
 .hetercov_components <- function(object, Z, npred, nvar, ndraws_total,
                                  r_verbose) {
-  if (is.null(object$bart_models) || length(object$bart_models) != nvar)
-    stop(sprintf("Heter-cov object missing bart_models or wrong length (expected %d).",
+  td <- object$bart_models$treedraws
+  if (is.null(td) || !identical(as.integer(td$leaf_dim), as.integer(nvar)))
+    stop(sprintf("Direct HART object needs bart_models with leaf_dim %d.",
                  nvar))
   if (is.null(object$var_models) || length(object$var_models) != nvar)
     stop(sprintf("Heter-cov object missing var_models or wrong length (expected %d).",
@@ -249,14 +226,11 @@
     stop(sprintf("phi_models length (%d) != nvar (%d)",
                  length(object$phi_models), nvar))
 
-  delta_arr <- array(0, dim = c(npred, nvar, ndraws_total))
+  if (r_verbose) cat("Predicting f(Z) (mean trees)\n")
+  delta_arr <- pwvecbart(Z, td)
   d_arr     <- array(0, dim = c(npred, nvar, ndraws_total))
   for (j in seq_len(nvar)) {
-    if (r_verbose) cat("Predicting delta_", j, " (mean tree)  / d_", j,
-                       " (var tree)\n", sep = "")
-    delta_arr[, j, ] <- t(pwbart(
-      x.test = Z, treedraws = object$bart_models[[j]]$treedraws,
-      mu = 0, transposed = FALSE, dodraws = TRUE))
+    if (r_verbose) cat("Predicting d_", j, " (var tree)\n", sep = "")
     d_arr[, j, ] <- t(pwvarbart(
       x.test = Z, treedraws = object$var_models[[j]]$treedraws,
       transposed = FALSE, dodraws = TRUE))
