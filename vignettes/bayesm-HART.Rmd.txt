@@ -18,6 +18,14 @@ knitr::opts_chunk$set(
   fig.path = "figures/mnl-",
   eval = TRUE
 )
+
+# Seed every chunk from its label, so results do not depend on what ran
+# before it, in particular on whether the model cache was warm.
+knitr::knit_hooks$set(chunk_seed = function(before, options, envir) {
+  if (before) set.seed(20261112L + sum(utf8ToInt(options$label)))
+})
+knitr::opts_chunk$set(chunk_seed = TRUE)
+
 ```
 
 ## Introduction
@@ -84,8 +92,8 @@ We apply two models to the conjoint data: the HART logit model (Wiemann, 2025) a
 The code below sets MCMC hyperparameters and runs both samplers. For
 vignette runtime, we use 5,000 iterations (longer chains are recommended
 in practice). Both models are estimated with `rhierMnlRwMixture`; the
-HART specification adds the `bart` entry in `Prior`. We use 20 trees per
-factor and keep other hyperparameters at defaults.
+HART specification sets `hart_model = "normalized"` in `Prior`. We use 20
+trees per factor and keep other hyperparameters at defaults.
 
 Because this walkthrough focuses on in-sample predictions at observed respondent covariates `Z`, we set `store_trees = FALSE` for HART to skip tree serialization during fitting and use the cached unique-`Z` prediction path. If you need out-of-sample predictions on unseen `Z*` or `mode = "prior"` with `type = "choice_probs"`, fit with `store_trees = TRUE`.
 
@@ -117,7 +125,8 @@ if (!model_cache_ok) {
   # Fit HART Logit (cache-first prediction mode; no tree serialization)
   out_hart <- bayesm.HART::rhierMnlRwMixture(
     Data,
-    Prior = list(ncomp = 1, bart = list(num_trees = 20), store_trees = FALSE),
+    Prior = list(ncomp = 1, hart_model = "normalized",
+                 bart = list(num_trees = 20), store_trees = FALSE),
     Mcmc
   )
 

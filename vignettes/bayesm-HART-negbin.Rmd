@@ -24,13 +24,26 @@ uses the linear form `Delta^\\top Z_i`.
 The `detailing` dataset contains a balanced panel of 1,000 physicians observed over 23 months. For each physician-month, we observe prescriptions written (`scripts`), detailing visits (`detailing`), and lagged prescriptions (`lagged_scripts`). Physician demographics (`generalphys`, `specialist`, `mean_samples`) serve as covariates $Z_i$.
 
 
-```r
+``` r
 # Load dependencies
 library(bayesm.HART)
 library(bayesm)
+#> 
+#> Attaching package: 'bayesm'
+#> The following objects are masked from 'package:bayesm.HART':
+#> 
+#>     rhierLinearMixture, rhierMnlRwMixture, rhierNegbinRw
 # Data wrangling and plotting utilities
 library(tidyr)
 library(dplyr)
+#> 
+#> Attaching package: 'dplyr'
+#> The following objects are masked from 'package:stats':
+#> 
+#>     filter, lag
+#> The following objects are masked from 'package:base':
+#> 
+#>     intersect, setdiff, setequal, union
 library(ggplot2)
 
 # Load pharmaceutical detailing data
@@ -64,7 +77,7 @@ Data <- list(regdata = regdata, Z = Z)
 We fit both the HART model (Wiemann, 2025) and a conventional linear hierarchical model (Rossi et al., 2009). Both estimate physician-specific coefficients $\beta_i$ via hierarchical negative binomial regression with shared overdispersion $\alpha$; they differ only in their specification of $\Delta(\cdot)$. Note that `rhierNegbinRw` uses Metropolis-Hastings (the negative binomial likelihood is not conjugate), so a longer chain is recommended.
 
 
-```r
+``` r
 # MCMC parameters
 R <- 10000
 burn <- 1000
@@ -93,7 +106,8 @@ if (!model_cache_ok) {
     Data = Data, Mcmc = Mcmc,
     Prior = list(
       ncomp = 1,
-      bart = list(num_trees = 20) # new HART prior parameters
+      hart_model = "normalized",
+      bart = list(num_trees = 20)
     ),
     r_verbose = FALSE
   )
@@ -115,7 +129,7 @@ if (!model_cache_ok) {
 We use the log-likelihood trace as a basic MCMC diagnostic.
 
 
-```r
+``` r
 burnin_draws <- ceiling(burn / keep) 
 
 mcmc_data <- data.frame(
@@ -147,7 +161,7 @@ ggplot(mcmc_data, aes(x = Iteration, y = LogLikelihood, color = Model)) +
 We compare posterior distributions of the detailing coefficient for two physicians: Physician 840 (GP, no samples) and Physician 888 (specialist, moderate samples).
 
 
-```r
+``` r
 selected_phys <- c(840, 888)
 coef_indx <- 2 # "Detailing" coefficient
 coef_name <- "Detailing"
@@ -214,7 +228,7 @@ ggplot(beta_draws_long, aes(x = Coefficient, fill = Group)) +
 </div>
 
 
-```r
+``` r
 # Extract posterior draws for the selected physicians and coefficient
 hart_draws_840 <- out_hart$betadraw[840, coef_indx, -c(1:burnin_draws)]
 hart_draws_888 <- out_hart$betadraw[888, coef_indx, -c(1:burnin_draws)]
@@ -233,10 +247,10 @@ summary_results <- data.frame(
 
 print(summary_results, digits = 3)
 #>    Model Physician     Mean     SD
-#> 1 Linear       840 -0.00713 0.1242
-#> 2 Linear       888  0.01337 0.0791
-#> 3   HART       840  0.02199 0.1263
-#> 4   HART       888  0.01213 0.0791
+#> 1 Linear       840 -0.01508 0.1324
+#> 2 Linear       888  0.00779 0.0796
+#> 3   HART       840  0.02373 0.1272
+#> 4   HART       888  0.02577 0.0803
 ```
 
 Both models produce similar individual-level estimates for the selected
@@ -249,14 +263,14 @@ physician level in this application.
 The models differ in how they characterize the expected coefficient $\Delta(Z)$ for a representative physician with demographics $Z$. We compare these segment-level predictions for the same two physicians, using the `predict` function.
 
 
-```r
+``` r
 # We predict for all physicians
 DeltaZ_hat_hart <- predict(out_hart, newdata = list(Z = Z), type = "DeltaZ+mu", burn = burnin_draws)
 DeltaZ_hat_lin <- predict(out_lin, newdata = list(Z = Z), type = "DeltaZ+mu", burn = burnin_draws)
 ```
 
 
-```r
+``` r
 segment_phys <- selected_phys  # Same physicians as individual-level analysis
 deltaZ_draws <- bind_rows(
   as.data.frame(t(DeltaZ_hat_hart[segment_phys, coef_indx, ])) %>% 
@@ -319,7 +333,7 @@ ggplot(deltaZ_draws_long, aes(x = Coefficient, fill = Group)) +
 </div>
 
 
-```r
+``` r
 # Extract expected coefficients for the two segments
 deltaZ_summary <- data.frame(
   Segment = c("Segment 1 (GP, No Samples)", 
@@ -336,11 +350,11 @@ deltaZ_summary <- data.frame(
 
 print(deltaZ_summary, digits = 3)
 #>                                    Segment Linear_Mean Linear_SD HART_Mean
-#> 1               Segment 1 (GP, No Samples)     0.03234    0.0117    0.0548
-#> 2 Segment 2 (Specialist, Moderate Samples)     0.00941    0.0201    0.0224
+#> 1               Segment 1 (GP, No Samples)      0.0321    0.0118    0.0559
+#> 2 Segment 2 (Specialist, Moderate Samples)      0.0096    0.0198    0.0253
 #>   HART_SD
-#> 1  0.0171
-#> 2  0.0297
+#> 1  0.0179
+#> 2  0.0321
 
 # Calculate differences between segments
 cat("\nDifferences between segments:\n")
@@ -348,10 +362,10 @@ cat("\nDifferences between segments:\n")
 #> Differences between segments:
 cat("Linear approach difference:", 
     deltaZ_summary$Linear_Mean[2] - deltaZ_summary$Linear_Mean[1], "\n")
-#> Linear approach difference: -0.02292841
+#> Linear approach difference: -0.02249847
 cat("HART approach difference:", 
     deltaZ_summary$HART_Mean[2] - deltaZ_summary$HART_Mean[1], "\n")
-#> HART approach difference: -0.03242228
+#> HART approach difference: -0.03068515
 ```
 
 For the selected physicians, segment-level posterior locations are

@@ -295,7 +295,8 @@ test_that("DeltaZ is f(Z) from the mean trees alone and matches the cache", {
   newdata <- list(Z = sim$Z)
   from_cache <- predict(fit, newdata = newdata, type = "DeltaZ", burn = 0L,
                         r_verbose = FALSE)
-  from_trees <- bayesm.HART:::pwvecbart(sim$Z, fit$bart_models$treedraws)
+  from_trees <- bayesm.HART:::.pw_vec_trees(sim$Z, fit$bart_models$treedraws,
+                                            dim(fit$betadraw)[2])
   expect_equal(from_cache, from_trees, tolerance = 1e-7, ignore_attr = TRUE)
   # Swapping in other covariance trees leaves DeltaZ unchanged.
   mixed <- fit
@@ -323,6 +324,6 @@ test_that("verbose output lists the covariance-tree priors", {
                              r_verbose = TRUE)
   })
   expect_true(any(grepl("Covariance trees \\(full Cholesky\\)", out)))
-  expect_true(any(grepl("a_v = 3, v0 = 0.5 0.5", out)))
+  expect_true(any(grepl("vartree: num_trees = 5, tau = 1 .*v0 = 0.5 0.5", out)))
   expect_equal(fit$hart$priors$vartree$v0, c(0.5, 0.5))
 })

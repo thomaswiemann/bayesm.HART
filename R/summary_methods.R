@@ -19,7 +19,7 @@
   ndraws <- dim(object$betadraw)[3]
   if (is.null(coefs)) coefs <- seq_len(nvar)
 
-  is_heter <- inherits(object, "bayesm.HART.HeterCov")
+  is_heter <- .hart_cov_kind(object) == "heteroskedastic"
 
   # --- Obtain DeltaZ draws ---
   # When Z is NULL, work directly on unique-row cache (zero expansion).
@@ -121,7 +121,7 @@
   out$nvar           <- nvar
   out$ndraws         <- ndraws
   out$is_bart        <- !is.null(object$bart_models)
-  out$is_heter       <- inherits(object, "bayesm.HART.HeterCov")
+  out$is_heter       <- .hart_cov_kind(object) == "heteroskedastic"
 
   # --- Acceptance rates (MNL & NegBin only) ---
   if (!is.null(object$acceptrbeta))
@@ -140,7 +140,7 @@
     out$varprob  <- object$varprob
   }
 
-  # --- R² ---
+  # --- R^2 ---
   # Auto-compute when: (a) Z supplied, or (b) cached DeltaZ available
   cache <- attr(object, "hart_cache", exact = TRUE)
   has_cache <- !is.null(cache$DeltaZ_unique_draws)
@@ -169,7 +169,7 @@ print.summary.rhierModel <- function(x, digits = 3, ...) {
     cat("  Alpha acceptance rate:", round(x$accept_alpha, 1), "%\n")
 
   if (!is.null(x$r2)) {
-    cat("\nVariance Explained (R²):\n")
+    cat("\nVariance Explained (R^2):\n")
     r2_pct <- round(x$r2$R2_mean * 100, digits)
     for (i in seq_along(r2_pct)) {
       label <- if (x$r2$heteroscedastic) " (per-respondent mean)" else ""
@@ -199,15 +199,15 @@ print.summary.rhierModel <- function(x, digits = 3, ...) {
 #' Summary Method for Hierarchical Models
 #'
 #' Computes model diagnostics including acceptance rates, posterior mean betas,
-#' BART variable importance, and Bayesian R².
+#' BART variable importance, and Bayesian R^2.
 #'
 
 #'
 #' @param object A fitted hierarchical model object.
-#' @param Z Optional matrix of unit-level characteristics for R² computation.
-#'   If \code{NULL} and cached DeltaZ draws exist, in-sample R² is still computed.
+#' @param Z Optional matrix of unit-level characteristics for R^2 computation.
+#'   If \code{NULL} and cached DeltaZ draws exist, in-sample R^2 is still computed.
 #' @param burn Number of initial draws to discard (thinned units).
-#' @param coefs Integer vector of coefficient indices for R². Default: all.
+#' @param coefs Integer vector of coefficient indices for R^2. Default: all.
 #' @param r_verbose Print progress? Default FALSE.
 #' @param ... Ignored.
 #' @return An object of class `summary.rhierModel` with print method.

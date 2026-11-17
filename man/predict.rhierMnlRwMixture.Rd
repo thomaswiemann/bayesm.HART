@@ -41,9 +41,10 @@ for unit \code{i}. Also requires \code{newdata$p}, the number of alternatives.
 \item \code{"DeltaZ+mu"}: Expected part-worths plus the mean of the unobserved heterogeneity component, \eqn{\Delta(Z) + \mu_1}. The package supports only \code{ncomp = 1}.
 \item \code{"choice_probs"}: Predictive choice probabilities (use with
 \code{mode = "posterior"} or \code{mode = "prior"}).
-\item \code{"SigmaZ"}: Draws of the heteroscedastic covariance matrix \eqn{\Sigma(Z)}.
-Available only for models fit with \code{Prior$vartree} (class marker
-\code{"bayesm.HART.HeterCov"}).
+\item \code{"SigmaZ"}: Draws of the covariance matrix \eqn{\Sigma(Z)}. Under
+\code{hart_model = "direct"} with \code{hart_cov = "heteroskedastic"} these vary
+with \code{Z}; otherwise the single \eqn{\Sigma} draw is repeated on every
+row of \code{newdata$Z}.
 }}
 
 \item{burn}{Integer, number of initial MCMC draws to discard.}
@@ -60,8 +61,11 @@ per posterior draw for \code{mode = "prior"} and \code{type = "choice_probs"}.}
 
 \item{r_verbose}{Logical, print progress updates?}
 
+\item{force_tree_eval}{Logical. Evaluate the stored trees at \code{newdata$Z}
+even when the cached draws cover every row (default \code{FALSE}).}
+
 \item{...}{Additional arguments passed to underlying prediction functions
-(e.g., \code{mc.cores}, \code{verbose} for BART \code{DeltaZ} predictions via \code{pwbart}).}
+(e.g., \code{mc.cores}, \code{verbose} for tree-based \code{DeltaZ} predictions).}
 }
 \value{
 Depends on \code{type}:

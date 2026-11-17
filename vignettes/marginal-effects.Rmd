@@ -19,11 +19,19 @@ specification against a linear hierarchical specification.
 We load `bayesm.HART` and other necessary packages for data manipulation and plotting.
 
 
-```r
+``` r
 library(bayesm.HART)
 library(tidyr)
 library(ggplot2)
 library(dplyr)
+#> 
+#> Attaching package: 'dplyr'
+#> The following objects are masked from 'package:stats':
+#> 
+#>     filter, lag
+#> The following objects are masked from 'package:base':
+#> 
+#>     intersect, setdiff, setequal, union
 ```
 
 ## Data Simulation
@@ -33,7 +41,7 @@ generating process uses a nonlinear Friedman function linking `Z` to the
 systematic component of `beta`.
 
 
-```r
+``` r
 ## ---- Dimensions ----
 nlgt = 300      # num of cross sectional units
 nT = 20         # num of periods (observations) per unit
@@ -55,7 +63,7 @@ sigma_inv_diag_val = 1   # Precision for eps_i draws (assuming diagonal Sigma)
 ```
 
 
-```r
+``` r
 ## ---- Simulate Data using Friedman function ----
 sim_output <- sim_hier_mnl(
     nlgt = nlgt,
@@ -94,7 +102,7 @@ We use reduced MCMC iterations for faster vignette execution.
 ### Linear Model Estimation
 
 
-```r
+``` r
 ## ---- MCMC Parameters (Reduced for Vignette) ----
 R_linear = 2000  # Low iterations for vignette build speed
 keep_linear = 10 # Keep every 10th draw
@@ -116,7 +124,7 @@ if (file.exists(model_cache_file)) {
     cat("Loaded cached model draws from:", model_cache_file, "\n")
   }
 }
-#> Loaded cached model draws from: C:\Users\twiem\AppData\Local/R/cache/R/bayesm.HART/vignettes/mfx-models-R2000-2000-keep10-10.rds
+#> Loaded cached model draws from: /root/.cache/R/bayesm.HART/vignettes/mfx-models-R2000-2000-keep10-10.rds
 
 if (!model_cache_ok) {
   ## ---- Prior Specification ----
@@ -144,7 +152,7 @@ message("Linear model estimation complete.")
 ### BART Model Estimation
 
 
-```r
+``` r
 ## ---- MCMC Parameters (Reduced for Vignette) ----
 R_bart = 2000       # Low iterations for vignette build speed
 keep_bart = 10      # Keep every draw
@@ -154,11 +162,11 @@ if (!model_cache_ok) {
   ## ---- Prior Specification (including BART hyperparameters) ----
   Prior_bart = list(
     ncomp = 1,
+    hart_model = "normalized",
     bart = list(num_trees = 50, # Number of trees in the BART sum
                 power = 2,       # Tree depth penalization
                 base = 0.95,     # Tree depth penalization
-                # Prior sd for terminal node params (scaled by num_trees)
-                tau = 2 / sqrt(50), 
+                tau = 2,         # Prior sd of each f*_d(Z) (ensemble scale)
                 numcut = 50,     # Max number of cutpoints per variable
                 sparse = FALSE    # Use sparsity inducing prior?
                ) # BART list end
@@ -189,7 +197,7 @@ message("BART model estimation complete.")
 We now calculate the marginal effect of one specific covariate (`Z[3]`) on one specific coefficient (`beta_1`). We define a grid of values for `Z[3]` while holding other covariates at their means.
 
 
-```r
+``` r
 ## ---- Setup Parameters ----
 # target_covariate_index_mfx <- 3     # Now defined inside loop
 n_grid_points <- 10                # Number of points for the covariate grid
@@ -204,7 +212,7 @@ covariate_indices_to_plot <- c(2, 3, 4)
 Now we loop through the selected covariates, calculate the marginal effects for each, and plot the results.
 
 
-```r
+``` r
 # Initialize an empty list to store the plots
 plot_list <- list()
 
@@ -350,7 +358,7 @@ for (target_covariate_index_mfx in covariate_indices_to_plot) {
 ```
 
 
-```r
+``` r
 # --- Now print all stored plots --- 
 message("\n--- Displaying Stored Plots ---")
 #> 
@@ -360,16 +368,21 @@ for (plot_name in names(plot_list)){
     print(plot_list[[plot_name]])
 }
 #> Plotting results for: Z2
-#> Plotting results for: Z3
 ```
 
 ![plot of chunk display-mfx-plots](figures/mfx-display-mfx-plots-1.png)
 
 ```
+#> Plotting results for: Z3
+```
+
+![plot of chunk display-mfx-plots](figures/mfx-display-mfx-plots-2.png)
+
+```
 #> Plotting results for: Z4
 ```
 
-![plot of chunk display-mfx-plots](figures/mfx-display-mfx-plots-2.png)![plot of chunk display-mfx-plots](figures/mfx-display-mfx-plots-3.png)
+![plot of chunk display-mfx-plots](figures/mfx-display-mfx-plots-3.png)
 
 These plots show estimated average effects of `Z[2]`, `Z[3]`, and
 `Z[4]` on the target coefficient (`beta_1`) across each covariate range.

@@ -23,12 +23,25 @@ The first two models differ in how they model the representative consumer. The t
 ## Conjoint Data of Allenby and Ginter (1995)
 
 
-```r
+``` r
 # Load dependencies
 library(bayesm.HART)
 library(bayesm)
+#> 
+#> Attaching package: 'bayesm'
+#> The following objects are masked from 'package:bayesm.HART':
+#> 
+#>     rhierLinearMixture, rhierMnlRwMixture, rhierNegbinRw
 library(tidyr)
 library(dplyr)
+#> 
+#> Attaching package: 'dplyr'
+#> The following objects are masked from 'package:stats':
+#> 
+#>     filter, lag
+#> The following objects are masked from 'package:base':
+#> 
+#>     intersect, setdiff, setequal, union
 library(ggplot2)
 
 # Load and prepare bank data
@@ -53,7 +66,7 @@ Data <- list(lgtdata = lgtdata, Z = Z, p = 2)
 ## MCMC Estimation: Three Models
 
 
-```r
+``` r
 # MCMC parameters
 R <- 5000
 burn <- 500
@@ -99,6 +112,7 @@ if (!model_cache_ok) {
     Data = Data, Mcmc = Mcmc,
     Prior = list(
       ncomp = 1,
+      hart_model = "normalized",
       bart = list(num_trees = 20, sparse = FALSE)
     ),
     r_verbose = FALSE
@@ -109,6 +123,7 @@ if (!model_cache_ok) {
     Data = Data, Mcmc = Mcmc,
     Prior = list(
       ncomp = 1,
+      hart_model = "direct",
       bart = list(num_trees = 20, sparse = FALSE),
       vartree = list(num_trees = 20, sparse = FALSE),
       phitree = list(num_trees = 20, sparse = FALSE)
@@ -132,7 +147,7 @@ if (!model_cache_ok) {
 We first compare log-likelihood traces for all three models.
 
 
-```r
+``` r
 burnin_draws <- ceiling(burn / keep)
 
 mcmc_data <- data.frame(
@@ -174,7 +189,7 @@ Following the discussion in Wiemann (2025), we examine two consumer segments def
 We focus on one focal coefficient: `Bank Out-of-State`.
 
 
-```r
+``` r
 selected_resp <- c(146, 580)
 coef_indx <- 10
 coef_name <- colnames(bank$choiceAtt[, 3:16])[coef_indx]
@@ -221,7 +236,7 @@ Before moving to segment-share implications, we focus on one coefficient:
 the expected part-worth for `Bank Out-of-State` in the two selected segments.
 
 
-```r
+``` r
 # Predict only for the two highlighted segments to keep memory use modest.
 Data_seg <- list(Z = Z[selected_resp, , drop = FALSE])
 segment_cache_file <- file.path(
@@ -281,7 +296,7 @@ if (!segment_cache_ok) {
 ```
 
 
-```r
+``` r
 segment_coef_df <- bind_rows(
   data.frame(
     Model = "Linear",
@@ -349,7 +364,7 @@ ggplot(segment_coef_df, aes(x = Coefficient, fill = Segment)) +
 </div>
 
 
-```r
+``` r
 coef_summary <- segment_coef_df %>%
   group_by(Model, Segment) %>%
   summarise(
@@ -363,12 +378,12 @@ print(coef_summary, digits = 3)
 #> # A tibble: 6 × 6
 #>   Model                Segment    Mean Median   P05   P95
 #>   <fct>                <fct>     <dbl>  <dbl> <dbl> <dbl>
-#> 1 Linear               Segment 1 -4.11  -4.09 -5.05 -3.17
-#> 2 Linear               Segment 2 -4.06  -4.05 -4.55 -3.57
-#> 3 HART                 Segment 1 -5.25  -5.16 -6.68 -4.06
-#> 4 HART                 Segment 2 -2.99  -2.98 -3.95 -2.11
-#> 5 Heteroskedastic HART Segment 1 -6.19  -6.09 -7.58 -4.95
-#> 6 Heteroskedastic HART Segment 2 -3.82  -3.84 -4.85 -2.82
+#> 1 Linear               Segment 1 -4.21  -4.23 -5.41 -2.99
+#> 2 Linear               Segment 2 -3.96  -3.96 -4.63 -3.31
+#> 3 HART                 Segment 1 -5.01  -5.01 -6.63 -3.40
+#> 4 HART                 Segment 2 -2.90  -2.90 -3.86 -1.97
+#> 5 Heteroskedastic HART Segment 1 -5.89  -5.93 -6.74 -5.04
+#> 6 Heteroskedastic HART Segment 2 -3.83  -3.77 -4.45 -3.27
 
 coef_diff_lin <- DeltaZ_lin[2, coef_indx, ] - DeltaZ_lin[1, coef_indx, ]
 coef_diff_hart <- DeltaZ_hart[2, coef_indx, ] - DeltaZ_hart[1, coef_indx, ]
@@ -376,11 +391,11 @@ coef_diff_heter <- DeltaZ_heter[2, coef_indx, ] - DeltaZ_heter[1, coef_indx, ]
 cat("Pr(Expected part-worth Segment 2 > Segment 1):\n")
 #> Pr(Expected part-worth Segment 2 > Segment 1):
 cat("  Linear =", round(mean(coef_diff_lin > 0), 3), "\n")
-#>   Linear = 0.522
+#>   Linear = 0.654
 cat("  HART =", round(mean(coef_diff_hart > 0), 3), "\n")
-#>   HART = 0.991
+#>   HART = 0.964
 cat("  Heteroskedastic HART =", round(mean(coef_diff_heter > 0), 3), "\n")
-#>   Heteroskedastic HART = 0.992
+#>   Heteroskedastic HART = 1
 ```
 
 ## Covariance Heterogeneity: $\Sigma(Z)$ vs $\Sigma$
@@ -394,7 +409,7 @@ variance distribution; heteroskedastic HART yields segment-specific
 distributions.
 
 
-```r
+``` r
 extract_homoskedastic_var_draws <- function(fit, coef_indx, burnin_draws) {
   compdraw <- fit$nmix$compdraw
   if (is.null(compdraw) || length(compdraw) == 0) return(numeric(0))
@@ -490,7 +505,7 @@ ggplot(var_df, aes(x = Variance, fill = Segment)) +
 </div>
 
 
-```r
+``` r
 variance_summary <- var_df %>%
   group_by(Model, Segment) %>%
   summarise(
@@ -504,24 +519,24 @@ print(variance_summary, digits = 3)
 #> # A tibble: 4 × 6
 #>   Model                Segment                 Mean Median   P05   P95
 #>   <fct>                <chr>                  <dbl>  <dbl> <dbl> <dbl>
-#> 1 Linear               Common (homoskedastic)  4.41   4.30  2.89  6.46
-#> 2 HART                 Common (homoskedastic)  3.34   3.22  2.49  4.46
-#> 3 Heteroskedastic HART Segment 1               7.98   8.02  5.35 11.1 
-#> 4 Heteroskedastic HART Segment 2              10.5   10.3   7.19 14.7
+#> 1 Linear               Common (homoskedastic)  3.73   3.65  2.75  5.01
+#> 2 HART                 Common (homoskedastic)  3.31   3.31  2.44  4.18
+#> 3 Heteroskedastic HART Segment 1               8.53   7.66  3.89 16.4 
+#> 4 Heteroskedastic HART Segment 2              16.4   15.8   8.05 26.6
 
 variance_ratio <- segment_var_draws[[2]] / pmax(segment_var_draws[[1]], .Machine$double.eps)
 cat("Pr(Variance Segment 2 > Segment 1) =",
     round(mean(variance_ratio > 1), 3), "\n")
-#> Pr(Variance Segment 2 > Segment 1) = 0.89
+#> Pr(Variance Segment 2 > Segment 1) = 0.922
 cat("Median variance ratio (Segment 2 / Segment 1) =",
     round(median(variance_ratio), 3), "\n")
-#> Median variance ratio (Segment 2 / Segment 1) = 1.311
+#> Median variance ratio (Segment 2 / Segment 1) = 1.992
 ```
 
 The heteroskedastic HART model includes additional tree ensembles for covariance components.
 
 
-```r
+``` r
 nvar <- dim(out_heter$betadraw)[2]
 phi_edge_count <- sum(
   sapply(seq_len(nvar), function(j) {
@@ -545,7 +560,7 @@ cat("Number of off-diagonal phi tree ensembles:", phi_edge_count, "\n")
 Following Wiemann (2025, Section 5.3), we consider the design of an out-of-state credit card that is most likely to succeed against existing offerings. We compute expected counterfactual shares for potential offerings against a baseline in-state credit card. These counterfactuals capture the comprehensive demand response through both observed preference heterogeneity via $\Delta(\cdot)$ and unobserved preference heterogeneity---including correlated preferences---captured by $\Sigma$ (or $\Sigma(Z)$ for the heteroskedastic model).
 
 
-```r
+``` r
 # Define counterfactual design matrices (p=2, 1 task)
 nvar <- 14
 # Scenario 1: Out-of-State Bank only
@@ -615,9 +630,9 @@ print(cf_summary)
 #> # A tibble: 3 × 7
 #>   Scenario                `Segment 1_Linear` `Segment 2_Linear` `Segment 1_HART`
 #>   <chr>                   <chr>              <chr>              <chr>           
-#> 1 Out-of-State & Low Ann… 0.51 (0.08)        0.48 (0.07)        0.46 (0.09)     
-#> 2 Out-of-State & Low Int… 0.47 (0.09)        0.53 (0.07)        0.37 (0.09)     
-#> 3 Out-of-State Bank       0.17 (0.06)        0.18 (0.05)        0.11 (0.05)     
+#> 1 Out-of-State & Low Ann… 0.53 (0.08)        0.48 (0.07)        0.45 (0.10)     
+#> 2 Out-of-State & Low Int… 0.49 (0.09)        0.54 (0.07)        0.35 (0.10)     
+#> 3 Out-of-State Bank       0.17 (0.05)        0.18 (0.05)        0.12 (0.06)     
 #> # ℹ 3 more variables: `Segment 2_HART` <chr>,
 #> #   `Segment 1_Heteroskedastic HART` <chr>,
 #> #   `Segment 2_Heteroskedastic HART` <chr>
@@ -660,7 +675,7 @@ explained by observed demographics `Z`. For heteroskedastic HART,
 `R^2` is respondent-specific because `Sigma(Z_i)` varies across `i`.
 
 
-```r
+``` r
 # Model-agnostic R² via summary() (handles both homo- and heteroscedastic models)
 smry_lin   <- summary(out_lin, Z = Z, burn = burnin_draws, coefs = coef_indx)
 smry_hart  <- summary(out_hart, Z = Z, burn = burnin_draws, coefs = coef_indx)
@@ -694,14 +709,14 @@ ggplot(r2_data, aes(x = R2, fill = Model)) +
 <p class="caption">Posterior distributions of explained variance for the focal part-worth.</p>
 </div>
 
-```r
+``` r
 
 cat("Posterior Mean R² (Linear):", round(smry_lin$r2$R2_mean * 100, 2), "%\n")
-#> Posterior Mean R² (Linear): 6.17 %
+#> Posterior Mean R² (Linear): 7.91 %
 cat("Posterior Mean R² (HART)  :", round(smry_hart$r2$R2_mean * 100, 2), "%\n")
-#> Posterior Mean R² (HART)  : 19.74 %
+#> Posterior Mean R² (HART)  : 20.6 %
 cat("Mean per-respondent R² (Heter):", round(smry_heter$r2$R2_mean * 100, 2), "%\n")
-#> Mean per-respondent R² (Heter): 6.44 %
+#> Mean per-respondent R² (Heter): 4.52 %
 ```
 
 ## Cross-Respondent Uncertainty
@@ -709,7 +724,7 @@ cat("Mean per-respondent R² (Heter):", round(smry_heter$r2$R2_mean * 100, 2), "
 Finally, we compare respondent-level uncertainty in segment predictions by model. For each respondent, we compute the posterior SD of `DeltaZ` for the focal coefficient and then inspect the cross-respondent distribution of those SD values. Note that `DeltaZ+mu` differs from `DeltaZ` only by a per-draw constant $\mu$, so the cross-respondent SD is identical.
 
 
-```r
+``` r
 # Predict DeltaZ for all respondents (cached fast path --- essentially free)
 Data_all <- list(Z = Z)
 DeltaZ_lin   <- predict(out_lin, newdata = Data_all, type = "DeltaZ",
@@ -721,10 +736,7 @@ DeltaZ_heter <- predict(out_heter, newdata = Data_all, type = "DeltaZ",
 sd_lin   <- apply(DeltaZ_lin[, coef_indx, ], 1, sd)
 sd_hart  <- apply(DeltaZ_hart[, coef_indx, ], 1, sd)
 sd_heter <- apply(DeltaZ_heter[, coef_indx, ], 1, sd)
-rm(DeltaZ_lin, DeltaZ_hart, DeltaZ_heter); gc(verbose = FALSE)
-#>             used   (Mb) gc trigger   (Mb)  max used   (Mb)
-#> Ncells   1767919   94.5    3055068  163.2   3055068  163.2
-#> Vcells 222538613 1697.9  455204936 3473.0 568998725 4341.2
+rm(DeltaZ_lin, DeltaZ_hart, DeltaZ_heter); invisible(gc(verbose = FALSE))
 
 unc_df <- bind_rows(
   data.frame(Model = "Linear", SD = sd_lin),

@@ -157,6 +157,49 @@ test_that("MNL heter-cov output has expected field names", {
   expect_true(is.null(fit$Deltadraw))
 })
 
+test_that("MNL direct HART with a constant Sigma has the nmix schema", {
+  sim <- make_mnl_sim()
+  nvar <- ncol(sim$lgtdata[[1]]$X)
+  set.seed(301)
+  run_quiet({
+    fit <- rhierMnlRwMixture(
+      Data = sim,
+      Prior = list(ncomp = 1, hart_model = "direct", hart_cov = "constant",
+                   bart = list(num_trees = 3)),
+      Mcmc = list(R = 6, keep = 1, nprint = 0))
+  })
+  expect_equal(class(fit), "rhierMnlRwMixture")
+  expect_named(fit, c("mu_draw", "mean_scale_draw", "varcount", "varprob",
+                      "nmix", "bart_models", "betadraw", "loglike", "SignRes",
+                      "acceptrbeta", "hart"), ignore.order = TRUE)
+  expect_equal(dim(fit$mu_draw), c(6L, nvar))
+  expect_equal(fit$mu_draw[1, ], fit$nmix$compdraw[[1]][[1]]$mu)
+  expect_s3_class(fit$nmix, "bayesm.nmix")
+  expect_equal(fit$bart_models$treedraws$leaf_dim, nvar)
+  expect_equal(dim(fit$nmix$compdraw[[1]][[1]]$rooti), c(nvar, nvar))
+  expect_equal(dim(fit$varcount), c(2L, 6L))
+  # Delta(Z) from the cache and from the trees agree; DeltaZ+mu adds the
+  # nmix mean; SigmaZ needs the covariance trees.
+  newdata <- list(Z = sim$Z)
+  d1 <- predict(fit, newdata = newdata, type = "DeltaZ", burn = 0L,
+                r_verbose = FALSE)
+  d2 <- predict(fit, newdata = newdata, type = "DeltaZ", burn = 0L,
+                force_tree_eval = TRUE, r_verbose = FALSE)
+  expect_equal(d1, d2, tolerance = 1e-8)
+  dm <- predict(fit, newdata = newdata, type = "DeltaZ+mu", burn = 0L,
+                r_verbose = FALSE)
+  mu1 <- fit$nmix$compdraw[[1]][[1]]$mu
+  mu1_rooti <- fit$nmix$compdraw[[1]][[1]]$rooti
+  expect_equal(dm[, , 1], d1[, , 1] + matrix(mu1, nrow(sim$Z), nvar,
+                                              byrow = TRUE),
+               tolerance = 1e-10)
+  sig <- predict(fit, newdata = newdata, type = "SigmaZ", burn = 0L,
+                 r_verbose = FALSE)
+  expect_equal(dim(sig), c(nrow(sim$Z), nvar, nvar, 6L))
+  expect_equal(sig[1, , , 1], solve(mu1_rooti %*% t(mu1_rooti)),
+               tolerance = 1e-10)
+})
+
 # ===========================================================================
 # 8.4 Schema snapshot: Linear output field names
 # ===========================================================================

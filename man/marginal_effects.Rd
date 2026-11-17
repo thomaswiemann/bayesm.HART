@@ -46,5 +46,5 @@ varying a target covariate over a grid.
 \details{
 This is a generic function. Method implementations are provided
 for \code{rhierMnlRwMixture}, \code{rhierLinearMixture}, and \code{rhierNegbinRw} (the
-heter-cov subclasses inherit dispatch through their base classes).
+direct-model subclasses inherit dispatch through their base classes).
 }

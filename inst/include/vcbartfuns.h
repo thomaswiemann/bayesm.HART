@@ -1,22 +1,26 @@
 #ifndef GUARD_vcbartfuns_h
 #define GUARD_vcbartfuns_h
 
+#include <cmath>
 #include "tree.h"
 #include "treefuns.h"
 #include "info.h"
-#include "heterbartfuns.h"
 
 // Varying-coefficient leaf model (appendix_sampler, eq:hs_phi_leaf):
 //
 //   y_i | lambda ~ N(a_i lambda, var_i),    lambda ~ N(0, tau^2),
 //
 // with sufficient statistics P = sum a_i^2 / var_i and b = sum a_i y_i / var_i.
-// The integrated score and the leaf conditional are the weighted-mean kernel
-// heterlh evaluated at (P, b).  The regressor a_i multiplies instead of
-// dividing, so no clamp is needed and a leaf with P = 0 has score one and
-// draws from its prior.
+// The regressor a_i multiplies instead of dividing, so no clamp is needed and
+// a leaf with P = 0 has score one and draws from its prior.
 
-inline double vclh(double P, double b, double tau) { return heterlh(P, b, tau); }
+// log integral of the leaf prior against the likelihood, up to -log(tau),
+// which cancels in the birth/death ratio.
+inline double vclh(double P, double b, double tau) {
+   double t2 = tau * tau;
+   double k  = P * t2 + 1.0;
+   return -0.5 * std::log(k) + 0.5 * b * b * t2 / k;
+}
 double vcdrawnodemu(double P, double b, double tau, rn& gen);
 
 // Birth proposal: statistics of the two children of nx under split (v, c).

@@ -19,6 +19,14 @@ knitr::opts_chunk$set(
   warning = FALSE,
   eval = TRUE
 )
+
+# Seed every chunk from its label, so results do not depend on what ran
+# before it, in particular on whether the model cache was warm.
+knitr::knit_hooks$set(chunk_seed = function(before, options, envir) {
+  if (before) set.seed(20261112L + sum(utf8ToInt(options$label)))
+})
+knitr::opts_chunk$set(chunk_seed = TRUE)
+
 ```
 
 ## Introduction
@@ -108,6 +116,7 @@ if (!model_cache_ok) {
     Data = Data, Mcmc = Mcmc,
     Prior = list(
       ncomp = 1,
+      hart_model = "normalized",
       bart = list(num_trees = 20, sparse = FALSE)
     ),
     r_verbose = FALSE
@@ -118,6 +127,7 @@ if (!model_cache_ok) {
     Data = Data, Mcmc = Mcmc,
     Prior = list(
       ncomp = 1,
+      hart_model = "direct",
       bart = list(num_trees = 20, sparse = FALSE),
       vartree = list(num_trees = 20, sparse = FALSE),
       phitree = list(num_trees = 20, sparse = FALSE)
@@ -648,7 +658,7 @@ DeltaZ_heter <- predict(out_heter, newdata = Data_all, type = "DeltaZ",
 sd_lin   <- apply(DeltaZ_lin[, coef_indx, ], 1, sd)
 sd_hart  <- apply(DeltaZ_hart[, coef_indx, ], 1, sd)
 sd_heter <- apply(DeltaZ_heter[, coef_indx, ], 1, sd)
-rm(DeltaZ_lin, DeltaZ_hart, DeltaZ_heter); gc(verbose = FALSE)
+rm(DeltaZ_lin, DeltaZ_hart, DeltaZ_heter); invisible(gc(verbose = FALSE))
 
 unc_df <- bind_rows(
   data.frame(Model = "Linear", SD = sd_lin),

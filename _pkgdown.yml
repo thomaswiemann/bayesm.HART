@@ -67,3 +67,5 @@ articles:
 - title: Advanced Topics
   contents:
   - marginal-effects
+  - simulation-convergence
+  - simulation-calibrated

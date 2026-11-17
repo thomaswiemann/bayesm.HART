@@ -50,38 +50,29 @@
   kept_draws_indices <- .kept_draw_indices(ndraws_total, burn)
 
   if (mode == "posterior") {
-    return(.predict_posterior_probs(object, newdata, kept_draws_indices, r_verbose))
+    if (is.null(newdata$p)) stop("newdata$p must be provided.")
+    return(.hart_predict_posterior(
+      object, newdata$nlgtdata, kept_draws_indices,
+      .hart_quantity(object, "mnl", p = newdata$p),
+      "posterior probabilities", "newdata$nlgtdata", r_verbose))
   }
 
-  hetercov_comps <- NULL
-  if (inherits(object, "bayesm.HART.HeterCov")) {
-    if (is.null(newdata$Z))
-      stop("Heter-cov predictions require newdata$Z.")
-    map_seen <- .match_cached_unique_rows(object, newdata$Z)
-    seen_all <- !is.null(map_seen) && map_seen$all_seen
-    has_sigma_cache <- !is.null(.cache_get(object, "SigmaZ_unique_draws"))
-
-    need_tree_eval <- .has_tree_payload(object) && (
-      force_tree_eval || !(has_sigma_cache && seen_all)
-    )
-    if (!.has_tree_payload(object) && !(has_sigma_cache && seen_all)) {
-      stop("prior_probs prediction requires stored tree objects for unseen Z; refit with store_trees=TRUE.")
-    }
-    if (need_tree_eval) {
-      nvar <- dim(object$betadraw)[2]
-      npred <- nrow(newdata$Z)
-      hetercov_comps <- .hetercov_components(object, newdata$Z, npred, nvar,
-                                             ndraws_total, r_verbose)
-    }
-  }
+  hetercov_comps <- .hart_prepare_components(
+    object, newdata$Z, ndraws_total, r_verbose, force_tree_eval,
+    "prior_probs prediction")
 
   delta_z <- .predict_structural_common(
     object, newdata, "DeltaZ", burn, r_verbose,
     force_tree_eval = force_tree_eval,
     hetercov_comps = hetercov_comps, ...
   )
-  .predict_prior_probs(object, newdata, delta_z, kept_draws_indices, nsim,
-                       r_verbose, hetercov_comps = hetercov_comps)
+  if (is.null(newdata$p)) stop("newdata$p must be provided.")
+  .hart_predict_prior(object, newdata, delta_z, kept_draws_indices, nsim,
+                      .hart_quantity(object, "mnl", p = newdata$p),
+                      reduce = "quantity", label = "prior probabilities",
+                      what = "newdata$X", r_verbose = r_verbose,
+                      hetercov_comps = hetercov_comps,
+                      force_tree_eval = force_tree_eval)
 }
 
 .predictive_dispatch_linear <- function(object, newdata, mode, type,
@@ -105,36 +96,19 @@
   kept_draws_indices <- .kept_draw_indices(ndraws_total, burn)
 
   if (mode == "posterior") {
-    return(.predict_linear_posterior_response(
-      object, newdata, kept_draws_indices, r_verbose
-    ))
+    return(.hart_predict_posterior(
+      object, newdata$regdata, kept_draws_indices,
+      .hart_quantity(object, "linear"),
+      "posterior responses", "newdata$regdata", r_verbose))
   }
 
   if (is.null(newdata$X) || !is.list(newdata$X)) {
     stop("Linear prior prediction requires newdata$X as a list of design matrices.")
   }
 
-  hetercov_comps <- NULL
-  if (inherits(object, "bayesm.HART.HeterCov")) {
-    if (is.null(newdata$Z))
-      stop("Heter-cov linear prior prediction requires newdata$Z.")
-    map_seen <- .match_cached_unique_rows(object, newdata$Z)
-    seen_all <- !is.null(map_seen) && map_seen$all_seen
-    has_sigma_cache <- !is.null(.cache_get(object, "SigmaZ_unique_draws"))
-
-    need_tree_eval <- .has_tree_payload(object) && (
-      force_tree_eval || !(has_sigma_cache && seen_all)
-    )
-    if (!.has_tree_payload(object) && !(has_sigma_cache && seen_all)) {
-      stop("Linear prior response prediction requires stored tree objects for unseen Z; refit with store_trees=TRUE.")
-    }
-    if (need_tree_eval) {
-      nvar <- dim(object$betadraw)[2]
-      npred <- nrow(newdata$Z)
-      hetercov_comps <- .hetercov_components(object, newdata$Z, npred, nvar,
-                                             ndraws_total, r_verbose)
-    }
-  }
+  hetercov_comps <- .hart_prepare_components(
+    object, newdata$Z, ndraws_total, r_verbose, force_tree_eval,
+    "Linear prior response prediction")
 
   has_model_z <- !is.null(object$Deltadraw) ||
     !is.null(object$bart_models) ||
@@ -154,10 +128,14 @@
     hetercov_comps = hetercov_comps, ...
   )
 
-  .predict_linear_prior_response(
-    object, newdata, delta_z, kept_draws_indices, nsim, r_verbose,
-    hetercov_comps = hetercov_comps
-  )
+  .hart_predict_prior(
+    object, newdata, delta_z, kept_draws_indices, nsim,
+    .hart_quantity(object, "linear",
+                   tau_ref = rowMeans(object$taudraw[kept_draws_indices, ,
+                                                     drop = FALSE])),
+    reduce = "beta", label = "linear prior responses", what = "newdata$X",
+    r_verbose = r_verbose, hetercov_comps = hetercov_comps,
+    force_tree_eval = force_tree_eval)
 }
 
 .predictive_dispatch_negbin <- function(object, newdata, mode, type,
@@ -181,36 +159,19 @@
   kept_draws_indices <- .kept_draw_indices(ndraws_total, burn)
 
   if (mode == "posterior") {
-    return(.predict_negbin_posterior_response(
-      object, newdata, kept_draws_indices, r_verbose
-    ))
+    return(.hart_predict_posterior(
+      object, newdata$regdata, kept_draws_indices,
+      .hart_quantity(object, "negbin"),
+      "posterior responses", "newdata$regdata", r_verbose))
   }
 
   if (is.null(newdata$X) || !is.list(newdata$X)) {
     stop("NegBin prior prediction requires newdata$X as a list of design matrices.")
   }
 
-  hetercov_comps <- NULL
-  if (inherits(object, "bayesm.HART.HeterCov")) {
-    if (is.null(newdata$Z))
-      stop("Heter-cov negbin prior prediction requires newdata$Z.")
-    map_seen <- .match_cached_unique_rows(object, newdata$Z)
-    seen_all <- !is.null(map_seen) && map_seen$all_seen
-    has_sigma_cache <- !is.null(.cache_get(object, "SigmaZ_unique_draws"))
-
-    need_tree_eval <- .has_tree_payload(object) && (
-      force_tree_eval || !(has_sigma_cache && seen_all)
-    )
-    if (!.has_tree_payload(object) && !(has_sigma_cache && seen_all)) {
-      stop("NegBin prior response prediction requires stored tree objects for unseen Z; refit with store_trees=TRUE.")
-    }
-    if (need_tree_eval) {
-      nvar <- dim(object$betadraw)[2]
-      npred <- nrow(newdata$Z)
-      hetercov_comps <- .hetercov_components(object, newdata$Z, npred, nvar,
-                                             ndraws_total, r_verbose)
-    }
-  }
+  hetercov_comps <- .hart_prepare_components(
+    object, newdata$Z, ndraws_total, r_verbose, force_tree_eval,
+    "NegBin prior response prediction")
 
   has_model_z <- !is.null(object$Deltadraw) ||
     !is.null(object$bart_models) ||
@@ -230,8 +191,10 @@
     hetercov_comps = hetercov_comps, ...
   )
 
-  .predict_negbin_prior_response(
-    object, newdata, delta_z, kept_draws_indices, nsim, r_verbose,
-    hetercov_comps = hetercov_comps
-  )
+  .hart_predict_prior(
+    object, newdata, delta_z, kept_draws_indices, nsim,
+    .hart_quantity(object, "negbin"), reduce = "beta",
+    label = "negbin prior responses", what = "newdata$X",
+    r_verbose = r_verbose, hetercov_comps = hetercov_comps,
+    force_tree_eval = force_tree_eval)
 }

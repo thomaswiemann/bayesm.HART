@@ -37,3 +37,7 @@
 ^README\.Rmd$
 ^temp\.cpp$
 ^.*\.gitkeep$
+^LICENSE$
+^scratch$
+^README\.html$
+^tools$

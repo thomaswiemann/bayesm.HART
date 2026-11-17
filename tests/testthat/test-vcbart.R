@@ -1,6 +1,6 @@
 # Tests for the varying-coefficient tree machinery (src/vcbartfuns.cpp,
 # src/vcbd.cpp, src/vcbart.cpp): y_i = a_i f(Z_i) + e_i, e_i ~ N(0, var_i),
-# leaf prior N(0, tau^2).  The trees are scalar, so pwbart() reads the draws.
+# leaf prior N(0, tau^2).  The trees are scalar, so .pw_trees() reads them.
 
 library(testthat)
 
@@ -64,15 +64,15 @@ vc_problem <- function(seed = 4L, n = 50L, p = 2L) {
   list(Zt = Zt, y = a * phi + rnorm(n, sd = sqrt(v)), a = a, v = v, tau = 0.5)
 }#VC_PROBLEM
 
-test_that("vcbart keeps split counts consistent and reads back via pwbart", {
+test_that("vcbart keeps split counts consistent and reads back via trees", {
   pb <- vc_problem()
   out <- with(pb, vcbart_chain_R(Zt, y, a, v, m = 4L, tau = tau, alpha = 0.95,
                                  beta = 1, nmin = 3L, numcut = 15L,
                                  niter = 40L))
   expect_equal(sum(out$nv), out$nleaves[40L] - 4L)
   expect_true(all(is.finite(out$fits)))
-  pred <- pwbart(t(pb$Zt), out$treedraws, mu = 0, transposed = FALSE,
-                 dodraws = TRUE)                      # ndraws x npred
+  pred <- .pw_trees(t(pb$Zt), out$treedraws, mu = 0, transposed = FALSE,
+                    dodraws = TRUE)                   # ndraws x npred
   expect_equal(t(pred), out$fits, tolerance = 1e-7)
 })#TEST_THAT
 

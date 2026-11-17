@@ -33,7 +33,7 @@ List rhierNegbinRw_rcpp_loop(List const& regdata, List const& hessdata, mat cons
                              bool drawdelta, mat olddelta, vec const& a_mix,
                              vec oldprob, vec ind,
                              double alpha, bool fixalpha,
-                             std::string const& hart_model,
+                             std::string const& hart_model, std::string const& hart_cov,
                              List const& bart_params,
                              List const& var_params,
                              List const& phi_params){
@@ -71,7 +71,7 @@ List rhierNegbinRw_rcpp_loop(List const& regdata, List const& hessdata, mat cons
   // Create backend + updater adapters, then run the unified MCMC loop.
   // ====================================================================
   std::unique_ptr<CovarianceBackend> backend = make_backend(
-      hart_model, oldbetas, Z, mubar, Amu, nu, V, a_mix,
+      hart_model, hart_cov, oldbetas, Z, mubar, Amu, nu, V, a_mix,
       deltabar, Ad, drawdelta, olddelta, oldprob, ind, R, keep,
       bart_params, var_params, phi_params);
 

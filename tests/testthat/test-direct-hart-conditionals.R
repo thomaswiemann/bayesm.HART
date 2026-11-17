@@ -14,13 +14,15 @@ make_problem <- function(seed = 1L, n = 40L, D = 3L, nz = 2L) {
        n = n, D = D, nz = nz, mubar = rep(0, D), Amu = 0.1 * diag(D))
 }#MAKE_PROBLEM
 
+# `a_v` is the per-leaf shape; with one tree, tau = sqrt(trigamma(a_v)).
 stump_params <- function(pb, a_tau = 3, tau0 = 1, a_v = 3, v0 = 1,
                          tau_phi = 1, base = 0, num_trees = 1L) {
   list(bart = bayesm.HART:::.parse_bart_params(
          list(num_trees = num_trees, base = base, a_tau = a_tau, tau0 = tau0),
          pb$nz, "direct", pb$D),
        vartree = bayesm.HART:::.parse_var_params(
-         list(num_trees = num_trees, base = base, a_v = a_v, v0 = v0),
+         list(num_trees = num_trees, base = base,
+              tau = sqrt(num_trees * trigamma(a_v)), v0 = v0),
          pb$nz, pb$D),
        phitree = bayesm.HART:::.parse_phi_params(
          list(num_trees = num_trees, base = base, tau = tau_phi), pb$nz))
@@ -31,6 +33,12 @@ run_blocks <- function(pb, pr, update, warm = 50L, nsweep = 4000L) {
   direct_hart_R(pb$theta, pb$Z, pb$mubar, pb$Amu, pr$bart, pr$vartree,
                 pr$phitree, warm = warm, nsweep = nsweep, update = update)
 }#RUN_BLOCKS
+
+# update = c(mu, Sigma, f, tau)
+run_constant <- function(pb, pr, nu, V, update, warm = 50L, nsweep = 4000L) {
+  direct_hart_constant_R(pb$theta, pb$Z, pb$mubar, pb$Amu, nu, V, pr$bart,
+                       warm = warm, nsweep = nsweep, update = update)
+}#RUN_CONSTANT
 
 unit_lower <- function(phi) {
   L <- diag(nrow(phi)); L[lower.tri(L)] <- -phi[lower.tri(phi)]; L
@@ -135,4 +143,34 @@ test_that("the stump phi leaves target the Gaussian posterior row by row", {
                       8 * sqrt(diag(V) / nrow(draws))))
     expect_equal(cov(draws), V, tolerance = 0.15)
   }
+})#TEST_THAT
+
+test_that("constant Sigma | rest is IW(nu + n, V + E^T E)", {
+  pb <- make_problem(); pr <- stump_params(pb)
+  nu <- pb$D + 3; V <- nu * diag(pb$D)
+  out <- run_constant(pb, pr, nu, V, update = c(FALSE, TRUE, FALSE, FALSE))
+  st <- out$state
+  E <- pb$theta - st$f - matrix(st$mu, pb$n, pb$D, byrow = TRUE)
+  S <- V + crossprod(E)
+  prec <- apply(out$Sigma, 3, solve)
+  expect_equal(matrix(rowMeans(prec), pb$D, pb$D), (nu + pb$n) * solve(S),
+               tolerance = 0.05)
+  expect_equal(apply(out$Sigma, 1:2, mean), S / (nu + pb$n - pb$D - 1),
+               tolerance = 0.05)
+  expect_equal(st$Q[, , 1], solve(st$Sigma), tolerance = 1e-10)
+  expect_equal(st$rooti %*% t(st$rooti), solve(st$Sigma), tolerance = 1e-10)
+  expect_equal(st$prior_mean, st$f + matrix(st$mu, pb$n, pb$D, byrow = TRUE),
+               tolerance = 1e-12)
+})#TEST_THAT
+
+test_that("constant model: mu | rest is N(P^{-1} b, P^{-1}) with P = A + n Q", {
+  pb <- make_problem(); pr <- stump_params(pb)
+  nu <- pb$D + 3; V <- nu * diag(pb$D)
+  out <- run_constant(pb, pr, nu, V, update = c(TRUE, FALSE, FALSE, FALSE))
+  st <- out$state
+  Q <- st$Q[, , 1]
+  P <- pb$Amu + pb$n * Q
+  b <- pb$Amu %*% pb$mubar + Q %*% colSums(pb$theta - st$f)
+  expect_equal(colMeans(out$mu), as.vector(solve(P, b)), tolerance = 0.05)
+  expect_equal(cov(out$mu), solve(P), tolerance = 0.15)
 })#TEST_THAT

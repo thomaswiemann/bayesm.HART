@@ -1,8 +1,8 @@
 /*
  *  Variance-tree sufficient statistics, integrated likelihood, and leaf draws.
  *
- *  Counterpart to heterbartfuns.* for the chi^-2 conjugate model used by
- *  product-of-trees variance ensembles (varbart).
+ *  Chi^-2 conjugate leaf model for the product-of-trees variance
+ *  ensembles (varbart).
  *
  *  Conjugate model (per leaf k of tree l):
  *    e_i      | s2_lk ~ N(0, s2_lk)            (variance residual)
@@ -23,7 +23,7 @@
 // Log integrated marginal likelihood for one leaf with sufficient stats (S, n).
 // Includes the full leaf-prior normalization (nu/2)*log(nu*lambda) - lgamma(nu/2),
 // because in MH birth/death this term contributes a +/- offset that scales with
-// nu and therefore *does not* cancel.  (Contrast with heterlh, where the
+// nu and therefore *does not* cancel.  (Contrast with vclh, where the
 // analogous dropped term is -log(tau) and is harmless.)
 double varlh(double S, double n, double nu, double lambda);
 

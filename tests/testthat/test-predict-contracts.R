@@ -76,8 +76,10 @@ test_that("posterior_probs helper preserves simplex rows", {
     nlgtdata = list(list(X = x1), list(X = x2))
   )
 
-  pp <- bayesm.HART:::.predict_posterior_probs(
-    object, newdata, kept_draws_indices = seq_len(ndraws), r_verbose = FALSE
+  pp <- bayesm.HART:::.hart_predict_posterior(
+    object, newdata$nlgtdata, seq_len(ndraws),
+    bayesm.HART:::.hart_quantity(object, "mnl", p = p),
+    "posterior probabilities", "newdata$nlgtdata", r_verbose = FALSE
   )
 
   expect_length(pp, nlgt)

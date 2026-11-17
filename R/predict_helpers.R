@@ -32,7 +32,7 @@
 
 # Global-mixture prediction paths currently support only single-component models.
 .assert_single_component_nmix <- function(object, context) {
-  if (inherits(object, "bayesm.HART.HeterCov")) return(invisible(NULL))
+  if (.hart_cov_kind(object) == "heteroskedastic") return(invisible(NULL))
   if (is.null(object$nmix) || is.null(object$nmix$probdraw)) return(invisible(NULL))
   ncomp <- ncol(as.matrix(object$nmix$probdraw))
   if (is.na(ncomp) || ncomp != 1) {
@@ -64,7 +64,7 @@
 }
 
 .has_tree_payload <- function(object) {
-  if (inherits(object, "bayesm.HART.HeterCov")) {
+  if (.hart_cov_kind(object) == "heteroskedastic") {
     return(!is.null(object$bart_models$treedraws) &&
              !is.null(object$var_models))
   }
@@ -74,251 +74,31 @@
 # Helper 2: Calculate DeltaZ component
 #
 # Returns a (npred x nvar x ndraws_kept) array of representative-consumer
-# predictions Delta(Z*) at user-supplied newdata$Z.  Three model paths:
-#
-#   (a) Linear hierarchical (object$Deltadraw):  Delta(Z*) = Z* %*% Delta_r
-#   (b) Sum-of-trees, fixed Sigma (object$bart_models, object$nmix):
-#         Delta(Z*) = Sigma_r^{1/2} sum-of-trees(Z*),   with Sigma_r^{1/2}
-#         derived from nmix$compdraw[[r]][[1]]$rooti (= Sigma_r^{-1/2}).
-#   (c) Direct HART (object inherits "bayesm.HART.HeterCov"):
-#         Delta(Z*) = f(Z*), the vector-leaf sum of trees in coefficient units.
+# predictions Delta(Z*) at user-supplied newdata$Z; .hart_delta() knows where
+# each fit keeps them.
 .calculate_delta_z <- function(object, newdata, burn, r_verbose,
                                hetercov_comps = NULL,
                                force_tree_eval = FALSE, ...) {
-  nvar         <- dim(object$betadraw)[2]
   ndraws_total <- dim(object$betadraw)[3]
-
-  is_heter <- inherits(object, "bayesm.HART.HeterCov")
-  has_bart <- !is.null(object$bart_models)
-  has_lin  <- !is.null(object$Deltadraw)
-  has_cache <- !is.null(.cache_get(object, "DeltaZ_unique_draws"))
-  model_has_Z <- has_lin || has_bart || has_cache
-
-  if (!model_has_Z) {
-    pred <- array(0, dim = c(1L, nvar, ndraws_total))
-  } else {
-    if (is.null(newdata$Z))
-      stop("Model was fit with Z. 'newdata$Z' must be provided.")
-    npred <- nrow(newdata$Z)
-    nz    <- ncol(newdata$Z)
-
-    delta_cache <- .cache_get(object, "DeltaZ_unique_draws")
-    if (!force_tree_eval && !is.null(delta_cache)) {
-      map <- .match_cached_unique_rows(object, newdata$Z)
-      if (!is.null(map) && map$all_seen) {
-        pred <- delta_cache[map$idx, , , drop = FALSE]
-      } else if (!is.null(map) && !map$all_seen && !.has_tree_payload(object)) {
-        stop("Out-of-sample Z prediction requires stored tree objects; refit with store_trees=TRUE.")
-      } else {
-        pred <- NULL
-      }
-    } else {
-      pred <- NULL
-    }
-
-    if (is.null(pred)) {
-      if (has_lin) {
-        pred <- .delta_z_linear(object, newdata$Z, npred, nvar, nz, ndraws_total)
-      } else if (is_heter) {
-        pred <- .delta_z_hetercov(object, newdata$Z, npred, nvar,
-                                  ndraws_total, r_verbose,
-                                  hetercov_comps = hetercov_comps)
-      } else {
-        pred <- .delta_z_bart(object, newdata$Z, npred, nvar, ndraws_total,
-                              r_verbose, ...)
-      }
-    }
-  }
-
   if (burn >= ndraws_total) stop("Burn-in period too large.")
-  if (burn > 0) {
-    kept_draws <- (burn + 1):ndraws_total
-    pred <- pred[, , kept_draws, drop = FALSE]
-  }
-  return(pred)
+  kept <- .kept_draw_indices(ndraws_total, burn)
+  .hart_delta(object, newdata$Z, kept, force_tree_eval = force_tree_eval,
+              r_verbose = r_verbose, comps = hetercov_comps, ...)
 }#CALCULATE_DELTA_Z
 
-# --- per-path helpers (split out for clarity) -------------------------------
-
-.delta_z_linear <- function(object, Z, npred, nvar, nz, ndraws_total) {
-  if (ncol(object$Deltadraw) != nz * nvar)
-    stop(sprintf("Dimension mismatch: ncol(Deltadraw)=%d, expected nz*nvar=%d",
-                 ncol(object$Deltadraw), nz * nvar))
-  pred <- array(0, dim = c(npred, nvar, ndraws_total))
-  for (i in seq_len(ndraws_total)) {
-    Delta_draw <- matrix(object$Deltadraw[i, ], nrow = nz, byrow = TRUE)
-    pred[, , i] <- Z %*% Delta_draw
-  }
-  return(pred)
-}
-
-.delta_z_bart <- function(object, Z, npred, nvar, ndraws_total,
-                          r_verbose, ...) {
-  .assert_single_component_nmix(object, "DeltaZ BART prediction")
-  if (length(object$bart_models) != nvar)
-    stop(sprintf("Number of BART models (%d) does not match nvar (%d)",
-                 length(object$bart_models), nvar))
-
-  raw_pred <- array(0, dim = c(npred, nvar, ndraws_total))
-
-  # --- Prepare arguments for pwbart, handling ... ---
-  passed_args <- list(...)
-  pwbart_arg_names <- names(formals(pwbart))
-  valid_passed_args <- passed_args[names(passed_args) %in% pwbart_arg_names]
-  base_args <- list(x.test = Z, mu = 0, transposed = FALSE, dodraws = TRUE)
-  final_args_template <- utils::modifyList(base_args, valid_passed_args)
-  final_args_template <-
-    final_args_template[names(final_args_template) %in% pwbart_arg_names]
-
-  for (j in seq_len(nvar)) {
-    if (is.null(object$bart_models[[j]]$treedraws))
-      stop(paste("Missing treedraws for BART model of coefficient", j))
-    if (r_verbose) cat("Predicting coefficient", j, "with BART model\n")
-    args_j <- final_args_template
-    args_j$treedraws <- object$bart_models[[j]]$treedraws
-    raw_pred[, j, ] <- t(do.call(pwbart, args_j))
-  }
-
-  if (is.null(object$nmix) || is.null(object$nmix$compdraw))
-    stop("Missing nmix$compdraw needed for BART scaling.")
-
-  pred <- array(0, dim = c(npred, nvar, ndraws_total))
-  for (s in seq_len(ndraws_total)) {
-    rooti <- object$nmix$compdraw[[s]][[1]]$rooti
-    if (is.null(rooti))
-      stop(paste0("Missing nmix$compdraw[[", s, "]][[1]]$rooti"))
-    root_inv <- tryCatch(
-      solve(rooti),
-      error = function(e)
-        stop(sprintf("DeltaZ BART prediction failed at draw %d while inverting nmix rooti: %s",
-                     s, e$message))
-    )
-    pred[, , s] <- raw_pred[, , s] %*% root_inv
-  }
-  return(pred)
-}
-
-# Direct HART: Delta(Z*) = f(Z*) from the vector-leaf ensemble; the
-# covariance trees do not enter.
-.delta_z_hetercov <- function(object, Z, npred, nvar, ndraws_total, r_verbose,
-                              hetercov_comps = NULL) {
-  comps <- hetercov_comps %||%
-    .hetercov_components(object, Z, npred, nvar, ndraws_total, r_verbose)
-  comps$delta_arr
-}#.DELTA_Z_HETERCOV
-
-# Evaluate the direct-model ensembles at Z: delta_arr = f(Z) from the
-# vector-leaf trees (npred x nvar x ndraws), d_arr from the variance trees,
-# and phi_arr (npred x nvar x nvar x ndraws, NULL when diagonal) from the
-# off-diagonal trees.  One tree-evaluation pass shared by the DeltaZ, SigmaZ,
-# and prior predictive paths.
-.hetercov_components <- function(object, Z, npred, nvar, ndraws_total,
-                                 r_verbose) {
-  td <- object$bart_models$treedraws
-  if (is.null(td) || !identical(as.integer(td$leaf_dim), as.integer(nvar)))
-    stop(sprintf("Direct HART object needs bart_models with leaf_dim %d.",
-                 nvar))
-  if (is.null(object$var_models) || length(object$var_models) != nvar)
-    stop(sprintf("Heter-cov object missing var_models or wrong length (expected %d).",
-                 nvar))
-  use_full <- !is.null(object$phi_models)
-  if (use_full && length(object$phi_models) != nvar)
-    stop(sprintf("phi_models length (%d) != nvar (%d)",
-                 length(object$phi_models), nvar))
-
-  if (r_verbose) cat("Predicting f(Z) (mean trees)\n")
-  delta_arr <- pwvecbart(Z, td)
-  d_arr     <- array(0, dim = c(npred, nvar, ndraws_total))
-  for (j in seq_len(nvar)) {
-    if (r_verbose) cat("Predicting d_", j, " (var tree)\n", sep = "")
-    d_arr[, j, ] <- t(pwvarbart(
-      x.test = Z, treedraws = object$var_models[[j]]$treedraws,
-      transposed = FALSE, dodraws = TRUE))
-  }
-
-  phi_arr <- NULL
-  if (use_full) {
-    phi_arr <- array(0, dim = c(npred, nvar, nvar, ndraws_total))
-    for (j in 2:nvar) {
-      pj <- object$phi_models[[j]]
-      if (is.null(pj) || length(pj) != j - 1)
-        stop(sprintf("phi_models[[%d]] missing or wrong length (expected %d).",
-                     j, j - 1))
-      for (k in seq_len(j - 1)) {
-        if (r_verbose) cat("Predicting phi_", j, k, " (off-diag tree)\n", sep = "")
-        phi_arr[, j, k, ] <- t(pwbart(
-          x.test = Z, treedraws = pj[[k]]$treedraws,
-          mu = 0, transposed = FALSE, dodraws = TRUE))
-      }
-    }
-  }
-  list(delta_arr = delta_arr, d_arr = d_arr, phi_arr = phi_arr,
-       use_full = use_full)
-}
-
-# Helper 3: Return Sigma(Z*) draws for heter-cov models
+# Helper 3: Return Sigma(Z*) draws
 #
-# Returns a 4D array [npred, nvar, nvar, ndraws_out] where each slice
-# Sigma(Z*_i) is reconstructed from modified-Cholesky components:
-#   Sigma(Z*) = L(Z*)^{-1} D(Z*) L(Z*)^{-T}
+# Returns a [npred, nvar, nvar, ndraws_out] array.  Under a constant
+# covariance the same matrix is repeated on every row of Z.
 .calculate_sigma_z <- function(object, newdata, burn, r_verbose,
                                hetercov_comps = NULL,
                                force_tree_eval = FALSE) {
-  if (!inherits(object, "bayesm.HART.HeterCov")) {
-    stop("type='SigmaZ' is only available for heteroscedastic covariance models.")
-  }
-  if (is.null(newdata$Z)) {
-    stop("Heter-cov predictions require newdata$Z.")
-  }
-
-  nvar         <- dim(object$betadraw)[2]
   ndraws_total <- dim(object$betadraw)[3]
-  npred        <- nrow(newdata$Z)
-  kept_draws   <- if (burn > 0) (burn + 1):ndraws_total else seq_len(ndraws_total)
-
-  sigma_cache <- .cache_get(object, "SigmaZ_unique_draws")
-  if (!force_tree_eval && !is.null(sigma_cache)) {
-    map <- .match_cached_unique_rows(object, newdata$Z)
-    if (!is.null(map) && map$all_seen) {
-      return(sigma_cache[map$idx, , , kept_draws, drop = FALSE])
-    }
-    if (!is.null(map) && !map$all_seen && !.has_tree_payload(object)) {
-      stop("Out-of-sample Z prediction requires stored tree objects; refit with store_trees=TRUE.")
-    }
-  }
-
-  comps <- if (is.null(hetercov_comps))
-    .hetercov_components(object, newdata$Z, npred, nvar, ndraws_total, r_verbose)
-  else
-    hetercov_comps
-
-  sigma_arr <- array(0, dim = c(npred, nvar, nvar, length(kept_draws)))
-  for (out_idx in seq_along(kept_draws)) {
-    s <- kept_draws[out_idx]
-    for (i in seq_len(npred)) {
-      d_vec <- pmax(comps$d_arr[i, , s], .Machine$double.eps)
-      L <- diag(nvar)
-      if (comps$use_full && nvar > 1L) {
-        for (j in 2:nvar) {
-          L[j, seq_len(j - 1L)] <- -comps$phi_arr[i, j, seq_len(j - 1L), s]
-        }
-      }
-      if (any(!is.finite(L))) {
-        stop(sprintf("SigmaZ prediction failed at draw %d, unit %d: non-finite Cholesky factor entries.",
-                     s, i))
-      }
-      A <- tryCatch(
-        solve(L, diag(sqrt(d_vec), nvar)),
-        error = function(e)
-          stop(sprintf("SigmaZ prediction failed at draw %d, unit %d while solving L^{-1}D^{1/2}: %s",
-                       s, i, e$message))
-      )
-      sigma_arr[i, , , out_idx] <- A %*% t(A)
-    }
-  }
-  return(sigma_arr)
-}
-
+  if (burn >= ndraws_total) stop("Burn-in period too large.")
+  kept <- .kept_draw_indices(ndraws_total, burn)
+  .hart_sigma(object, newdata$Z, kept, force_tree_eval = force_tree_eval,
+              r_verbose = r_verbose, comps = hetercov_comps)
+}#CALCULATE_SIGMA_Z
 
 # Helper 4: Add mu component
 #
@@ -330,22 +110,7 @@
   nvar       <- dim(delta_z_array)[2]
   ndraws_out <- dim(delta_z_array)[3]
 
-  if (inherits(object, "bayesm.HART.HeterCov")) {
-    if (is.null(object$mu_draw))
-      stop("Heter-cov object missing mu_draw.")
-    mudraw <- t(object$mu_draw[kept_draws_indices, , drop = FALSE])  # nvar x ndraws_out
-  } else {
-    .assert_single_component_nmix(object, "DeltaZ+mu prediction")
-    if (is.null(object$nmix) || is.null(object$nmix$compdraw))
-      stop("DeltaZ+mu requires nmix$compdraw.")
-    mudraw <- tryCatch({
-      sapply(object$nmix$compdraw[kept_draws_indices], function(x) {
-        if (is.null(x[[1]]$mu)) stop("mu missing in component draw")
-        x[[1]]$mu
-      })
-    }, error = function(e)
-      stop(paste("Error extracting mu from nmix$compdraw:", e$message)))
-  }
+  mudraw <- t(.hart_mu(object, kept_draws_indices))        # nvar x ndraws_out
 
   if (!is.matrix(mudraw) || nrow(mudraw) != nvar || ncol(mudraw) != ndraws_out)
     stop("Extracted mudraw has incorrect dimensions.")
