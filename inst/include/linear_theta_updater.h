@@ -20,6 +20,8 @@ public:
     AcceptanceMetrics acceptance_metrics() const override;
     double current_loglike() const override;
 
+    arma::vec const& tau() const { return tau_; }
+
 protected:
     arma::mat& oldbetas_;
     std::vector<moments> const& regdata_;

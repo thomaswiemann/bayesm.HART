@@ -96,8 +96,10 @@ List rhierMnlRwMixture_rcpp_loop(List const& lgtdata, mat const& Z,
     double nu, mat const& V, double s,
     int R, int keep, int nprint, bool drawdelta,
     mat olddelta, vec const& a, vec oldprob, mat oldbetas, vec ind, vec const& SignRes,
-    std::string const& hart_model, List const& bart_params,
-    List const& var_params, List const& phi_params) {
+    std::string const& hart_model, std::string const& hart_cov,
+    List const& bart_params,
+    List const& var_params, List const& phi_params,
+    Rcpp::Nullable<Rcpp::List> state = R_NilValue) {
 
     // Wayne Taylor 10/01/2014
     // modified by Thomas Wiemann 2025
@@ -127,18 +129,34 @@ List rhierMnlRwMixture_rcpp_loop(List const& lgtdata, mat const& Z,
     cube betadraw(nlgt, nvar, R / keep);
     vec loglike(R / keep);
 
+    int offset = 0;
+    List saved;
+    if (state.isNotNull()) {
+        saved = List(state);
+        oldbetas = as<mat>(saved["betas"]);
+        offset = as<int>(saved["completed_sweeps"]);
+    }
+    if (oldbetas.n_rows != (uword)nlgt || oldbetas.n_cols != (uword)nvar
+        || offset < 0)
+        stop("Invalid sampler state dimensions or completed sweeps.");
+
     // ====================================================================
     // Create backend + updater adapters, then run the unified MCMC loop.
     // ====================================================================
     std::unique_ptr<CovarianceBackend> backend = make_backend(
-        hart_model, oldbetas, Z, mubar, Amu, nu, V, a,
+        hart_model, hart_cov, oldbetas, Z, mubar, Amu, nu, V, a,
         deltabar, Ad, drawdelta, olddelta, oldprob, ind, R, keep,
         bart_params, var_params, phi_params);
+    if (state.isNotNull()) backend->restore(as<List>(saved["backend"]));
 
     MnlThetaUpdaterAdapter updater(oldbetas, lgtdata_vector, SignRes, s, R);
 
     run_unified_sampler(R, keep, nprint, nlgt,
-                        *backend, updater, oldbetas, betadraw, loglike);
+                        *backend, updater, oldbetas, betadraw, loglike, offset);
+
+    List terminal = List::create(Named("completed_sweeps") = offset + R,
+                                 Named("betas") = oldbetas,
+                                 Named("backend") = backend->checkpoint());
 
     // ====================================================================
     // Post-loop: SignRes transform on betadraw
@@ -162,6 +180,7 @@ List rhierMnlRwMixture_rcpp_loop(List const& lgtdata, mat const& Z,
     BackendPackPayload bp = backend->pack();
 
     List out = bp.fields;
+    out["state"] = terminal;
     out["betadraw"]    = betadraw;
     out["loglike"]     = loglike;
     out["SignRes"]     = SignRes;

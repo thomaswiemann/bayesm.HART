@@ -42,7 +42,10 @@ units, and \code{newdata$Z} when the model was fit with Z.
 
 \item{r_verbose}{Logical, print progress updates?}
 
-\item{...}{Additional arguments passed to \code{pwbart} for BART models.}
+\item{force_tree_eval}{Logical. Evaluate the stored trees at \code{newdata$Z}
+even when the cached draws cover every row (default \code{FALSE}).}
+
+\item{...}{Additional arguments passed to the tree predictor for BART models.}
 }
 \value{
 Depends on \code{mode} / \code{type}:

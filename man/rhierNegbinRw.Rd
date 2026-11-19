@@ -4,7 +4,7 @@
 \alias{rhierNegbinRw}
 \title{Bayesian Hierarchical Negative Binomial Model with HART Prior}
 \usage{
-rhierNegbinRw(Data, Prior, Mcmc, r_verbose = TRUE)
+rhierNegbinRw(Data, Prior, Mcmc, r_verbose = TRUE, previous = NULL)
 }
 \arguments{
 \item{Data}{A list containing:
@@ -16,6 +16,15 @@ rhierNegbinRw(Data, Prior, Mcmc, r_verbose = TRUE)
 }
 \item \code{Z} (optional): \verb{nreg x nz} matrix of unit-level covariates. If omitted,
 \code{drawdelta} is set to FALSE and no second-stage covariates are used.
+\item \code{unit_id} (optional): Unit IDs, unique and non-missing, in unit
+order. Default: names of the unit list if complete and unique,
+otherwise "1", "2", ...
+With \code{previous}, omit \code{Data} or use NULL for unchanged data. Otherwise
+\code{Data} is a batch and \code{unit_id} is required: observations append to matching
+IDs, new IDs append after old units, and units absent from the batch remain.
+X columns must match the saved design. If the fit has Z, supply one batch
+Z row per ID with the saved columns; old-unit rows must equal stored rows.
+Z is not recentered or rescaled, and cannot be added to a fit without Z.
 }}
 
 \item{Prior}{A list containing prior parameters:
@@ -37,12 +46,14 @@ are optional under a HART model and are an error under \code{"none"}. See
 \code{rhierMnlRwMixture} for the model definitions.
 \item \code{bart} (optional): List of hyperparameters for the HART mean trees
 (\code{hart_model = "normalized"} or \code{"direct"}). See \code{rhierMnlRwMixture}.
+\item \code{hart_cov} (optional, \code{hart_model = "direct"} only): Covariance model, \code{"heteroskedastic"} (default; covariate-dependent \eqn{\Sigma(Z_i)} from the variance and off-diagonal ensembles) or \code{"constant"} (one \eqn{\Sigma \sim IW(\nu, V)} shared by all units, drawn by its conjugate update). Under \code{"constant"}, \code{vartree} and \code{phitree} are an error and the fit carries bayesm's \code{nmix} instead of the heteroscedastic outputs.
 \item \code{vartree} (optional, \code{hart_model = "direct"} only): List of
 hyperparameters for the product-of-trees variance models on the Modified
 Cholesky diagonal \eqn{d_j(\cdot)}.
 \item \code{phitree} (optional, \code{hart_model = "direct"} and \code{nvar > 1} only): List
 of hyperparameters for the sum-of-trees models on the Modified Cholesky
 off-diagonals \eqn{\phi_{jk}(\cdot)}.
+With \code{previous}, prior settings are inherited; see Continuing a Fit.
 }}
 
 \item{Mcmc}{A list containing MCMC parameters:
@@ -55,9 +66,14 @@ off-diagonals \eqn{\phi_{jk}(\cdot)}.
 \item \code{w} (optional): Fractional likelihood weight used in candidate Hessian construction (default: 0.1).
 \item \code{alpha} (optional): Fixed alpha value. If provided, alpha is not sampled (sets \code{fixalpha = TRUE}).
 \item \code{fixalpha} (optional): Logical, whether to fix alpha (default: FALSE).
-}}
+}
+
+With \code{previous}, only \code{R}, \code{keep} and \code{nprint} are accepted; \code{R} counts
+additional sweeps and the other controls are inherited.}
 
 \item{r_verbose}{Logical. Print startup messages? Default TRUE.}
+
+\item{previous}{A fitted object with \code{restart}, or NULL for a fresh fit.}
 }
 \value{
 A list of class \code{"rhierNegbinRw"} containing:
@@ -65,13 +81,15 @@ A list of class \code{"rhierNegbinRw"} containing:
 \item \code{betadraw}: \verb{nreg x nvar x (R/keep)} array of unit-level beta draws.
 \item \code{alphadraw}: \verb{(R/keep) x 1} vector of overdispersion draws.
 \item \code{loglike}: \verb{(R/keep) x 1} vector of log-likelihoods.
-\item \code{nmix}: bayesm list of \verb{(mu, rooti)} draws (omitted under \code{hart_model = "direct"}).
+\item \code{nmix}: bayesm list of \verb{(mu, rooti)} draws (omitted under \code{hart_model = "direct"} with \code{hart_cov = "heteroskedastic"}).
 \item \code{acceptrbeta}, \code{acceptralpha}: Metropolis acceptance rates (percent).
 \item If \code{Z} is supplied and \code{hart_model = "none"}: \code{Deltadraw}.
 \item Under a HART model: \code{bart_models}, \code{varcount}, \code{varprob}.
 \item Under \code{hart_model = "direct"} (additional class \code{"rhierNegbinRwHeterCov"}):
 \code{var_models}, \code{phi_models} (jagged or \code{NULL}), \code{mu_draw},
 \code{mean_scale_draw}, \code{var_varcount}, \code{var_varprob}.
+\item \code{restart}: Retained data, resolved configuration, proposal preparation
+and terminal sampler state for continuation through \code{previous}.
 }
 }
 \description{
@@ -111,6 +129,17 @@ inherits classes \code{"rhierNegbinRwHeterCov"} and \code{"bayesm.HART.HeterCov"
 \code{predict()} dispatches on them to evaluate \eqn{\Sigma(Z^*)} at new
 \eqn{Z^*}.
 }
+
+\subsection{Continuing a Fit}{
+
+The result contains only the new run's draws. Old draws are not pooled
+with them. Priors, tree cutpoints and the fixed-alpha setting are inherited
+from the first fit. New units outside the original Z range are resolved
+on the original grid. Settling sweeps may be needed after adding data.
+Passing the same batch twice counts its observations twice. Fits retain
+their data and are therefore larger. Fits made before restart support
+cannot be continued. \code{Prior} is not accepted with \code{previous}.
+}
 }
 \note{
 Currently, only \code{ncomp = 1} is supported.
@@ -131,6 +160,13 @@ fit   <- bayesm.HART::rhierNegbinRw(
   Data = list(regdata = sim$regdata, Z = sim$Z),
   Prior = Prior, Mcmc = Mcmc, r_verbose = FALSE)
 str(fit, max.level = 1)
+continued <- rhierNegbinRw(previous = fit, Mcmc = list(R = 200))
+batch_units <- lapply(sim$regdata[1:2], function(u)
+  list(y = rpois(1, 2), X = u$X[1, , drop = FALSE]))
+batch <- list(regdata = batch_units, unit_id = c("1", "new"),
+              Z = sim$Z[1:2, , drop = FALSE])
+extended <- rhierNegbinRw(Data = batch, previous = continued,
+                                Mcmc = list(R = 200))
 }
 
 }

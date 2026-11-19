@@ -63,6 +63,7 @@ std::istream& operator>>(std::istream& is, vectree& t) {
     size_t nn;
     is >> nn;
     if (!is) return is;
+    if (nn == 0) { is.setstate(std::ios::failbit); return is; }
     struct rec { size_t v, c; arma::vec m; };
     std::map<size_t, rec> recs;                // ordered by node id
     for (size_t i = 0; i < nn; i++) {

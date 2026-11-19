@@ -41,11 +41,21 @@ public:
     arma::vec const& prior_mean(int i) const override { return prior_mean_[i]; }
 };
 
-// Covariance backend for one sampler run, by Prior$hart_model (shared by
-// the MNL, Linear, and NegBin loop files): "direct" -> DirectHartBackend,
+// DART hyperparameters of a tree List onto any ensemble that takes them.
+template <class B>
+inline void setdart_from(B& model, Rcpp::List const& p) {
+    model.setdart(Rcpp::as<double>(p["a"]), Rcpp::as<double>(p["b"]),
+                  Rcpp::as<double>(p["rho"]), Rcpp::as<bool>(p["aug"]),
+                  Rcpp::as<bool>(p["sparse"]), Rcpp::as<double>(p["theta"]),
+                  Rcpp::as<double>(p["omega"]));
+}
+
+// Covariance backend for one sampler run, by Prior$hart_model and
+// Prior$hart_cov (shared by the MNL, Linear, and NegBin loop files):
+// "direct" -> DirectHartBackend with a TreeCov or ConstantCov strategy,
 // "normalized" -> NormalizedHartBackend, "none" -> GlobalCovarianceBackend.
 std::unique_ptr<CovarianceBackend> make_backend(
-    std::string const& hart_model,
+    std::string const& hart_model, std::string const& hart_cov,
     arma::mat& oldbetas, arma::mat const& Z,
     arma::mat const& mubar, arma::mat const& Amu,
     double nu, arma::mat const& V, arma::vec const& a,

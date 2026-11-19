@@ -76,7 +76,12 @@ test_that("direct model: appendix defaults, phi iff nvar > 1", {
   expect_equal(cfg$bart$a_tau, 3)
   expect_equal(cfg$bart$tau0, c(1, 1))
   expect_equal(cfg$vartree$num_trees, 40L)
-  expect_equal(cfg$vartree$a_v, 3)
+  # tau is the prior sd of log v_j(Z): H_v trigamma(a_v) = tau^2.
+  expect_equal(cfg$vartree$tau, 1)
+  expect_equal(40 * trigamma(cfg$vartree$a_v), 1)
+  cfg7 <- cfg_of(list(ncomp = 1, hart_model = "direct",
+                      vartree = list(num_trees = 7L, tau = 0.5)))
+  expect_equal(7 * trigamma(cfg7$vartree$a_v), 0.25)
   expect_equal(cfg$vartree$v0, c(1, 1))
   expect_equal(cfg$vartree$nmin, 5L)
   expect_equal(cfg$phitree$num_trees, 40L)
@@ -90,13 +95,40 @@ test_that("direct model: appendix defaults, phi iff nvar > 1", {
                regexp = "requires nvar > 1")
 })#TEST_THAT
 
+test_that("direct model: hart_cov selects the covariance model", {
+  cfg <- cfg_of(list(ncomp = 1, hart_model = "direct"))
+  expect_equal(cfg$cov, "heteroskedastic")
+  g <- cfg_of(list(ncomp = 1, hart_model = "direct", hart_cov = "constant"))
+  expect_equal(g$cov, "constant")
+  expect_false(g$full_cov)
+  expect_null(g$vartree)
+  expect_null(g$phitree)
+  expect_equal(g$bart$num_trees, 200L)
+  expect_null(cfg_of(list(ncomp = 1, hart_model = "normalized"))$cov)
+  expect_error(cfg_of(list(ncomp = 1, hart_model = "direct",
+                           hart_cov = "none")),
+               regexp = "hart_cov must be one of")
+  expect_error(cfg_of(list(ncomp = 1, hart_model = "direct",
+                           hart_cov = "constant", vartree = list())),
+               regexp = "not used under Prior\\$hart_cov = 'constant'")
+  expect_error(cfg_of(list(ncomp = 1, hart_model = "normalized",
+                           hart_cov = "constant")),
+               regexp = "requires Prior\\$hart_model = 'direct'")
+  expect_error(cfg_of(list(ncomp = 1, hart_cov = "heteroskedastic")),
+               regexp = "requires Prior\\$hart_model = 'direct'")
+  # nu and V are the global model's prior and raise no message there.
+  expect_silent(cfg_of(list(ncomp = 1, hart_model = "direct",
+                            hart_cov = "constant", nu = 5)))
+})#TEST_THAT
+
 test_that("direct model rejects normalized-model and removed fields", {
   direct <- function(...) cfg_of(list(ncomp = 1, hart_model = "direct", ...))
   expect_error(direct(bart = list(tau = 1)), regexp = "Prior\\$bart\\$tau")
   expect_error(direct(vartree = list(lambda = 1)), regexp = "lambda")
   expect_error(direct(vartree = list(nu = 10)), regexp = "nu")
+  expect_error(direct(vartree = list(a_v = 3)), regexp = "a_v")
   expect_error(direct(phitree = list(ess_min = 5)), regexp = "ess_min")
-  expect_error(direct(vartree = list(a_v = 1)), regexp = "greater than 1")
+  expect_error(direct(vartree = list(tau = -1)), regexp = "positive")
   expect_error(direct(bart = list(tau0 = c(1, 2, 3))),
                regexp = "length 1 or nvar")
   expect_message(direct(nu = 5), regexp = "not used")
@@ -162,6 +194,10 @@ test_that("fitted objects carry hart metadata only for HART models", {
                         bart = list(num_trees = 3L),
                         vartree = list(num_trees = 3L)),
       Mcmc, r_verbose = FALSE)
+    fit_glob <- rhierMnlRwMixture(
+      sim, Prior = list(ncomp = 1, hart_model = "direct",
+                        hart_cov = "constant", bart = list(num_trees = 3L)),
+      Mcmc, r_verbose = FALSE)
   })
   expect_null(fit_none$hart)
   expect_equal(fit_norm$hart$model, "normalized")
@@ -171,8 +207,20 @@ test_that("fitted objects carry hart metadata only for HART models", {
   expect_equal(fit_norm$hart$priors$bart$num_trees, 3L)
   expect_null(fit_norm$hart$priors$vartree)
   expect_equal(fit_dir$hart$model, "direct")
+  expect_equal(fit_dir$hart$cov, "heteroskedastic")
+  expect_equal(fit_glob$hart$cov, "constant")
+  expect_null(fit_glob$hart$priors$vartree)
+  expect_false(inherits(fit_glob, "bayesm.HART.HeterCov"))
+  expect_s3_class(fit_glob$nmix, "bayesm.nmix")
   expect_equal(fit_dir$hart$priors$vartree$num_trees, 3L)
-  expect_equal(fit_dir$hart$priors$vartree$a_v, 3)
   expect_true(is.list(fit_dir$hart$priors$phitree))
   expect_s3_class(fit_dir, "bayesm.HART.HeterCov")
+  # The saved priors are the parsed configuration the sampler received.
+  cfg_dir <- bayesm.HART:::.hart_config(
+    list(ncomp = 1, hart_model = "direct", bart = list(num_trees = 3L),
+         vartree = list(num_trees = 3L)),
+    nvar = dim(fit_dir$betadraw)[2], nz = 2L, drawdelta = TRUE,
+    coef_names = colnames(sim$lgtdata[[1]]$X))
+  expect_equal(fit_dir$hart$priors[c("bart", "vartree", "phitree")],
+               cfg_dir[c("bart", "vartree", "phitree")])
 })#TEST_THAT

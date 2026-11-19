@@ -17,6 +17,13 @@ knitr::opts_chunk$set(
   fig.path = "figures/mfx-",
   eval = TRUE
 )
+
+# Seed every chunk from its label, so results do not depend on what ran
+# before it, in particular on whether the model cache was warm.
+knitr::knit_hooks$set(chunk_seed = function(before, options, envir) {
+  if (before) set.seed(20261112L + sum(utf8ToInt(options$label)))
+})
+knitr::opts_chunk$set(chunk_seed = TRUE)
 # Set seed for reproducibility within the vignette build
 set.seed(1234)
 ```
@@ -160,11 +167,11 @@ if (!model_cache_ok) {
   ## ---- Prior Specification (including BART hyperparameters) ----
   Prior_bart = list(
     ncomp = 1,
+    hart_model = "normalized",
     bart = list(num_trees = 50, # Number of trees in the BART sum
                 power = 2,       # Tree depth penalization
                 base = 0.95,     # Tree depth penalization
-                # Prior sd for terminal node params (scaled by num_trees)
-                tau = 2 / sqrt(50), 
+                tau = 2,         # Prior sd of each f*_d(Z) (ensemble scale)
                 numcut = 50,     # Max number of cutpoints per variable
                 sparse = FALSE    # Use sparsity inducing prior?
                ) # BART list end

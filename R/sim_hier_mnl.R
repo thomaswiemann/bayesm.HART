@@ -40,6 +40,10 @@
 #' @param sigma_inv_diag Numeric. Diagonal value for the inverse covariance matrix
 #'   (precision) of mixture components if `mixture_comps` is `NULL`. Assumes identity
 #'   covariance scaled by this.
+#' @param Sigma_func Function of one row of `Z` returning the `ncoef x ncoef`
+#'   covariance of `eps_i`. Replaces the component covariance with
+#'   covariate-dependent heterogeneity; requires `nz > 0` and `ncomp = 1`.
+#'   Default `NULL`.
 #' @param Xa_dist_func Function. Function to generate alternative-specific variables `Xa`.
 #'   Takes `n` (nT), `p`, `na` (nXa) and returns a matrix (usually `n x (p*na)` or similar structure expected by `createX`).
 #'   Default: `function(n, p, na) matrix(runif(n*p*na, -1, 1), ncol=p*na)`.
@@ -56,6 +60,7 @@
 #'   Additionally, the list contains `true_values`:
 #'   * `true_values$beta_true`: `nlgt x ncoef` matrix of true `beta_i`.
 #'   * `true_values$betabar_true`: `nlgt x ncoef` matrix of true `betabar_i = f(Z_i)`.
+#'   * `true_values$Sigma_true`: `nlgt x ncoef x ncoef` array of `Sigma_func(Z_i)` (only with `Sigma_func`).
 #'   * `true_values$true_params`: List containing parameters used for generation (`beta_func_type`, `beta_func_args`, `mixture_comps`, `pvec`).
 #'   * `true_values$dimensions`: List containing key dimensions used (`p`, `nlgt`, `nT`, `nz`, `ncoef`, etc.).
 #'
@@ -98,6 +103,7 @@ sim_hier_mnl <- function(
   ncomp = 1,             # Number of mixture components for eps_i
   mixture_comps = NULL,  # Optional: Pre-specify list of components 
   sigma_inv_diag = 1,    # Diagonal value for Sigma_inv if mixture_comps is NULL
+  Sigma_func = NULL,     # Covariate-dependent covariance of eps_i
 
   # X Generation
   Xa_dist_func = function(n, p, na) matrix(stats::runif(n*p*na, -1, 1), ncol=p*na), # Func for Xa
@@ -127,6 +133,9 @@ sim_hier_mnl <- function(
   }
   if (nz > 0 && beta_func_type == "custom" && !is.function(beta_func_args$func)) {
       stop("Custom beta function requires 'func' in beta_func_args.")
+  }
+  if (!is.null(Sigma_func) && (nz == 0 || ncomp != 1)) {
+      stop("Sigma_func requires nz > 0 and ncomp = 1.")
   }
 
   # ============================================================================
@@ -263,11 +272,15 @@ sim_hier_mnl <- function(
   # ============================================================================
   # 5. Generate beta_true = betabar_true + eps_i
   # ============================================================================
-  beta_true <- matrix(0, nrow = nlgt, ncol = ncoef)
-  # Using bayesm::rmixture requires bayesm in Imports
-  eps_draws <- bayesm::rmixture(nlgt, pvec, mixture_comps)
-  # Ensure eps_draws$x is treated as a matrix even if nlgt=1 or ncoef=1
-  eps_matrix <- matrix(eps_draws$x, nrow = nlgt, ncol = ncoef)
+  Sigma_true <- NULL
+  if (is.null(Sigma_func)) {
+    eps_draws <- bayesm::rmixture(nlgt, pvec, mixture_comps)
+    eps_matrix <- matrix(eps_draws$x, nrow = nlgt, ncol = ncoef)
+  } else {
+    Sigma_true <- .sigma_true_array(Sigma_func, Z, ncoef)
+    eps_matrix <- sweep(.draw_heteroskedastic_eps(Sigma_true), 2,
+                        mixture_comps[[1]]$mu, "+")
+  }
   beta_true <- betabar_true + eps_matrix
 
   # ============================================================================
@@ -321,6 +334,8 @@ sim_hier_mnl <- function(
       )
     )
   )
+
+  if (!is.null(Sigma_true)) output$true_values$Sigma_true <- Sigma_true
 
   return(output)
 }

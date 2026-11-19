@@ -109,9 +109,10 @@ public:
    std::vector<double>& getpv() {return pv;}
    double gettheta() {return theta;}
 
-   // debugging
-   void setDebugObservation(int i) { debug_obs = i; }
-   void setDebug(bool d) { debug = d; }
+   std::vector<double>& getlpv() {return lpv;}
+   bool getdartOn() const {return dartOn;}
+   void setdartstate(double value, bool on) {theta=value; dartOn=on;}
+   void rebuildfit() {predict(p,n,x,allfit);}
    //------------------------------
    //public methods
    void birth(size_t i, size_t nid,size_t v, size_t c, double ml, double mr)
@@ -125,14 +126,6 @@ public:
    void updateY(double* newy); 
 //   void draw_s(rn& gen);
    double f(size_t i) const {return allfit[i];}
-   // for debugging:
-   void print_pred(size_t i) const {
-       if (i >= n) {
-           printf("Error: Index %zu out of bounds (n=%zu)\n", i, n);
-           return;
-       }
-       printf("Current prediction for obs %zu: %f\n", i, allfit[i]);
-   }
 protected:
    size_t m;  //number of trees
    std::vector<tree> t; //the trees
@@ -150,9 +143,6 @@ protected:
    double a,b,rho,theta,omega;
    std::vector<size_t> nv;
    std::vector<double> pv, lpv;
-   // debugging
-   int debug_obs = -1;  // observation to debug, -1 means no debugging
-   bool debug = false;
 };
 
 #endif

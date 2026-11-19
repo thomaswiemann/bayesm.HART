@@ -10,11 +10,13 @@ List rhierLinearMixture_rcpp_loop(List const& regdata, mat const& Z,
                                   double nu, mat const& V, double nu_e, vec const& ssq,
                                   int R, int keep, int nprint, bool drawdelta,
                                   mat olddelta, vec const& a, vec oldprob, vec ind, vec tau,
-                                  std::string const& hart_model,
+                                  std::string const& hart_model, std::string const& hart_cov,
                                   List const& bart_params,
                                   List const& var_params,
                                   List const& phi_params,
-                                  mat const& Beta_init){
+                                  mat const& Beta_init,
+                                  Rcpp::Nullable<Rcpp::List> state =
+                                      R_NilValue){
 
 // Wayne Taylor 10/02/2014
 // Modified by Thomas Wiemann 2025 -- HART support.
@@ -52,18 +54,38 @@ List rhierLinearMixture_rcpp_loop(List const& regdata, mat const& Z,
     oldbetas = Beta_init;
   }
 
+  int offset = 0;
+  List saved;
+  if (state.isNotNull()) {
+    saved = List(state);
+    oldbetas = as<mat>(saved["betas"]);
+    offset = as<int>(saved["completed_sweeps"]);
+    tau = as<vec>(saved["tau"]);
+  }
+  if (oldbetas.n_rows != (uword)nreg || oldbetas.n_cols != (uword)nvar
+      || offset < 0)
+    stop("Invalid sampler state dimensions or completed sweeps.");
+
   // ====================================================================
   // Create backend + updater adapters, then run the unified MCMC loop.
   // ====================================================================
   std::unique_ptr<CovarianceBackend> backend = make_backend(
-      hart_model, oldbetas, Z, mubar, Amu, nu, V, a,
+      hart_model, hart_cov, oldbetas, Z, mubar, Amu, nu, V, a,
       deltabar, Ad, drawdelta, olddelta, oldprob, ind, R, keep,
       bart_params, var_params, phi_params);
+  if (state.isNotNull()) backend->restore(as<List>(saved["backend"]));
 
   LinearThetaUpdaterAdapter updater(oldbetas, regdata_vector, tau, nu_e, ssq, R, keep);
 
   run_unified_sampler(R, keep, nprint, nreg,
-                      *backend, updater, oldbetas, betadraw, loglike);
+                      *backend, updater, oldbetas, betadraw, loglike, offset);
+
+  List terminal = List::create(Named("completed_sweeps") = offset + R,
+                              Named("betas") = oldbetas,
+                              Named("tau") =
+                                  NumericVector(updater.tau().begin(),
+                                                updater.tau().end()),
+                              Named("backend") = backend->checkpoint());
 
   // ====================================================================
   // Output assembly: backend.pack() + updater.pack() + betadraw/loglike
@@ -72,6 +94,7 @@ List rhierLinearMixture_rcpp_loop(List const& regdata, mat const& Z,
   UpdaterPackPayload up = updater.pack();
 
   List out = bp.fields;
+  out["state"] = terminal;
   out["betadraw"] = betadraw;
   out["loglike"]  = loglike;
 

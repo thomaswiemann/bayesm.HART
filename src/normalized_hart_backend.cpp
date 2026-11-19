@@ -110,3 +110,24 @@ BackendPackPayload NormalizedHartBackend::pack() {
     bp.caps = capabilities();
     return bp;
 }
+
+List NormalizedHartBackend::checkpoint() {
+    List mean(D_);
+    for (int d = 0; d < D_; ++d) mean[d] = pack_bart_state_(f_[d]);
+    return List::create(Named("mu") = NumericVector(mu_.begin(), mu_.end()),
+                        Named("L") = L_, Named("mean") = mean);
+}
+
+void NormalizedHartBackend::restore(List const& state) {
+    mu_ = as<vec>(state["mu"]);
+    L_ = as<mat>(state["L"]);
+    List mean = state["mean"];
+    if ((int)mu_.n_elem != D_ || (int)L_.n_rows != D_ ||
+        (int)L_.n_cols != D_ || mean.size() != D_)
+        stop("NormalizedHartBackend: state dimension mismatch.");
+    for (int d = 0; d < D_; ++d) {
+        restore_bart_state_(f_[d], as<List>(mean[d]));
+        for (int i = 0; i < n_; ++i) fstar_(i, d) = f_[d].f(i);
+    }
+    refresh_kernels();
+}

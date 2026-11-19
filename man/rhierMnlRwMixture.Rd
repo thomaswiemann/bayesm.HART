@@ -4,7 +4,7 @@
 \alias{rhierMnlRwMixture}
 \title{Bayesian Multinomial Logit Model with HART Prior}
 \usage{
-rhierMnlRwMixture(Data, Prior, Mcmc, r_verbose = TRUE)
+rhierMnlRwMixture(Data, Prior, Mcmc, r_verbose = TRUE, previous = NULL)
 }
 \arguments{
 \item{Data}{A list containing:
@@ -17,6 +17,17 @@ rhierMnlRwMixture(Data, Prior, Mcmc, r_verbose = TRUE)
 }
 \item \code{Z} (optional): \verb{nlgt x nz} matrix of observed characteristics for each unit.
 Should NOT contain an intercept and should be centered.
+\item \code{unit_id} (optional): Unit IDs, unique and non-missing, in unit
+order. Default: names of the unit list if complete and unique,
+otherwise "1", "2", ...
+With \code{previous}, omit \code{Data} or use NULL for unchanged data. Otherwise
+\code{Data} is a batch and \code{unit_id} is required: observations append to matching
+IDs, new IDs append after old units, and units absent from the batch remain.
+X columns must match the saved design. If the fit has Z, supply one batch
+Z row per ID with the saved columns; old-unit rows must equal stored rows.
+Z is not recentered or rescaled, and cannot be added to a fit without Z.
+\code{p} is inherited when omitted and must match if supplied. Alternative
+blocks remain consecutive within each choice observation.
 }}
 
 \item{Prior}{A list containing prior parameters:
@@ -26,13 +37,15 @@ Should NOT contain an intercept and should be centered.
 \item \code{Ad} (optional): Prior precision matrix for \code{vec(Delta)} (default: \code{0.01 * I}). Ignored if HART is used.
 \item \code{mubar} (optional): \verb{nvar x 1} prior mean vector for the normal prior (default: 0 if unrestricted, 2 if restricted).
 \item \code{Amu} (optional): Prior precision for the normal prior on \eqn{\mu} (default: 0.01 if unrestricted, 0.1 if restricted). Scalar on the bayesm paths. Under a HART model the prior is the independent \eqn{N(\bar\mu, Amu^{-1})}, and \code{Amu} may be a scalar (expanded to \code{Amu * I}) or an \verb{nvar x nvar} SPD matrix.
-\item \code{nu} (optional): Degrees of freedom for IW prior on component \code{Sigma} (default: \code{nvar+3} if unrestricted, \code{nvar+15} if restricted). Not used under \code{hart_model = "direct"}.
-\item \code{V} (optional): Location matrix for IW prior on component \code{Sigma} (default: \code{nu * I} or scaled based on restriction). Not used under \code{hart_model = "direct"}.
+\item \code{nu} (optional): Degrees of freedom for IW prior on component \code{Sigma} (default: \code{nvar+3} if unrestricted, \code{nvar+15} if restricted). Not used under \code{hart_model = "direct"} with \code{hart_cov = "heteroskedastic"}.
+\item \code{V} (optional): Location matrix for IW prior on component \code{Sigma} (default: \code{nu * I} or scaled based on restriction). Not used under \code{hart_model = "direct"} with \code{hart_cov = "heteroskedastic"}.
 \item \code{SignRes} (optional): \verb{nvar x 1} vector of sign restrictions. Must contain values of 0, -1, or 1. The value 0 means no restriction, -1 ensures the coefficient is negative, and 1 ensures the coefficient is positive. For example, \code{SignRes = c(0,1,-1)} means the first coefficient is unconstrained, the second will be positive, and the third will be negative. Default: \code{rep(0, nvar)}.
 \item \code{hart_model} (optional): Preference-model selector, one of \code{"none"} (default; the bayesm constant or linear \eqn{\Delta(Z)} paths), \code{"normalized"} (HART prior on the representative consumer, \eqn{\theta_i = \mu + S\{f^*(Z_i) + \varepsilon_i\}}), or \code{"direct"} (HART mean and covariance trees, \eqn{\theta_i = \mu + f(Z_i) + S_i \varepsilon_i}). Both HART models require \code{Z}. The tree lists below are optional under a HART model and are an error under \code{"none"}.
 \item \code{bart} (optional): List of hyperparameters for the HART mean trees (\code{hart_model = "normalized"} or \code{"direct"}). See Details.
+\item \code{hart_cov} (optional, \code{hart_model = "direct"} only): Covariance model, \code{"heteroskedastic"} (default; covariate-dependent \eqn{\Sigma(Z_i)} from the variance and off-diagonal ensembles) or \code{"constant"} (one \eqn{\Sigma \sim IW(\nu, V)} shared by all units, drawn by its conjugate update). Under \code{"constant"}, \code{vartree} and \code{phitree} are an error and the fit carries bayesm's \code{nmix} instead of the heteroscedastic outputs.
 \item \code{vartree} (optional, \code{hart_model = "direct"} only): List of hyperparameters for the product-of-trees variance models on the Modified Cholesky diagonal \eqn{d_j(\cdot)}. Compatible with \code{SignRes}. See "Direct HART" in Details.
 \item \code{phitree} (optional, \code{hart_model = "direct"} and \code{nvar > 1} only): List of hyperparameters for the sum-of-trees models on the Modified Cholesky off-diagonals \eqn{\phi_{jk}(\cdot)}. The off-diagonal ensembles always exist when \code{nvar > 1}; this list only sets their hyperparameters.
+With \code{previous}, prior settings are inherited; see Continuing a Fit.
 }}
 
 \item{Mcmc}{A list containing MCMC parameters:
@@ -42,16 +55,20 @@ Should NOT contain an intercept and should be centered.
 \item \code{nprint} (optional): Print progress every \code{nprint} draws (default: 100, 0 for none).
 \item \code{s} (optional): RW Metropolis scaling parameter (default: \code{2.93 / sqrt(nvar)}).
 \item \code{w} (optional): Fractional likelihood weighting parameter (default: 0.1).
+With \code{previous}, only \code{R}, \code{keep} and \code{nprint} are accepted; \code{R} counts
+additional sweeps and the other controls are inherited.
 }}
 
 \item{r_verbose}{Logical. Print startup messages? Default TRUE.}
+
+\item{previous}{A fitted object with \code{restart}, or NULL for a fresh fit.}
 }
 \value{
 A list containing:
 \itemize{
 \item \code{Deltadraw}: If \code{Z} provided and \code{bart=NULL}, \verb{(R/keep) x (nz * nvar)} matrix of \code{vec(Delta)} draws.
 \item \code{betadraw}: \verb{nlgt x nvar x (R/keep)} array of unit-level \code{beta_i} draws.
-\item \code{nmix}: bayesm list of \verb{(mu, rooti)} draws (omitted under \code{hart_model = "direct"}).
+\item \code{nmix}: bayesm list of \verb{(mu, rooti)} draws (omitted under \code{hart_model = "direct"} with \code{hart_cov = "heteroskedastic"}).
 \item \code{loglike}: \verb{(R/keep) x 1} vector of log-likelihood values at kept draws.
 \item \code{SignRes}: \verb{nvar x 1} vector of sign restrictions used.
 \item \code{acceptrbeta}: Metropolis acceptance rate (percent) for the unit-level
@@ -62,6 +79,8 @@ MNL random-walk updates of \code{beta_i}.
 \item \code{phi_models} (\code{hart_model = "direct"}, \code{nvar > 1}): jagged list of length \code{nvar}. \code{phi_models[[1]]} is \code{NULL}; for \code{j > 1}, \code{phi_models[[j]]} is a list of length \code{j-1} containing the sum-of-trees ensemble for \eqn{\phi_{jk}(\cdot)}.
 \item \code{mu_draw} (\code{hart_model = "direct"}): \verb{(R/keep) x nvar} matrix of \eqn{\mu} draws.
 \item \code{mean_scale_draw} (\code{hart_model = "direct"}): \verb{(R/keep) x nvar} matrix of \eqn{\tau_d^2} draws.
+\item \code{restart}: Retained data, resolved configuration, proposal preparation
+and terminal sampler state for continuation through \code{previous}.
 }
 }
 \description{
@@ -135,7 +154,7 @@ where \eqn{f(Z)} is a sum of \code{num_trees} trees with vector leaves \eqn{m_{h
 \strong{\code{Prior$vartree} parameters} (defaults shown):
 \itemize{
 \item \code{num_trees} (40), \code{power} (2), \code{base} (0.95), \code{numcut} (100), \code{nmin} (5): Tree-structure prior parameters.
-\item \code{a_v} (3), \code{v0} (1 unrestricted, 0.1 sign-restricted; length 1 or \code{nvar}): Leaves are \eqn{s \sim IG(a_v, b_{vj})} with \eqn{b_{vj} = (a_v - 1) v_{0j}^{1/H_v}}, so that \eqn{E[d_j(Z)] = v_{0j}}; \code{a_v > 2} gives a finite prior variance.
+\item \code{tau} (1), \code{v0} (1 unrestricted, 0.1 sign-restricted; length 1 or \code{nvar}): Ensemble scale and level. Leaves are \eqn{s \sim IG(a_v, b_{vj})} with \eqn{H_v \psi'(a_v) = \tau^2} and \eqn{b_{vj} = (a_v - 1) v_{0j}^{1/H_v}}, so that \eqn{\log d_j(Z)} has prior standard deviation \eqn{\tau} and \eqn{E[d_j(Z)] = v_{0j}} for any \code{num_trees} (\eqn{\psi'} is the trigamma function).
 \item DART hyperparameters (\code{sparse}, \code{a}, \code{b}, \code{rho}, \code{theta}, \code{omega}, \code{aug}, \code{burn}): same meaning as \code{Prior$bart}.
 }
 
@@ -158,9 +177,36 @@ The \code{nmix} output contains draws for the \emph{unrestricted} prior covarian
 
 \strong{Note:} Care should be taken when selecting priors on any sign restricted coefficients.
 }
+
+\subsection{Continuing a Fit}{
+
+The result contains only the new run's draws. Old draws are not pooled
+with them. Priors, tree cutpoints and sign restrictions are inherited
+from the first fit. New units outside the original Z range are resolved
+on the original grid. Settling sweeps may be needed after adding data.
+Passing the same batch twice counts its observations twice. Fits retain
+their data and are therefore larger. Fits made before restart support
+cannot be continued. \code{Prior} is not accepted with \code{previous}.
+}
 }
 \note{
 Currently, only \code{ncomp = 1} is supported.
+}
+\examples{
+\donttest{
+sim <- sim_hier_mnl(nlgt = 12, nT = 5, p = 3, nz = 2, nXa = 2,
+                    nXd = 0, const = FALSE, seed = 11)
+fit <- rhierMnlRwMixture(Data = sim, Prior = list(ncomp = 1),
+                         Mcmc = list(R = 200, keep = 1, nprint = 0))
+continued <- rhierMnlRwMixture(previous = fit, Mcmc = list(R = 200))
+batch_units <- lapply(sim$lgtdata[1:2], function(u)
+  list(y = sample.int(sim$p, 1), X = u$X[seq_len(sim$p), , drop = FALSE]))
+batch <- list(lgtdata = batch_units, unit_id = c("1", "new"),
+              Z = sim$Z[1:2, , drop = FALSE])
+extended <- rhierMnlRwMixture(Data = batch, previous = continued,
+                                Mcmc = list(R = 200))
+}
+
 }
 \references{
 Chipman, Hugh A., Edward I. George, and Robert E. McCulloch (2010). "BART: Bayesian Additive Regression Trees." Annals of Applied Statistics 4.1.

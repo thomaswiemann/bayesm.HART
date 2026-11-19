@@ -44,6 +44,8 @@ public:
 
     // Post-loop: return all backend outputs.
     virtual BackendPackPayload pack() = 0;
+    virtual Rcpp::List checkpoint() = 0;
+    virtual void restore(Rcpp::List const& state) = 0;
 
     // Report capabilities (static after init).
     virtual BackendCapabilities capabilities() const = 0;

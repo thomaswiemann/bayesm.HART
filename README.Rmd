@@ -12,6 +12,14 @@ knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>"
 )
+
+# Seed every chunk from its label, so results do not depend on what ran
+# before it, in particular on whether the model cache was warm.
+knitr::knit_hooks$set(chunk_seed = function(before, options, envir) {
+  if (before) set.seed(20261112L + sum(utf8ToInt(options$label)))
+})
+knitr::opts_chunk$set(chunk_seed = TRUE)
+
 ```
 
 # bayesm.HART
@@ -84,9 +92,11 @@ Mcmc <- list(R = 2000, keep = 2, nprint = 500)
 ```
 
 To fit the HART logit model, call `rhierMnlRwMixture`. Relative to a
-linear hierarchical specification, the main change is adding the `bart`
-entry in `Prior`. For illustration, the code below uses 50 trees per
-factor and leaves other hyperparameters at defaults. See
+linear hierarchical specification, the main change is
+`hart_model = "normalized"` in `Prior`; the optional `bart` entry sets the
+tree hyperparameters. For illustration, the code below uses 50 trees per
+factor and leaves other hyperparameters at defaults.
+`hart_model = "direct"` adds covariate-dependent covariance trees. See
 `?rhierMnlRwMixture` for details.
 
 ```{r, include = FALSE}
@@ -110,8 +120,9 @@ if (!model_cache_ok) {
   out <- bayesm.HART::rhierMnlRwMixture(
       Data = Data, Mcmc = Mcmc, 
       Prior = list(
-        ncomp = 1, 
-        bart = list(num_trees = 50) # new HART prior parameters
+        ncomp = 1,
+        hart_model = "normalized",  # HART prior on the representative consumer
+        bart = list(num_trees = 50) # HART hyperparameters (optional)
         ),
       r_verbose = F # suppress R print output (optional)
   )
@@ -161,6 +172,8 @@ See the `bayesm.HART` vignettes:
 - [`vignette("bayesm-HART-linear")`](https://thomaswiemann.com/bayesm.HART/articles/bayesm-HART-linear.html): Hierarchical linear model
 - [`vignette("bayesm-HART-negbin")`](https://thomaswiemann.com/bayesm.HART/articles/bayesm-HART-negbin.html): Hierarchical negative binomial model
 - [`vignette("bayesm-HART-heteroskedastic-hart-bank")`](https://thomaswiemann.com/bayesm.HART/articles/bayesm-HART-heteroskedastic-hart-bank.html): Bank conjoint -- heteroskedastic HART
+- [`vignette("simulation-convergence")`](https://thomaswiemann.com/bayesm.HART/articles/simulation-convergence.html): Simulation -- convergence of posterior means in n and T
+- [`vignette("simulation-calibrated")`](https://thomaswiemann.com/bayesm.HART/articles/simulation-calibrated.html): Simulation -- a calibrated design built from the bank fits
 
 ## Acknowledgements
 

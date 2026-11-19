@@ -23,6 +23,8 @@ public:
     arma::vec const& prior_mean(int i) const override;
     void store(int mkeep) override;
     BackendPackPayload pack() override;
+    Rcpp::List checkpoint() override;
+    void restore(Rcpp::List const& state) override;
     BackendCapabilities capabilities() const override;
 
 protected:

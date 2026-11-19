@@ -77,3 +77,15 @@ arma::vec vecbart::leaf_sumsq() const
       for(auto const& kv : t[j].leaves()) s += arma::square(kv.second);
    return s;
 }
+
+//--------------------------------------------------
+void vecbart::setxinfo(xinfo& _xi)
+{
+   size_t p=_xi.size();
+   xi.resize(p);
+   for(size_t i=0;i<p;i++) {
+     size_t nc=_xi[i].size();
+      xi[i].resize(nc);
+      for(size_t j=0;j<nc;j++) xi[i][j] = _xi[i][j];
+   }
+}

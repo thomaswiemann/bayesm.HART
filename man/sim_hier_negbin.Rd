@@ -14,6 +14,7 @@ sim_hier_negbin(
   target_var_betabar = 0.5,
   target_var_eps = 0.25,
   alpha = 5,
+  Sigma_func = NULL,
   seed = NULL
 )
 }
@@ -39,6 +40,10 @@ unobserved component eps_i. Default 0.25.}
 
 \item{alpha}{Numeric. Overdispersion parameter for negative binomial. Default 5.}
 
+\item{Sigma_func}{Function of one row of \code{Z} returning the \verb{ncoef x ncoef}
+covariance of \code{eps_i}. Overrides \code{target_var_eps} with covariate-dependent
+heterogeneity; requires \code{Z}. Default \code{NULL} (constant covariance).}
+
 \item{seed}{Integer. Optional random seed.}
 }
 \value{
@@ -46,7 +51,8 @@ A list containing:
 \item{regdata}{List of length nreg. Each element has y, X.}
 \item{hessdata}{List of length nreg. Each element has hess (approx Hessian).}
 \item{Z}{nreg x nz matrix of covariates (NULL if nz=0).}
-\item{true_values}{List with beta_true, betabar_true, alpha, etc.}
+\item{true_values}{List with beta_true, betabar_true, alpha, Sigma_eps,
+and Sigma_true (nreg x ncoef x ncoef, with Sigma_func).}
 }
 \description{
 Generates simulated data from a hierarchical negative binomial model with

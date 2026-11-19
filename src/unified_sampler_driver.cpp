@@ -11,7 +11,8 @@ void run_unified_sampler(
     ThetaUpdater& updater,
     arma::mat& oldbetas,
     arma::cube& betadraw,
-    arma::vec& loglike) {
+    arma::vec& loglike,
+    int offset) {
 
     using clock_t = std::chrono::steady_clock;
     using ns_t = std::chrono::nanoseconds;
@@ -34,7 +35,7 @@ void run_unified_sampler(
 
         // Step A-D: backend draws covariance/mean-tree blocks (atomic).
         auto t_backend_start = profile_enabled ? clock_t::now() : clock_t::time_point{};
-        backend.draw_iteration(rep);
+        backend.draw_iteration(offset + rep);
         if (profile_enabled) {
             backend_ns_total += static_cast<std::uint64_t>(
                 std::chrono::duration_cast<ns_t>(clock_t::now() - t_backend_start).count());
