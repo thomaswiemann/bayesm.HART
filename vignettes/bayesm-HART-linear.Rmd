@@ -23,13 +23,26 @@ the conventional specification uses the linear form `Delta^\\top Z_i`.
 The `orangeJuice` dataset contains weekly store-level scanner data for 83 stores. We observe log-sales, prices of 11 brands, and deal/feature indicators. Store demographics (income, education, ethnicity, household size, etc.) serve as covariates $Z_i$. Following Montgomery (1997), we estimate a log-log demand model for brand 1 (Tropicana Premium 64 oz), so coefficients are directly interpretable as price elasticities.
 
 
-```r
+``` r
 # Load dependencies
 library(bayesm.HART)
 library(bayesm)
+#> 
+#> Attaching package: 'bayesm'
+#> The following objects are masked from 'package:bayesm.HART':
+#> 
+#>     rhierLinearMixture, rhierMnlRwMixture, rhierNegbinRw
 # Data wrangling and plotting utilities
 library(tidyr)
 library(dplyr)
+#> 
+#> Attaching package: 'dplyr'
+#> The following objects are masked from 'package:stats':
+#> 
+#>     filter, lag
+#> The following objects are masked from 'package:base':
+#> 
+#>     intersect, setdiff, setequal, union
 library(ggplot2)
 
 # Load orange juice scanner panel data
@@ -66,7 +79,7 @@ Data <- list(regdata = regdata, Z = Z)
 We fit both the HART model (Wiemann, 2025) and a conventional linear hierarchical model (Rossi et al., 2009). Both estimate store-specific coefficients $\beta_i$ via a hierarchical linear model; they differ only in their specification of $\Delta(\cdot)$. A short chain of 5000 iterations is used here for illustration; longer chains should be run in practice.
 
 
-```r
+``` r
 # MCMC parameters
 R <- 5000
 burn <- 250
@@ -95,7 +108,8 @@ if (!model_cache_ok) {
     Data = Data, Mcmc = Mcmc,
     Prior = list(
       ncomp = 1,
-      bart = list(num_trees = 20) # new HART prior parameters
+      hart_model = "normalized",
+      bart = list(num_trees = 20)
     )
   )
 
@@ -115,7 +129,7 @@ if (!model_cache_ok) {
 We use the log-likelihood trace as a basic MCMC diagnostic.
 
 
-```r
+``` r
 burnin_draws <- ceiling(burn / keep) 
 
 mcmc_data <- data.frame(
@@ -147,7 +161,7 @@ ggplot(mcmc_data, aes(x = Iteration, y = LogLikelihood, color = Model)) +
 We compare posterior distributions of the own-price elasticity for two stores: Store 25 (high-income, highly educated area) and Store 79 (lower-income, high ethnic diversity).
 
 
-```r
+``` r
 selected_stores <- c(25, 79)
 coef_indx <- 2 # "Log Price 1" = own-price elasticity
 coef_name <- "Own-Price Elasticity"
@@ -214,7 +228,7 @@ ggplot(beta_draws_long, aes(x = Coefficient, fill = Group)) +
 </div>
 
 
-```r
+``` r
 # Extract posterior draws for the selected stores and coefficient
 hart_draws_25 <- out_hart$betadraw[25, coef_indx, -c(1:burnin_draws)]
 hart_draws_79 <- out_hart$betadraw[79, coef_indx, -c(1:burnin_draws)]
@@ -234,9 +248,9 @@ summary_results <- data.frame(
 print(summary_results, digits = 3)
 #>    Model Store  Mean    SD
 #> 1 Linear    25 -1.84 0.167
-#> 2 Linear    79 -3.61 0.320
-#> 3   HART    25 -1.85 0.166
-#> 4   HART    79 -3.54 0.304
+#> 2 Linear    79 -3.62 0.321
+#> 3   HART    25 -1.86 0.165
+#> 4   HART    79 -3.54 0.312
 ```
 
 Both models produce similar individual-level elasticity estimates for the
@@ -249,14 +263,14 @@ the store level in this application.
 The models differ in how they characterize the expected coefficient $\Delta(Z)$ for a representative store with demographics $Z$. We compare these segment-level predictions for the same two stores, using the `predict` function.
 
 
-```r
+``` r
 # We predict for all stores
 DeltaZ_hat_hart <- predict(out_hart, newdata = list(Z = Z), type = "DeltaZ+mu", burn = burnin_draws)
 DeltaZ_hat_lin <- predict(out_lin, newdata = list(Z = Z), type = "DeltaZ+mu", burn = burnin_draws)
 ```
 
 
-```r
+``` r
 deltaZ_draws <- bind_rows(
   as.data.frame(t(DeltaZ_hat_hart[selected_stores, coef_indx, ])) %>% 
     mutate(Model = "HART", Draw = row_number()),
@@ -318,7 +332,7 @@ ggplot(deltaZ_draws_long, aes(x = Coefficient, fill = Group)) +
 </div>
 
 
-```r
+``` r
 # Extract expected coefficients for the two segments
 deltaZ_summary <- data.frame(
   Segment = c("Segment 1 (High Income, High Education)", 
@@ -335,11 +349,11 @@ deltaZ_summary <- data.frame(
 
 print(deltaZ_summary, digits = 3)
 #>                                         Segment Linear_Mean Linear_SD HART_Mean
-#> 1       Segment 1 (High Income, High Education)       -2.37     0.305     -2.45
-#> 2 Segment 2 (Low Income, High Ethnic Diversity)       -3.50     0.412     -3.20
+#> 1       Segment 1 (High Income, High Education)       -2.37     0.304     -2.44
+#> 2 Segment 2 (Low Income, High Ethnic Diversity)       -3.50     0.411     -3.21
 #>   HART_SD
-#> 1   0.227
-#> 2   0.263
+#> 1   0.233
+#> 2   0.262
 
 # Calculate differences between segments
 cat("\nDifferences between segments:\n")
@@ -347,10 +361,10 @@ cat("\nDifferences between segments:\n")
 #> Differences between segments:
 cat("Linear approach difference:", 
     deltaZ_summary$Linear_Mean[2] - deltaZ_summary$Linear_Mean[1], "\n")
-#> Linear approach difference: -1.127546
+#> Linear approach difference: -1.128987
 cat("HART approach difference:", 
     deltaZ_summary$HART_Mean[2] - deltaZ_summary$HART_Mean[1], "\n")
-#> HART approach difference: -0.750117
+#> HART approach difference: -0.7691898
 ```
 
 The linear specification restricts segment means to an affine function

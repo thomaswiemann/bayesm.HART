@@ -14,7 +14,6 @@
 #include "rn.h"      
 #include "common.h"
 
-#include "logging.h"    
 
 using namespace arma;
 using namespace Rcpp;

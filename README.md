@@ -72,9 +72,11 @@ Mcmc <- list(R = 2000, keep = 2, nprint = 500)
 ```
 
 To fit the HART logit model, call `rhierMnlRwMixture`. Relative to a
-linear hierarchical specification, the main change is adding the `bart`
-entry in `Prior`. For illustration, the code below uses 50 trees per
-factor and leaves other hyperparameters at defaults. See
+linear hierarchical specification, the main change is
+`hart_model = "normalized"` in `Prior`; the optional `bart` entry sets
+the tree hyperparameters. For illustration, the code below uses 50 trees
+per factor and leaves other hyperparameters at defaults.
+`hart_model = "direct"` adds covariate-dependent covariance trees. See
 `?rhierMnlRwMixture` for details.
 
 ``` r
@@ -83,8 +85,9 @@ if (!model_cache_ok) {
   out <- bayesm.HART::rhierMnlRwMixture(
       Data = Data, Mcmc = Mcmc, 
       Prior = list(
-        ncomp = 1, 
-        bart = list(num_trees = 50) # new HART prior parameters
+        ncomp = 1,
+        hart_model = "normalized",  # HART prior on the representative consumer
+        bart = list(num_trees = 50) # HART hyperparameters (optional)
         ),
       r_verbose = F # suppress R print output (optional)
   )
@@ -124,8 +127,8 @@ colnames(results_df) <- c("Interest Low Fixed", "Annual Fee Low", "Bank Out-of-S
 # Print the data frame to the console
 print(results_df, digits = 3)
 #>                Interest Low Fixed Annual Fee Low Bank Out-of-State
-#> Posterior Mean              5.047          4.152            -3.378
-#> Posterior SD                0.902          0.901             0.989
+#> Posterior Mean              4.797          4.087             -3.64
+#> Posterior SD                0.855          0.942              1.06
 ```
 
 ## Learn More about `bayesm.HART`
@@ -140,6 +143,8 @@ See the `bayesm.HART` vignettes:
   Hierarchical negative binomial model
 - [`vignette("bayesm-HART-heteroskedastic-hart-bank")`](https://thomaswiemann.com/bayesm.HART/articles/bayesm-HART-heteroskedastic-hart-bank.html):
   Bank conjoint – heteroskedastic HART
+- [`vignette("simulation-convergence")`](https://thomaswiemann.com/bayesm.HART/articles/simulation-convergence.html):
+  Simulation – convergence of posterior means in n and T
 
 ## Acknowledgements
 

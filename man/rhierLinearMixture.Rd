@@ -37,6 +37,7 @@ are optional under a HART model and are an error under \code{"none"}. See
 \code{rhierMnlRwMixture} for the model definitions.
 \item \code{bart} (optional): List of hyperparameters for the HART mean trees
 (\code{hart_model = "normalized"} or \code{"direct"}). See Details.
+\item \code{hart_cov} (optional, \code{hart_model = "direct"} only): Covariance model, \code{"heteroskedastic"} (default; covariate-dependent \eqn{\Sigma(Z_i)} from the variance and off-diagonal ensembles) or \code{"constant"} (one \eqn{\Sigma \sim IW(\nu, V)} shared by all units, drawn by its conjugate update). Under \code{"constant"}, \code{vartree} and \code{phitree} are an error and the fit carries bayesm's \code{nmix} instead of the heteroscedastic outputs.
 \item \code{vartree} (optional, \code{hart_model = "direct"} only): List of
 hyperparameters for the product-of-trees variance models on the Modified
 Cholesky diagonal \eqn{d_j(\cdot)}. See "Heteroscedastic Covariance"
@@ -61,7 +62,7 @@ A list of class \code{"rhierLinearMixture"} containing:
 \item \code{betadraw}: \verb{nreg x nvar x (R/keep)} array of unit-level beta draws.
 \item \code{taudraw}: \verb{(R/keep) x nreg} matrix of error variance draws.
 \item \code{loglike}: \verb{(R/keep) x 1} vector of log-likelihoods.
-\item \code{nmix}: bayesm list of \verb{(mu, rooti)} draws (omitted under \code{hart_model = "direct"}).
+\item \code{nmix}: bayesm list of \verb{(mu, rooti)} draws (omitted under \code{hart_model = "direct"} with \code{hart_cov = "heteroskedastic"}).
 \item If \code{Z} is supplied and \code{hart_model = "none"}: \code{Deltadraw}.
 \item Under a HART model: \code{bart_models}, \code{varcount}, \code{varprob}.
 \item Under \code{hart_model = "direct"} (additional class \code{"rhierLinearMixtureHeterCov"}):

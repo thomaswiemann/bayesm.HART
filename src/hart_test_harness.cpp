@@ -4,6 +4,9 @@
 #include "vecbart.h"
 #include "vcbart.h"
 #include "direct_hart_backend.h"
+#include <memory>
+#include "tree_cov.h"
+#include "constant_cov.h"
 
 using namespace Rcpp;
 using namespace arma;
@@ -64,7 +67,7 @@ arma::mat vecdrawnodemu_R(arma::mat const& P, arma::vec const& b,
 
 // niter backfitting sweeps of a vecbart with m trees on Zt (p x n), y (n x D),
 // Q (D x D x n): fits after every sweep, structure key of tree 1, leaf counts,
-// split counts and probabilities, and the pwvecbart() treedraws.
+// split counts and probabilities, and the serialized treedraws.
 // [[Rcpp::export]]
 Rcpp::List vecbart_chain_R(arma::mat const& Zt, arma::mat const& y,
                            arma::cube const& Q, int m, arma::mat const& C,
@@ -207,14 +210,18 @@ Rcpp::List cov_eval_R(arma::vec const& d, arma::mat const& phi,
 
 namespace {
 
-// Direct-model backend with pinnable blocks and readable state.
-struct DirectHartProbe : DirectHartBackend {
-    using DirectHartBackend::DirectHartBackend;
-    void run(LogicalVector const& u) { sweep(u[0], u[1], u[2], u[3], u[4]); }
-    vec const& mu() const { return mu_; }
-    vec const& tau2() const { return tau2_; }
-    mat const& f() const { return f_.allfit(); }
+// Covariance strategies with pinnable blocks and readable state.
+struct TreeCovProbe : TreeCov {
+    using TreeCov::TreeCov;
+    bool do_v = true, do_phi = true;
+    void draw(mat const& E, rn& gen) override {
+        refresh_residuals(E);
+        if (do_v) draw_variance_trees(gen);
+        if (do_phi) draw_phi_trees(gen);
+        refresh_precision();
+    }
     mat const& v() const { return vmat_; }
+    std::vector<mat> const& Q() const { return Q_; }
     mat phi_at(int i) const {
         mat P(D_, D_, fill::zeros);
         if (full_cov_)
@@ -222,19 +229,39 @@ struct DirectHartProbe : DirectHartBackend {
                 for (int k = 0; k < j; k++) P(j, k) = phi_[j][k].f(i);
         return P;
     }
-    List state() const {
-        cube Q(D_, D_, n_);
+};
+
+struct ConstantCovProbe : ConstantCov {
+    using ConstantCov::ConstantCov;
+    bool do_sigma = true;
+    void draw(mat const& E, rn& gen) override {
+        if (do_sigma) ConstantCov::draw(E, gen);
+        else set_precision();
+    }
+    mat const& Sigma() const { return Sigma_; }
+    mat const& rooti() const { return rooti_; }
+    std::vector<mat> const& Q() const { return Q_; }
+};
+
+// Direct-model backend with pinnable mean blocks and readable state.
+struct DirectHartProbe : DirectHartBackend {
+    using DirectHartBackend::DirectHartBackend;
+    void run(bool mu, bool f, bool tau) { sweep(mu, true, f, tau); }
+    vec const& mu() const { return mu_; }
+    vec const& tau2() const { return tau2_; }
+    mat const& f() const { return f_.allfit(); }
+    List state(std::vector<mat> const& Q) const {
+        cube Qc(D_, D_, n_);
         mat pm(n_, D_);
         for (int i = 0; i < n_; i++) {
-            Q.slice(i) = Q_[i];
-            pm.row(i)  = prior_mean_[i].t();
+            Qc.slice(i) = Q[i];
+            pm.row(i)   = prior_mean_[i].t();
         }
         vec ss = f_.leaf_sumsq();
         return List::create(Named("mu")   = NumericVector(mu_.begin(), mu_.end()),
                             Named("tau2") = NumericVector(tau2_.begin(), tau2_.end()),
-                            Named("f") = f_.allfit(), Named("v") = vmat_,
-                            Named("phi") = phi_at(0), Named("Q") = Q,
-                            Named("prior_mean") = pm,
+                            Named("f") = f_.allfit(),
+                            Named("prior_mean") = pm, Named("Q") = Qc,
                             Named("nleaves") = (int)f_.nleaves(),
                             Named("leaf_sumsq") = NumericVector(ss.begin(), ss.end()));
     }
@@ -256,21 +283,60 @@ Rcpp::List direct_hart_R(arma::mat const& theta, arma::mat const& Z,
                          Rcpp::LogicalVector const& update) {
     if (update.size() != 5) stop("direct_hart_R: update needs 5 entries.");
     int n = theta.n_rows, D = theta.n_cols;
-    LogicalVector all(5, true);
-    DirectHartProbe b(theta, Z, mubar, Amu, warm + nsweep, 1,
-                      bart_params, var_params, phi_params);
-    for (int r = 0; r < warm; r++) b.run(all);
+    auto owned = std::make_unique<TreeCovProbe>(var_params, phi_params);
+    TreeCovProbe* cov = owned.get();
+    DirectHartProbe b(theta, Z, mubar, Amu, warm + nsweep, 1, bart_params,
+                      std::move(owned));
+    for (int r = 0; r < warm; r++) b.run(true, true, true);
+    cov->do_v = update[1]; cov->do_phi = update[2];
     mat mu(nsweep, D), tau2(nsweep, D);
     cube f(n, D, nsweep), v(n, D, nsweep), phi(D, D, nsweep);
     for (int r = 0; r < nsweep; r++) {
-        b.run(update);
+        b.run(update[0], update[3], update[4]);
         mu.row(r)    = b.mu().t();
         tau2.row(r)  = b.tau2().t();
         f.slice(r)   = b.f();
-        v.slice(r)   = b.v();
-        phi.slice(r) = b.phi_at(0);
+        v.slice(r)   = cov->v();
+        phi.slice(r) = cov->phi_at(0);
     }
+    List st = b.state(cov->Q());
+    st["v"] = cov->v();
+    st["phi"] = cov->phi_at(0);
     return List::create(Named("mu") = mu, Named("tau2") = tau2,
                         Named("f") = f, Named("v") = v, Named("phi") = phi,
-                        Named("state") = b.state());
+                        Named("state") = st);
+}
+
+// Constant-covariance direct blocks on fixed theta: `warm` full sweeps, then
+// `nsweep` sweeps with the blocks (mu, Sigma, f, tau) switched by `update`.
+// Returns per-sweep mu, tau^2, Sigma and f, and the final state.
+// [[Rcpp::export]]
+Rcpp::List direct_hart_constant_R(arma::mat const& theta, arma::mat const& Z,
+                                  arma::vec const& mubar, arma::mat const& Amu,
+                                  double nu, arma::mat const& V,
+                                  Rcpp::List const& bart_params,
+                                  int warm, int nsweep,
+                                  Rcpp::LogicalVector const& update) {
+    if (update.size() != 4) stop("direct_hart_constant_R: update needs 4 entries.");
+    int n = theta.n_rows, D = theta.n_cols;
+    auto owned = std::make_unique<ConstantCovProbe>(nu, V);
+    ConstantCovProbe* cov = owned.get();
+    DirectHartProbe b(theta, Z, mubar, Amu, warm + nsweep, 1, bart_params,
+                      std::move(owned));
+    for (int r = 0; r < warm; r++) b.run(true, true, true);
+    cov->do_sigma = update[1];
+    mat mu(nsweep, D), tau2(nsweep, D);
+    cube f(n, D, nsweep), Sigma(D, D, nsweep);
+    for (int r = 0; r < nsweep; r++) {
+        b.run(update[0], update[2], update[3]);
+        mu.row(r)      = b.mu().t();
+        tau2.row(r)    = b.tau2().t();
+        f.slice(r)     = b.f();
+        Sigma.slice(r) = cov->Sigma();
+    }
+    List st = b.state(cov->Q());
+    st["Sigma"] = cov->Sigma();
+    st["rooti"] = cov->rooti();
+    return List::create(Named("mu") = mu, Named("tau2") = tau2, Named("f") = f,
+                        Named("Sigma") = Sigma, Named("state") = st);
 }

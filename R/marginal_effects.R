@@ -19,7 +19,7 @@
 #'
 #' @details This is a generic function. Method implementations are provided
 #'   for `rhierMnlRwMixture`, `rhierLinearMixture`, and `rhierNegbinRw` (the
-#'   heter-cov subclasses inherit dispatch through their base classes).
+#'   direct-model subclasses inherit dispatch through their base classes).
 #'
 #' @return An object of class `"marginal_effects"`; see
 #'   `summary.marginal_effects()` for downstream summarization.

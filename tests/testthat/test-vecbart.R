@@ -1,5 +1,5 @@
 # Tests for the vector-leaf tree machinery (src/vectree.cpp,
-# src/vecbartfuns.cpp, src/vecbd.cpp, src/vecbart.cpp) and pwvecbart().
+# src/vecbartfuns.cpp, src/vecbd.cpp, src/vecbart.cpp) and its predictor.
 
 library(testthat)
 
@@ -76,7 +76,7 @@ chain_problem <- function(seed = 3L, n = 40L, D = 2L, p = 2L) {
   Y  <- f + matrix(rnorm(n * D, sd = 0.3), n, D)
   Q  <- array(0, c(D, D, n))
   for (i in seq_len(n)) Q[, , i] <- rand_spd(D, 5)
-  list(Zt = Zt, Y = Y, Q = Q, C = 0.2 * diag(D))
+  list(Zt = Zt, Y = Y, Q = Q, D = D, C = 0.2 * diag(D))
 }#CHAIN_PROBLEM
 
 test_that("vecbart keeps split counts and leaf counts consistent", {
@@ -99,16 +99,16 @@ test_that("serialized vector trees reproduce the in-sample fit", {
                                   beta = 1, nmin = 3L, numcut = 15L,
                                   niter = 40L))
   expect_equal(out$treedraws$leaf_dim, 2L)
-  pred <- pwvecbart(t(pb$Zt), out$treedraws)          # npred x nvar x ndraws
+  pred <- .pw_vec_trees(t(pb$Zt), out$treedraws, pb$D) # npred x nvar x ndraws
   expect_equal(dim(pred), c(40L, 2L, 40L))
   expect_equal(pred, out$fits, tolerance = 1e-7)
   # Transposed input and new rows evaluate without error and keep shape.
   Znew <- matrix(runif(2 * 5, -1, 1), 2, 5)
-  pred_new <- pwvecbart(Znew, out$treedraws, transposed = TRUE)
+  pred_new <- .pw_vec_trees(Znew, out$treedraws, pb$D, transposed = TRUE)
   expect_equal(dim(pred_new), c(5L, 2L, 40L))
   expect_true(all(is.finite(pred_new)))
-  expect_error(pwvecbart(Znew[1, , drop = FALSE], out$treedraws,
-                         transposed = TRUE),
+  expect_error(.pw_vec_trees(Znew[1, , drop = FALSE], out$treedraws, pb$D,
+                             transposed = TRUE),
                regexp = "number of columns")
 })#TEST_THAT
 

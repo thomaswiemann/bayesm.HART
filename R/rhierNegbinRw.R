@@ -33,6 +33,7 @@
 #'     `rhierMnlRwMixture` for the model definitions.
 #'   - `bart` (optional): List of hyperparameters for the HART mean trees
 #'     (`hart_model = "normalized"` or `"direct"`). See `rhierMnlRwMixture`.
+#'   - `hart_cov` (optional, `hart_model = "direct"` only): Covariance model, `"heteroskedastic"` (default; covariate-dependent \eqn{\Sigma(Z_i)} from the variance and off-diagonal ensembles) or `"constant"` (one \eqn{\Sigma \sim IW(\nu, V)} shared by all units, drawn by its conjugate update). Under `"constant"`, `vartree` and `phitree` are an error and the fit carries bayesm's `nmix` instead of the heteroscedastic outputs.
 #'   - `vartree` (optional, `hart_model = "direct"` only): List of
 #'     hyperparameters for the product-of-trees variance models on the Modified
 #'     Cholesky diagonal \eqn{d_j(\cdot)}.
@@ -79,7 +80,7 @@
 #'   - `betadraw`: `nreg x nvar x (R/keep)` array of unit-level beta draws.
 #'   - `alphadraw`: `(R/keep) x 1` vector of overdispersion draws.
 #'   - `loglike`: `(R/keep) x 1` vector of log-likelihoods.
-#'   - `nmix`: bayesm list of `(mu, rooti)` draws (omitted under `hart_model = "direct"`).
+#'   - `nmix`: bayesm list of `(mu, rooti)` draws (omitted under `hart_model = "direct"` with `hart_cov = "heteroskedastic"`).
 #'   - `acceptrbeta`, `acceptralpha`: Metropolis acceptance rates (percent).
 #'   - If `Z` is supplied and `hart_model = "none"`: `Deltadraw`.
 #'   - Under a HART model: `bart_models`, `varcount`, `varprob`.
@@ -253,7 +254,7 @@ if(length(a_mix) != ncomp) {pandterm("Requires dim(a_mix)= ncomp (no of componen
 # ---- HART preference model (see R/hart_priors.R) ----
 # Prior$hart_model selects "none" (bayesm paths), "normalized", or "direct".
 useBART     <- cfg$model != "none"
-useHeterCov <- cfg$model == "direct"
+useHeterCov <- cfg$model == "direct" && identical(cfg$cov, "heteroskedastic")
 bart_params <- cfg$bart
 var_params  <- cfg$vartree %||% list()
 phi_params  <- cfg$phitree %||% list()
@@ -433,7 +434,7 @@ draws=rhierNegbinRw_rcpp_loop(regdata, hess_i, Z, Beta, deltabar,
                               drawdelta, as.matrix(olddelta), a_mix,
                               oldprob, ind,
                               alpha, fixalpha,
-                              cfg$model, bart_params,
+                              cfg$model, cfg$cov %||% "heteroskedastic", bart_params,
                               var_params, phi_params)
 ###################################################################
 
@@ -467,8 +468,10 @@ return(draws)
 #' @param mode Prediction mode: `"coefficients"` (default), `"posterior"`, or `"prior"`.
 #' @param burn Integer, number of initial MCMC draws to discard.
 #' @param nsim Integer, number of Monte Carlo draws for prior predictive response mixing.
+#' @param force_tree_eval Logical. Evaluate the stored trees at `newdata$Z`
+#'   even when the cached draws cover every row (default `FALSE`).
 #' @param r_verbose Logical, print progress updates?
-#' @param ... Additional arguments passed to `pwbart` for BART models.
+#' @param ... Additional arguments passed to the tree predictor for BART models.
 #'
 #' @return Depends on `mode` / `type`:
 #'   - For `mode = "coefficients"`, `type %in% c("DeltaZ", "DeltaZ+mu")`: 3D array

@@ -251,10 +251,15 @@ test_that("predict SigmaZ errors for non-heter MNL fits", {
   )
   fit_linear <- run_model_for_pred_test(sim_data_linear, R = 30, useBART = FALSE)
 
-  expect_error(
-    predict(fit_linear, newdata = list(Z = sim_data_linear$Z), type = "SigmaZ", r_verbose = FALSE),
-    "only available for heteroscedastic covariance models"
-  )
+  # A constant Sigma is returned on every row of Z.
+  sig <- predict(fit_linear, newdata = list(Z = sim_data_linear$Z),
+                 type = "SigmaZ", r_verbose = FALSE)
+  nvar <- dim(fit_linear$betadraw)[2]
+  expect_equal(dim(sig), c(nrow(sim_data_linear$Z), nvar, nvar,
+                           dim(fit_linear$betadraw)[3]))
+  expect_equal(sig[1, , , 1], sig[2, , , 1])
+  rooti <- fit_linear$nmix$compdraw[[1]][[1]]$rooti
+  expect_equal(sig[1, , , 1], solve(rooti %*% t(rooti)), tolerance = 1e-10)
 })
 
 test_that("predict method with posterior choice_probs works", {

@@ -10,7 +10,7 @@ List rhierLinearMixture_rcpp_loop(List const& regdata, mat const& Z,
                                   double nu, mat const& V, double nu_e, vec const& ssq,
                                   int R, int keep, int nprint, bool drawdelta,
                                   mat olddelta, vec const& a, vec oldprob, vec ind, vec tau,
-                                  std::string const& hart_model,
+                                  std::string const& hart_model, std::string const& hart_cov,
                                   List const& bart_params,
                                   List const& var_params,
                                   List const& phi_params,
@@ -56,7 +56,7 @@ List rhierLinearMixture_rcpp_loop(List const& regdata, mat const& Z,
   // Create backend + updater adapters, then run the unified MCMC loop.
   // ====================================================================
   std::unique_ptr<CovarianceBackend> backend = make_backend(
-      hart_model, oldbetas, Z, mubar, Amu, nu, V, a,
+      hart_model, hart_cov, oldbetas, Z, mubar, Amu, nu, V, a,
       deltabar, Ad, drawdelta, olddelta, oldprob, ind, R, keep,
       bart_params, var_params, phi_params);
 

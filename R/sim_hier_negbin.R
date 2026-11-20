@@ -15,13 +15,17 @@
 #' @param target_var_eps Numeric. Target variance for each coefficient in the
 #'   unobserved component eps_i. Default 0.25.
 #' @param alpha Numeric. Overdispersion parameter for negative binomial. Default 5.
+#' @param Sigma_func Function of one row of `Z` returning the `ncoef x ncoef`
+#'   covariance of `eps_i`. Overrides `target_var_eps` with covariate-dependent
+#'   heterogeneity; requires `Z`. Default `NULL` (constant covariance).
 #' @param seed Integer. Optional random seed.
 #'
 #' @return A list containing:
 #'   \item{regdata}{List of length nreg. Each element has y, X.}
 #'   \item{hessdata}{List of length nreg. Each element has hess (approx Hessian).}
 #'   \item{Z}{nreg x nz matrix of covariates (NULL if nz=0).}
-#'   \item{true_values}{List with beta_true, betabar_true, alpha, etc.}
+#'   \item{true_values}{List with beta_true, betabar_true, alpha, Sigma_eps,
+#'     and Sigma_true (nreg x ncoef x ncoef, with Sigma_func).}
 #'
 #' @importFrom stats rnorm rnbinom var
 #' @export
@@ -31,6 +35,7 @@ sim_hier_negbin <- function(nreg = 100, nobs = 50, nvar = 2, nz = 3,
                              target_var_betabar = 0.5,
                              target_var_eps = 0.25,
                              alpha = 5.0,
+                             Sigma_func = NULL,
                              seed = NULL) {
 
   het_observed <- match.arg(het_observed)
@@ -86,8 +91,16 @@ sim_hier_negbin <- function(nreg = 100, nobs = 50, nvar = 2, nz = 3,
 
   # --- Generate eps_i ---
   Sigma_eps <- diag(target_var_eps, ncoef)
-  eps_true <- matrix(rnorm(nreg * ncoef), nrow = nreg, ncol = ncoef)
-  eps_true <- eps_true %*% chol(Sigma_eps)
+  Sigma_true <- NULL
+  if (is.null(Sigma_func)) {
+    eps_true <- matrix(rnorm(nreg * ncoef), nrow = nreg, ncol = ncoef)
+    eps_true <- eps_true %*% chol(Sigma_eps)
+  } else {
+    if (is.null(Z))
+      stop("Sigma_func requires Z (nz > 0, het_observed != 'none').")
+    Sigma_true <- .sigma_true_array(Sigma_func, Z, ncoef)
+    eps_true <- .draw_heteroskedastic_eps(Sigma_true)
+  }
 
   beta_true <- betabar_true + eps_true
 
@@ -125,6 +138,7 @@ sim_hier_negbin <- function(nreg = 100, nobs = 50, nvar = 2, nz = 3,
   if (het_observed == "linear" && exists("Delta_true")) {
     true_values$Delta <- Delta_true
   }
+  if (!is.null(Sigma_true)) true_values$Sigma_true <- Sigma_true
 
   return(list(regdata = regdata, hessdata = hessdata, Z = Z, true_values = true_values))
 }

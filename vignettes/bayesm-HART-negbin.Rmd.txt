@@ -18,6 +18,14 @@ knitr::opts_chunk$set(
   fig.path = "figures/negbin-",
   eval = TRUE
 )
+
+# Seed every chunk from its label, so results do not depend on what ran
+# before it, in particular on whether the model cache was warm.
+knitr::knit_hooks$set(chunk_seed = function(before, options, envir) {
+  if (before) set.seed(20261112L + sum(utf8ToInt(options$label)))
+})
+knitr::opts_chunk$set(chunk_seed = TRUE)
+
 ```
 
 ## Introduction
@@ -101,7 +109,8 @@ if (!model_cache_ok) {
     Data = Data, Mcmc = Mcmc,
     Prior = list(
       ncomp = 1,
-      bart = list(num_trees = 20) # new HART prior parameters
+      hart_model = "normalized",
+      bart = list(num_trees = 20)
     ),
     r_verbose = FALSE
   )

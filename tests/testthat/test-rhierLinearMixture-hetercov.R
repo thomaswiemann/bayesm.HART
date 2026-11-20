@@ -239,7 +239,8 @@ test_that("DeltaZ and SigmaZ caches match tree evaluation", {
   newdata <- list(Z = sim$Z)
   dz <- predict(fit, newdata = newdata, type = "DeltaZ", burn = 0L,
                 r_verbose = FALSE)
-  expect_equal(dz, bayesm.HART:::pwvecbart(sim$Z, fit$bart_models$treedraws),
+  expect_equal(dz, bayesm.HART:::.pw_vec_trees(sim$Z, fit$bart_models$treedraws,
+                                           dim(fit$betadraw)[2]),
                tolerance = 1e-7, ignore_attr = TRUE)
   sz <- predict(fit, newdata = newdata, type = "SigmaZ", burn = 0L,
                 r_verbose = FALSE)

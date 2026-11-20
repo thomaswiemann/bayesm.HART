@@ -107,7 +107,7 @@ calculate_mnl_probs_from_beta <- function(X_i, beta_is, p) {
 # .build_unique_z_map() result or NULL, `base_class` the bayesm class name.
 .finish_hart_fit <- function(draws, cfg, z_map, R, keep, base_class) {
   attributes(draws$betadraw)$class <- "bayesm.hcoef"
-  if (cfg$model == "direct") {
+  if (cfg$model == "direct" && identical(cfg$cov, "heteroskedastic")) {
     # "bayesm.HART.HeterCov" is the marker superclass shared by all
     # heteroscedastic-Sigma(Z) fits; predict_helpers.R dispatches on it.
     attributes(draws$mu_draw)$class <- c("bayesm.mat", "mcmc")
@@ -125,6 +125,7 @@ calculate_mnl_probs_from_beta <- function(X_i, beta_is, p) {
   # HART metadata; bayesm-path fits carry none.
   if (cfg$model != "none") {
     draws$hart <- list(model      = cfg$model,
+                       cov        = cfg$cov,
                        schema     = 1L,
                        nvar       = cfg$nvar,
                        nz         = cfg$nz,
@@ -134,3 +135,26 @@ calculate_mnl_probs_from_beta <- function(X_i, beta_is, p) {
   }
   .assemble_hart_cache(draws, z_map)
 }#.FINISH_HART_FIT
+
+# Covariate-dependent covariance of the unobserved heterogeneity for the
+# simulators: Sigma_func(Z_i) at every unit as an n x D x D array.
+.sigma_true_array <- function(Sigma_func, Z, ncoef) {
+  n <- nrow(Z)
+  out <- array(0, dim = c(n, ncoef, ncoef))
+  for (i in seq_len(n)) {
+    S <- unname(as.matrix(Sigma_func(Z[i, ])))
+    if (!all(dim(S) == ncoef) || !isSymmetric(S, tol = 1e-8))
+      stop("Sigma_func must return a symmetric ncoef x ncoef matrix.")
+    out[i, , ] <- S
+  }
+  out
+}#.SIGMA_TRUE_ARRAY
+
+# eps_i ~ N(0, Sigma_i) for the slices of an n x D x D array.
+.draw_heteroskedastic_eps <- function(Sigma_true) {
+  n <- dim(Sigma_true)[1]
+  D <- dim(Sigma_true)[2]
+  eps <- matrix(0, n, D)
+  for (i in seq_len(n)) eps[i, ] <- drop(rnorm(D) %*% chol(Sigma_true[i, , ]))
+  eps
+}#.DRAW_HETEROSKEDASTIC_EPS

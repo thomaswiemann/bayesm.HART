@@ -14,6 +14,7 @@ sim_hier_linear(
   target_var_betabar = 1,
   target_var_eps = 0.5,
   sigma_sq = 1,
+  Sigma_func = NULL,
   seed = NULL
 )
 }
@@ -39,13 +40,19 @@ unobserved component eps_i. Default 0.5.}
 
 \item{sigma_sq}{Numeric. Error variance for y_i = X_i * beta_i + e_i. Default 1.0.}
 
+\item{Sigma_func}{Function of one row of \code{Z} returning the \verb{ncoef x ncoef}
+covariance of \code{eps_i}. Overrides \code{target_var_eps} with covariate-dependent
+heterogeneity; requires \code{Z}. Default \code{NULL} (constant covariance).}
+
 \item{seed}{Integer. Optional random seed.}
 }
 \value{
 A list containing:
 \item{regdata}{List of length nreg. Each element is a list with y, X, XpX, Xpy.}
 \item{Z}{nreg x nz matrix of covariates (NULL if nz=0).}
-\item{true_values}{List with beta_true, betabar_true, eps_true, sigma_sq, Delta (if linear).}
+\item{true_values}{List with beta_true, betabar_true, eps_true, sigma_sq,
+Delta (if linear), and Sigma_true (nreg x ncoef x ncoef, with
+Sigma_func).}
 }
 \description{
 Generates simulated data from a hierarchical linear model with optional
