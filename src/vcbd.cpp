@@ -1,6 +1,6 @@
 /*
- *  vcbd: birth/death step for varying-coefficient trees.  Mirrors heterbd;
- *  see vcbd.h.
+ *  vcbd: birth/death step for varying-coefficient trees.  Mirrors bd; see
+ *  vcbd.h.
  */
 #include "vcbd.h"
 

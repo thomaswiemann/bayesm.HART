@@ -1,4 +1,3 @@
-# Tests for rhierNegbinRw and sim_hier_negbin
 
 # ==============================================================================
 # Test Data Generation Helpers
@@ -29,15 +28,13 @@ test_that("sim_hier_negbin returns correct structure", {
   expect_equal(nrow(sim$Z), 30)
   expect_equal(ncol(sim$Z), 3)
 
-  # Check regdata structure
   rd1 <- sim$regdata[[1]]
   expect_true(!is.null(rd1$y))
   expect_true(!is.null(rd1$X))
-  expect_equal(ncol(rd1$X), 2)  # nvar=1 + intercept
-  expect_true(all(rd1$y >= 0))  # counts are non-negative
-  expect_true(all(rd1$y == floor(rd1$y)))  # counts are integers
+  expect_equal(ncol(rd1$X), 2)
+  expect_true(all(rd1$y >= 0))
+  expect_true(all(rd1$y == floor(rd1$y)))
 
-  # Check hessdata structure
   hd1 <- sim$hessdata[[1]]
   expect_true(!is.null(hd1$hess))
   expect_equal(dim(hd1$hess), c(2, 2))
@@ -95,9 +92,9 @@ test_that("rhierNegbinRw runs without Z", {
     r_verbose = FALSE
   )
   expect_s3_class(out, "rhierNegbinRw")
-  expect_equal(dim(out$betadraw)[1], 15)  # nreg
-  expect_equal(dim(out$betadraw)[2], 2)   # nvar + intercept
-  expect_equal(dim(out$betadraw)[3], 30)  # R/keep
+  expect_equal(dim(out$betadraw)[1], 15)
+  expect_equal(dim(out$betadraw)[2], 2)
+  expect_equal(dim(out$betadraw)[3], 30)
 })
 
 # ==============================================================================
@@ -219,7 +216,6 @@ test_that("rhierNegbinRw runs with BART prior", {
   expect_true(!is.null(out$nmix))
   expect_true(!is.null(out$betadraw))
   expect_true(!is.null(out$alphadraw))
-  # BART path should NOT have Deltadraw
   expect_null(out$Deltadraw)
   expect_true(!is.null(out$nmix))
 })
@@ -281,9 +277,9 @@ test_that("predict.rhierNegbinRw DeltaZ works (non-BART)", {
   pred <- predict(out, newdata = list(Z = sim$Z), type = "DeltaZ", burn = 0)
   expect_true(is.array(pred))
   expect_equal(length(dim(pred)), 3)
-  expect_equal(dim(pred)[1], 20)  # npred = nreg
-  expect_equal(dim(pred)[2], 2)   # ncoef = nvar + intercept
-  expect_equal(dim(pred)[3], 30)  # ndraws = R/keep
+  expect_equal(dim(pred)[1], 20)
+  expect_equal(dim(pred)[2], 2)
+  expect_equal(dim(pred)[3], 30)
 })
 
 test_that("predict.rhierNegbinRw burn-in discards draws", {
@@ -314,9 +310,9 @@ test_that("predict.rhierNegbinRw DeltaZ+mu works (BART)", {
   pred <- predict(out, newdata = list(Z = sim$Z), type = "DeltaZ+mu",
                   burn = 5, r_verbose = FALSE)
   expect_true(is.array(pred))
-  expect_equal(dim(pred)[1], 20)  # npred
-  expect_equal(dim(pred)[2], 2)   # ncoef
-  expect_equal(dim(pred)[3], 25)  # 30 - 5 burn
+  expect_equal(dim(pred)[1], 20)
+  expect_equal(dim(pred)[2], 2)
+  expect_equal(dim(pred)[3], 25)
 })
 
 test_that("predict.rhierNegbinRw errors on invalid type", {
@@ -361,8 +357,8 @@ test_that("marginal_effects.rhierNegbinRw works (non-BART)", {
                             burn = 5, verbose = FALSE)
   expect_s3_class(mfx, "marginal_effects")
   expect_length(mfx$avg_betabar_draws, 3)
-  expect_equal(nrow(mfx$avg_betabar_draws[[1]]), 2)  # ncoef
-  expect_equal(ncol(mfx$avg_betabar_draws[[1]]), 25)  # 30 - 5
+  expect_equal(nrow(mfx$avg_betabar_draws[[1]]), 2)
+  expect_equal(ncol(mfx$avg_betabar_draws[[1]]), 25)
 })
 
 test_that("summary.marginal_effects works on negbin model results", {

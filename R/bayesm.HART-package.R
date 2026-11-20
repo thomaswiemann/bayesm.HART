@@ -14,6 +14,8 @@
 
 ## usethis namespace: start
 #' @importFrom Rcpp sourceCpp
+#' @importFrom stats optim quantile
+#' @importFrom utils flush.console
 #' @useDynLib bayesm.HART, .registration = TRUE
 ## usethis namespace: end
 NULL

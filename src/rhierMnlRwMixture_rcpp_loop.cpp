@@ -113,7 +113,6 @@ List rhierMnlRwMixture_rcpp_loop(List const& lgtdata, mat const& Z,
 
     List lgtdatai;
 
-    // convert List to std::vector of struct
     std::vector<moments> lgtdata_vector;
     moments lgtdatai_struct;
     for (int lgt = 0; lgt < nlgt; lgt++) {
@@ -125,7 +124,6 @@ List rhierMnlRwMixture_rcpp_loop(List const& lgtdata, mat const& Z,
         lgtdata_vector.push_back(lgtdatai_struct);
     }
 
-    // allocate driver-owned storage
     cube betadraw(nlgt, nvar, R / keep);
     vec loglike(R / keep);
 
@@ -140,9 +138,6 @@ List rhierMnlRwMixture_rcpp_loop(List const& lgtdata, mat const& Z,
         || offset < 0)
         stop("Invalid sampler state dimensions or completed sweeps.");
 
-    // ====================================================================
-    // Create backend + updater adapters, then run the unified MCMC loop.
-    // ====================================================================
     std::unique_ptr<CovarianceBackend> backend = make_backend(
         hart_model, hart_cov, oldbetas, Z, mubar, Amu, nu, V, a,
         deltabar, Ad, drawdelta, olddelta, oldprob, ind, R, keep,
@@ -158,9 +153,7 @@ List rhierMnlRwMixture_rcpp_loop(List const& lgtdata, mat const& Z,
                                  Named("betas") = oldbetas,
                                  Named("backend") = backend->checkpoint());
 
-    // ====================================================================
-    // Post-loop: SignRes transform on betadraw
-    // ====================================================================
+    // Public draws: SignRes * exp(betastar) on restricted coordinates.
     bool conStatus = any(SignRes);
     if (conStatus) {
         int SignResSize = SignRes.size();
@@ -173,9 +166,6 @@ List rhierMnlRwMixture_rcpp_loop(List const& lgtdata, mat const& Z,
         }
     }
 
-    // ====================================================================
-    // Output assembly: backend.pack() + updater metrics + betadraw/loglike
-    // ====================================================================
     AcceptanceMetrics am = updater.acceptance_metrics();
     BackendPackPayload bp = backend->pack();
 

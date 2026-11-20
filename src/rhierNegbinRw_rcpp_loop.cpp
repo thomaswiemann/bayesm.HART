@@ -49,7 +49,6 @@ List rhierNegbinRw_rcpp_loop(List const& regdata, List const& hessdata, mat cons
   int nreg = regdata.size();
   int nvar = V.n_cols;
 
-  // convert regdata and hessdata Lists to std::vector of struct
   std::vector<moments> regdata_vector;
   moments regdatai_struct;
   List regdatai, hessi;
@@ -64,7 +63,6 @@ List rhierNegbinRw_rcpp_loop(List const& regdata, List const& hessdata, mat cons
     regdata_vector.push_back(regdatai_struct);
   }
 
-  // allocate driver-owned storage
   cube betadraw = zeros<cube>(nreg, nvar, R/keep);
   vec loglike = zeros<vec>(R/keep);
 
@@ -80,9 +78,6 @@ List rhierNegbinRw_rcpp_loop(List const& regdata, List const& hessdata, mat cons
       || offset < 0)
     stop("Invalid sampler state dimensions or completed sweeps.");
 
-  // ====================================================================
-  // Create backend + updater adapters, then run the unified MCMC loop.
-  // ====================================================================
   std::unique_ptr<CovarianceBackend> backend = make_backend(
       hart_model, hart_cov, oldbetas, Z, mubar, Amu, nu, V, a_mix,
       deltabar, Ad, drawdelta, olddelta, oldprob, ind, R, keep,
@@ -101,9 +96,6 @@ List rhierNegbinRw_rcpp_loop(List const& regdata, List const& hessdata, mat cons
                               Named("alpha") = updater.alpha(),
                               Named("backend") = backend->checkpoint());
 
-  // ====================================================================
-  // Output assembly
-  // ====================================================================
   BackendPackPayload bp = backend->pack();
   UpdaterPackPayload up = updater.pack();
   AcceptanceMetrics am = updater.acceptance_metrics();
@@ -115,7 +107,6 @@ List rhierNegbinRw_rcpp_loop(List const& regdata, List const& hessdata, mat cons
   out["acceptrbeta"]  = am.acceptrbeta;
   out["acceptralpha"] = am.acceptralpha;
 
-  // Merge updater fields (alphadraw)
   CharacterVector upnames = up.fields.names();
   for (int i = 0; i < up.fields.size(); i++) {
     out[as<std::string>(upnames[i])] = up.fields[i];

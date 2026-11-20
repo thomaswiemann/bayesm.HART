@@ -9,19 +9,17 @@ vignette: |
 ---
 
 ```{r, include = FALSE}
-vignette_cache_dir <- file.path(tools::R_user_dir("bayesm.HART", which = "cache"), "vignettes")
-dir.create(vignette_cache_dir, recursive = TRUE, showWarnings = FALSE)
-
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
   fig.path = "figures/heteroskedastic-hart-bank-",
+  cache.path = "cache/heteroskedastic-hart-bank-",
   warning = FALSE,
   eval = TRUE
 )
 
 # Seed every chunk from its label, so results do not depend on what ran
-# before it, in particular on whether the model cache was warm.
+# before it.
 knitr::knit_hooks$set(chunk_seed = function(before, options, envir) {
   if (before) set.seed(20261112L + sum(utf8ToInt(options$label)))
 })
@@ -33,23 +31,25 @@ knitr::opts_chunk$set(chunk_seed = TRUE)
 
 This vignette extends the standard `bank` example to a three-model comparison:
 
-1. Linear hierarchical MNL (`Delta' Z`)
-2. HART mean model (`Delta(Z)`)
-3. Heteroskedastic HART (`Delta(Z)` and `Sigma(Z)`)
+1. Linear hierarchical MNL ($\Delta^\top Z_i$)
+2. HART mean model ($\Delta(Z_i)$)
+3. Heteroskedastic HART ($\Delta(Z_i)$ and $\Sigma(Z_i)$)
 
 The first two models differ in how they model the representative consumer. The third model additionally allows the covariance of unobserved heterogeneity to vary with demographics through tree models on the modified-Cholesky components.
 
 ## Conjoint Data of Allenby and Ginter (1995)
 
+We use the `bank` conjoint data of Allenby and Ginter (1995): binary
+choices between credit card profiles by 946 respondents, with age, income
+and gender as demographics $Z$.
+
 ```{r setup}
-# Load dependencies
 library(bayesm.HART)
 library(bayesm)
 library(tidyr)
 library(dplyr)
 library(ggplot2)
 
-# Load and prepare bank data
 data(bank)
 choiceAtt <- bank$choiceAtt
 hh <- levels(factor(choiceAtt$id))
@@ -62,93 +62,46 @@ for (i in 1:nhh) {
   X[seq(1, nrow(X), by = 2), ] <- X_temp
   lgtdata[[i]] <- list(y = y, X = X)
 }
-Z <- as.matrix(bank$demo[, -1]) # omit id
-Z <- t(t(Z) - colMeans(Z))      # centered Z as required by rhier*
+Z <- as.matrix(bank$demo[, -1])
+Z <- t(t(Z) - colMeans(Z))  # bayesm requires de-meaned Z
 
 Data <- list(lgtdata = lgtdata, Z = Z, p = 2)
 ```
 
 ## MCMC Estimation: Three Models
 
-```{r fit-models, results='hide', message=FALSE, warning=FALSE}
-# MCMC parameters
+The linear model is fitted with `bayesm::rhierMnlRwMixture`. The HART mean
+model sets `hart_model = "normalized"`. The heteroskedastic model sets
+`hart_model = "direct"`, which adds variance trees (`vartree`) and
+off-diagonal trees (`phitree`) for $\Sigma(Z_i)$.
+
+```{r fit-models, cache = TRUE, results = "hide", message = FALSE}
 R <- 5000
 burn <- 500
 keep <- 5
 Mcmc <- list(R = R, keep = keep)
-model_cache_file <- file.path(
-  vignette_cache_dir,
-  sprintf("bank-heteroskedastic-models-nodart-R%s-keep%s.rds", R, keep)
+
+out_lin <- bayesm::rhierMnlRwMixture(Data, Prior = list(ncomp = 1), Mcmc)
+class(out_lin) <- "rhierMnlRwMixture"  # bayesm.HART methods for the bayesm fit
+
+out_hart <- bayesm.HART::rhierMnlRwMixture(
+  Data = Data, Mcmc = Mcmc,
+  Prior = list(ncomp = 1, hart_model = "normalized",
+               bart = list(num_trees = 20)),
+  r_verbose = FALSE
 )
 
-model_cache_ok <- FALSE
-if (file.exists(model_cache_file)) {
-  model_cache <- tryCatch(readRDS(model_cache_file), error = function(e) NULL)
-  model_cache_ok <- !is.null(model_cache) &&
-    is.list(model_cache) &&
-    !is.null(model_cache$out_lin) &&
-    !is.null(model_cache$out_hart) &&
-    !is.null(model_cache$out_heter)
-  if (model_cache_ok) {
-    out_lin <- model_cache$out_lin
-    out_hart <- model_cache$out_hart
-    out_heter <- model_cache$out_heter
-    # Restore S3 class vectors lost by saveRDS/readRDS
-    class(out_lin) <- "rhierMnlRwMixture"
-    class(out_hart) <- "rhierMnlRwMixture"
-    class(out_heter) <- c("rhierMnlRwMixtureHeterCov",
-                           "bayesm.HART.HeterCov",
-                           "rhierMnlRwMixture")
-    cat("Loaded cached model draws from:", model_cache_file, "\n")
-  }
-}
-
-if (!model_cache_ok) {
-  # (1) Linear hierarchical MNL
-  out_lin <- bayesm.HART::rhierMnlRwMixture(
-    Data = Data, Mcmc = Mcmc,
-    Prior = list(ncomp = 1),
-    r_verbose = FALSE
-  )
-
-  # (2) HART mean model
-  out_hart <- bayesm.HART::rhierMnlRwMixture(
-    Data = Data, Mcmc = Mcmc,
-    Prior = list(
-      ncomp = 1,
-      hart_model = "normalized",
-      bart = list(num_trees = 20, sparse = FALSE)
-    ),
-    r_verbose = FALSE
-  )
-
-  # (3) HART mean + heteroscedastic covariance Sigma(Z)
-  out_heter <- bayesm.HART::rhierMnlRwMixture(
-    Data = Data, Mcmc = Mcmc,
-    Prior = list(
-      ncomp = 1,
-      hart_model = "direct",
-      bart = list(num_trees = 20, sparse = FALSE),
-      vartree = list(num_trees = 20, sparse = FALSE),
-      phitree = list(num_trees = 20, sparse = FALSE)
-    ),
-    r_verbose = FALSE
-  )
-
-  saveRDS(
-    list(
-      out_lin = out_lin,
-      out_hart = out_hart,
-      out_heter = out_heter,
-      generated_at = Sys.time()
-    ),
-    model_cache_file
-  )
-  cat("Saved model draws cache to:", model_cache_file, "\n")
-}
+out_heter <- bayesm.HART::rhierMnlRwMixture(
+  Data = Data, Mcmc = Mcmc,
+  Prior = list(ncomp = 1, hart_model = "direct",
+               bart = list(num_trees = 20),
+               vartree = list(num_trees = 20),
+               phitree = list(num_trees = 20)),
+  r_verbose = FALSE
+)
 ```
 
-We first compare log-likelihood traces for all three models.
+The log-likelihood traces of the three models:
 
 ```{r mcmc-diagnostics, fig.width=8, fig.height=5, fig.align='center', out.width='90%', dpi=200, fig.cap="MCMC traceplot of log-likelihood across linear, HART mean, and heteroskedastic HART models."}
 burnin_draws <- ceiling(burn / keep)
@@ -184,16 +137,12 @@ Following the discussion in Wiemann (2025), we examine two consumer segments def
 - **Segment 1** (respondent 146): older women with low income
 - **Segment 2** (respondent 580): middle-aged men with moderate income
 
-We focus on one focal coefficient: `Bank Out-of-State`.
+The focal coefficient is `Bank Out-of-State`.
 
 ```{r individual-betas, fig.width=12, fig.height=6, fig.align='center', out.width='90%', dpi=200, fig.cap="Posterior distributions of respondent-level out-of-state part-worths for two respondents across three models."}
 selected_resp <- c(146, 580)
 coef_indx <- 10
-coef_name <- colnames(bank$choiceAtt[, 3:16])[coef_indx]
 coef_label <- "Bank Out-of-State"
-if (!grepl("out", tolower(coef_name)) || !grepl("state", tolower(coef_name))) {
-  coef_label <- coef_name
-}
 
 beta_draws <- bind_rows(
   as.data.frame(t(out_lin$betadraw[selected_resp, coef_indx, -c(1:burnin_draws)])) %>%
@@ -224,66 +173,18 @@ ggplot(beta_draws_long, aes(x = Coefficient, fill = Segment)) +
 
 ## Segment-level Out-of-State Effects
 
-Before moving to segment-share implications, we focus on one coefficient:
-the expected part-worth for `Bank Out-of-State` in the two selected segments.
+The expected part-worth for `Bank Out-of-State` in the two selected segments:
 
 ```{r predict-segment, message=FALSE, warning=FALSE, results='hide'}
-# Predict only for the two highlighted segments to keep memory use modest.
 Data_seg <- list(Z = Z[selected_resp, , drop = FALSE])
-segment_cache_file <- file.path(
-  vignette_cache_dir,
-  sprintf(
-    "bank-heteroskedastic-segment-nodart-resp-%s-coef-%s-burndraws-%s.rds",
-    paste(selected_resp, collapse = "-"),
-    coef_indx,
-    burnin_draws
-  )
-)
-
-segment_cache_ok <- FALSE
-if (file.exists(segment_cache_file)) {
-  segment_cache <- tryCatch(readRDS(segment_cache_file), error = function(e) NULL)
-  segment_cache_ok <- !is.null(segment_cache) &&
-    is.array(segment_cache$DeltaZ_heter) &&
-    is.array(segment_cache$SigmaZ_heter) &&
-    length(dim(segment_cache$SigmaZ_heter)) == 4
-  if (segment_cache_ok) {
-    DeltaZ_lin   <- segment_cache$DeltaZ_lin
-    DeltaZ_hart  <- segment_cache$DeltaZ_hart
-    DeltaZ_heter <- segment_cache$DeltaZ_heter
-    SigmaZ_heter <- segment_cache$SigmaZ_heter
-    cat("Loaded cached segment draws from:", segment_cache_file, "\n")
-  }
-}
-
-if (!segment_cache_ok) {
-  DeltaZ_lin <- predict(
-    out_lin, newdata = Data_seg, type = "DeltaZ+mu", burn = burnin_draws, r_verbose = FALSE
-  )
-  DeltaZ_hart <- predict(
-    out_hart, newdata = Data_seg, type = "DeltaZ+mu", burn = burnin_draws, r_verbose = FALSE
-  )
-  DeltaZ_heter <- predict(
-    out_heter, newdata = Data_seg, type = "DeltaZ+mu", burn = burnin_draws, r_verbose = FALSE
-  )
-  SigmaZ_heter <- predict(
-    out_heter, newdata = Data_seg, type = "SigmaZ", burn = burnin_draws, r_verbose = FALSE
-  )
-  saveRDS(
-    list(
-      DeltaZ_lin = DeltaZ_lin,
-      DeltaZ_hart = DeltaZ_hart,
-      DeltaZ_heter = DeltaZ_heter,
-      SigmaZ_heter = SigmaZ_heter,
-      selected_resp = selected_resp,
-      coef_indx = coef_indx,
-      burnin_draws = burnin_draws,
-      generated_at = Sys.time()
-    ),
-    segment_cache_file
-  )
-  cat("Saved segment draws cache to:", segment_cache_file, "\n")
-}
+DeltaZ_lin <- predict(out_lin, newdata = Data_seg, type = "DeltaZ+mu",
+                      burn = burnin_draws, r_verbose = FALSE)
+DeltaZ_hart <- predict(out_hart, newdata = Data_seg, type = "DeltaZ+mu",
+                       burn = burnin_draws, r_verbose = FALSE)
+DeltaZ_heter <- predict(out_heter, newdata = Data_seg, type = "DeltaZ+mu",
+                        burn = burnin_draws, r_verbose = FALSE)
+SigmaZ_heter <- predict(out_heter, newdata = Data_seg, type = "SigmaZ",
+                        burn = burnin_draws, r_verbose = FALSE)
 ```
 
 ```{r segment-expected-coefficients, fig.width=12, fig.height=5, fig.align='center', out.width='95%', dpi=200, fig.cap="Posterior distributions of segment-level expected out-of-state part-worths across linear, HART, and heteroskedastic HART models."}
@@ -380,29 +281,18 @@ variance distribution; heteroskedastic HART yields segment-specific
 distributions.
 
 ```{r segment-variance-contrast, fig.width=12, fig.height=5, fig.align='center', out.width='95%', dpi=200, fig.cap="Posterior variance distributions for the focal part-worth across linear, HART, and heteroskedastic HART models."}
-extract_homoskedastic_var_draws <- function(fit, coef_indx, burnin_draws) {
-  compdraw <- fit$nmix$compdraw
-  if (is.null(compdraw) || length(compdraw) == 0) return(numeric(0))
-
-  keep_start <- min(burnin_draws + 1, length(compdraw))
-  keep_idx <- seq.int(keep_start, length(compdraw))
-
-  vapply(keep_idx, function(ii) {
-    draw_i <- compdraw[[ii]][[1]]
-    rooti <- draw_i$rooti
-    if (is.null(rooti)) return(NA_real_)
-    Sigma <- tryCatch(solve(crossprod(rooti)), error = function(e) NULL)
-    if (is.null(Sigma)) return(NA_real_)
-    Sigma[coef_indx, coef_indx]
-  }, numeric(1))
+common_var_draws <- function(fit) {
+  kept <- fit$nmix$compdraw[-seq_len(burnin_draws)]
+  vapply(kept, function(d) solve(crossprod(d[[1]]$rooti))[coef_indx, coef_indx],
+         numeric(1))
 }
 
 segment_var_draws <- lapply(seq_len(nrow(Data_seg$Z)), function(i) {
   SigmaZ_heter[i, coef_indx, coef_indx, ]
 })
 
-lin_var_draws <- extract_homoskedastic_var_draws(out_lin, coef_indx, burnin_draws)
-hart_var_draws <- extract_homoskedastic_var_draws(out_hart, coef_indx, burnin_draws)
+lin_var_draws <- common_var_draws(out_lin)
+hart_var_draws <- common_var_draws(out_hart)
 
 segment_labels <- c("Segment 1", "Segment 2")
 var_df <- bind_rows(
@@ -429,20 +319,7 @@ var_df <- bind_rows(
 ) %>%
   mutate(
     Model = factor(Model, levels = c("Linear", "HART", "Heteroskedastic HART"))
-  ) %>%
-  mutate(Variance = as.numeric(Variance)) %>%
-  filter(is.finite(Variance), Variance > 0)
-
-if (nrow(var_df) == 0) {
-  stop("No finite positive SigmaZ draws available for the selected segment variance plot.")
-}
-
-n_by_group <- var_df %>%
-  count(Model, Segment, name = "n")
-segment_n_subtitle <- paste(
-  sprintf("%s: %s (n=%s)", n_by_group$Model, n_by_group$Segment, n_by_group$n),
-  collapse = " | "
-)
+  )
 
 ggplot(var_df, aes(x = Variance, fill = Segment)) +
   geom_histogram(
@@ -458,7 +335,6 @@ ggplot(var_df, aes(x = Variance, fill = Segment)) +
   theme_classic(base_size = 14) +
   labs(
     title = paste("Segment-specific Variance for", coef_label),
-    subtitle = segment_n_subtitle,
     x = "Posterior Draw of Variance",
     y = "Density"
   ) +
@@ -481,7 +357,7 @@ variance_summary <- var_df %>%
   )
 print(variance_summary, digits = 3)
 
-variance_ratio <- segment_var_draws[[2]] / pmax(segment_var_draws[[1]], .Machine$double.eps)
+variance_ratio <- segment_var_draws[[2]] / segment_var_draws[[1]]
 cat("Pr(Variance Segment 2 > Segment 1) =",
     round(mean(variance_ratio > 1), 3), "\n")
 cat("Median variance ratio (Segment 2 / Segment 1) =",
@@ -492,12 +368,7 @@ The heteroskedastic HART model includes additional tree ensembles for covariance
 
 ```{r heter-structure-summary}
 nvar <- dim(out_heter$betadraw)[2]
-phi_edge_count <- sum(
-  sapply(seq_len(nvar), function(j) {
-    if (j == 1 || is.null(out_heter$phi_models[[j]])) return(0L)
-    length(out_heter$phi_models[[j]])
-  })
-)
+phi_edge_count <- sum(lengths(out_heter$phi_models))
 
 cat("Heteroskedastic HART covariance model summary:\n")
 cat("Number of coefficients (nvar):", nvar, "\n")
@@ -507,20 +378,18 @@ cat("Number of off-diagonal phi tree ensembles:", phi_edge_count, "\n")
 
 ## Counterfactual Shares of Out-of-State Credit Card Offerings
 
-Following Wiemann (2025, Section 5.3), we consider the design of an out-of-state credit card that is most likely to succeed against existing offerings. We compute expected counterfactual shares for potential offerings against a baseline in-state credit card. These counterfactuals capture the comprehensive demand response through both observed preference heterogeneity via $\Delta(\cdot)$ and unobserved preference heterogeneity---including correlated preferences---captured by $\Sigma$ (or $\Sigma(Z)$ for the heteroskedastic model).
+Following Wiemann (2025, Section 5.3), we consider the design of an out-of-state credit card that is most likely to succeed against existing offerings. We compute expected counterfactual shares for potential offerings against a baseline in-state credit card. These counterfactuals capture the demand response through both observed preference heterogeneity via $\Delta(\cdot)$ and unobserved preference heterogeneity---including correlated preferences---captured by $\Sigma$ (or $\Sigma(Z)$ for the heteroskedastic model).
 
 ```{r counterfactual-shares, fig.width=12, fig.height=5, fig.align='center', out.width='95%', dpi=200, fig.cap="Posterior distributions of expected counterfactual shares of an out-of-state credit card with low interest rate against a baseline in-state credit card."}
-# Define counterfactual design matrices (p=2, 1 task)
-nvar <- 14
-# Scenario 1: Out-of-State Bank only
+# Out-of-State Bank only
 X_oos <- matrix(0, 2, nvar)
 X_oos[1, 10] <- 1
 
-# Scenario 2: Out-of-State Bank & Low Interest
+# Out-of-State Bank and Low Interest
 X_oos_int <- matrix(0, 2, nvar)
 X_oos_int[1, c(2, 10)] <- 1
 
-# Scenario 3: Out-of-State Bank & Low Annual Fee
+# Out-of-State Bank and Low Annual Fee
 X_oos_fee <- matrix(0, 2, nvar)
 X_oos_fee[1, c(8, 10)] <- 1
 
@@ -530,7 +399,6 @@ scenarios <- list(
   "Out-of-State & Low Annual Fee" = X_oos_fee
 )
 
-# Compute counterfactual shares for all models x segments x scenarios
 models_list <- list(Linear = out_lin, HART = out_hart, `Heteroskedastic HART` = out_heter)
 
 cf_results <- list()
@@ -540,7 +408,7 @@ for (sc_name in names(scenarios)) {
     probs <- predict(
       models_list[[mod_name]],
       newdata = list(
-        Z = Z[selected_resp, , drop = FALSE],
+        Z = Data_seg$Z,
         X = list(X_cf, X_cf),
         p = 2
       ),
@@ -564,7 +432,7 @@ cf_df <- bind_rows(cf_results) %>%
     Segment = factor(Segment, levels = c("Segment 1", "Segment 2"))
   )
 
-# Summary table (matching Table 3 of Wiemann 2025)
+# As Table 3 of Wiemann (2025)
 cf_summary <- cf_df %>%
   group_by(Scenario, Model, Segment) %>%
   summarise(
@@ -577,7 +445,7 @@ cf_summary <- cf_df %>%
   pivot_wider(names_from = c(Segment, Model), values_from = Est)
 print(cf_summary)
 
-# Plot: Out-of-State & Low Interest scenario (matching Figure 6)
+# As Figure 6 of Wiemann (2025)
 cf_plot_df <- cf_df %>%
   filter(Scenario == "Out-of-State & Low Interest")
 
@@ -605,18 +473,17 @@ ggplot(cf_plot_df, aes(x = Share, fill = Segment)) +
 ## Quantifying Explained Variance ($R^2$)
 
 To quantify explained demographic heterogeneity, we compute a Bayesian
-`R^2` measure. This is the fraction of latent preference heterogeneity
-explained by observed demographics `Z`. For heteroskedastic HART,
-`R^2` is respondent-specific because `Sigma(Z_i)` varies across `i`.
+$R^2$ measure. This is the fraction of latent preference heterogeneity
+explained by observed demographics $Z$. For heteroskedastic HART,
+$R^2$ is respondent-specific because $\Sigma(Z_i)$ varies across $i$.
 
 ```{r r-squared, fig.width=10, fig.height=5, fig.align='center', out.width='90%', dpi=200, fig.cap="Posterior distributions of explained variance for the focal part-worth."}
-# Model-agnostic R² via summary() (handles both homo- and heteroscedastic models)
 smry_lin   <- summary(out_lin, Z = Z, burn = burnin_draws, coefs = coef_indx)
 smry_hart  <- summary(out_hart, Z = Z, burn = burnin_draws, coefs = coef_indx)
 smry_heter <- summary(out_heter, Z = Z, burn = burnin_draws, coefs = coef_indx)
 
-# For heteroscedastic models, R2_draws is a list of per-coef matrices;
-# collapse to per-respondent posterior mean for the density plot
+# Under heteroskedastic covariance R2_draws is a list of per-coefficient
+# matrices; the plot uses the per-respondent posterior mean.
 r2_heter_per_resp <- colMeans(smry_heter$r2$R2_draws[[1]])
 
 r2_data <- bind_rows(
@@ -639,15 +506,14 @@ ggplot(r2_data, aes(x = R2, fill = Model)) +
 
 cat("Posterior Mean R² (Linear):", round(smry_lin$r2$R2_mean * 100, 2), "%\n")
 cat("Posterior Mean R² (HART)  :", round(smry_hart$r2$R2_mean * 100, 2), "%\n")
-cat("Mean per-respondent R² (Heter):", round(smry_heter$r2$R2_mean * 100, 2), "%\n")
+cat("Mean per-respondent R² (Heteroskedastic HART):", round(smry_heter$r2$R2_mean * 100, 2), "%\n")
 ```
 
 ## Cross-Respondent Uncertainty
 
-Finally, we compare respondent-level uncertainty in segment predictions by model. For each respondent, we compute the posterior SD of `DeltaZ` for the focal coefficient and then inspect the cross-respondent distribution of those SD values. Note that `DeltaZ+mu` differs from `DeltaZ` only by a per-draw constant $\mu$, so the cross-respondent SD is identical.
+We compare respondent-level uncertainty in segment predictions by model. For each respondent, we compute the posterior SD of $\Delta(Z_i)$ for the focal coefficient and then inspect the cross-respondent distribution of those SD values.
 
 ```{r uncertainty-comparison, fig.width=10, fig.height=5, fig.align='center', out.width='90%', dpi=200, fig.cap="Distribution across respondents of posterior SD for segment-level focal part-worth predictions."}
-# Predict DeltaZ for all respondents (cached fast path --- essentially free)
 Data_all <- list(Z = Z)
 DeltaZ_lin   <- predict(out_lin, newdata = Data_all, type = "DeltaZ",
                          burn = burnin_draws, r_verbose = FALSE)
@@ -658,7 +524,6 @@ DeltaZ_heter <- predict(out_heter, newdata = Data_all, type = "DeltaZ",
 sd_lin   <- apply(DeltaZ_lin[, coef_indx, ], 1, sd)
 sd_hart  <- apply(DeltaZ_hart[, coef_indx, ], 1, sd)
 sd_heter <- apply(DeltaZ_heter[, coef_indx, ], 1, sd)
-rm(DeltaZ_lin, DeltaZ_hart, DeltaZ_heter); invisible(gc(verbose = FALSE))
 
 unc_df <- bind_rows(
   data.frame(Model = "Linear", SD = sd_lin),

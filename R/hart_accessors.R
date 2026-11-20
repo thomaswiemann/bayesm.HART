@@ -243,16 +243,6 @@
   out
 }#.SIGMA_FROM_COMPONENTS
 
-# Cached Sigma(Z) draws when every row of Z was seen in training, else NULL.
-# The engines fall back to the ensembles when this misses.
-.hart_sigma_cached <- function(object, Z, kept) {
-  cache <- .cache_get(object, "SigmaZ_unique_draws")
-  if (is.null(cache)) return(NULL)
-  map <- .match_cached_unique_rows(object, Z)
-  if (is.null(map) || !map$all_seen) return(NULL)
-  cache[map$idx, , , kept, drop = FALSE]
-}#.HART_SIGMA_CACHED
-
 # Shared tree evaluation for the predictive paths: NULL when the unique-Z
 # cache covers Z or the fit has no covariance ensembles, the evaluated
 # ensembles otherwise.  `context` names the caller in the error message.

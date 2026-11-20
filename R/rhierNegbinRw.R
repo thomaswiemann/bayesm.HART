@@ -74,7 +74,6 @@
 #' The unit-level coefficients are modeled as:
 #'   \eqn{\beta_i = Z_i \Delta + u_i} \cr
 #'   \eqn{u_i \sim N(0, \Sigma_i)} \cr
-#'   Note: This documentation describes `ncomp = 1` behavior as higher-order components are not supported. \cr
 #'
 #' ## HART Prior Details
 #' Under `hart_model = "normalized"` or `"direct"`, \eqn{\Delta(Z_i)} is modeled
@@ -286,7 +285,7 @@ if(sum(dim(V)==c(nvar,nvar)) != 2) pandterm("V is of incorrect dimension")
 if((length(a) != 1) | (a <=0)) pandterm("a should be a positive number")
 if((length(b) != 1) | (b <=0)) pandterm("b should be a positive number")
 
-# Mixture prior parameters (mirrors MNL/linear)
+# Mixture prior parameters
 if(is.null(Prior$mubar)) { mubar=matrix(rep(0,nvar),nrow=1) } else { mubar=matrix(Prior$mubar, nrow=1) }
 if(ncol(mubar) != nvar) {pandterm(paste("mubar must have ncomp cols, ncol(mubar)= ",ncol(mubar)))}
 if (cfg$model == "none") {
@@ -300,14 +299,13 @@ cfg$Amu <- Amu
 if(is.null(Prior$a_mix)) { a_mix=rep(BayesmConstant.a, ncomp) } else { a_mix=Prior$a_mix }
 if(length(a_mix) != ncomp) {pandterm("Requires dim(a_mix)= ncomp (no of components)")}
 
-# ---- HART preference model (see R/hart_priors.R) ----
+# HART preference model (R/hart_priors.R).
 # Prior$hart_model selects "none" (bayesm paths), "normalized", or "direct".
 useBART     <- cfg$model != "none"
 useHeterCov <- cfg$model == "direct" && identical(cfg$cov, "heteroskedastic")
 bart_params <- cfg$bart
 var_params  <- cfg$vartree %||% list()
 phi_params  <- cfg$phitree %||% list()
-# ---- end HART preference model ----
 
 # Delta prior (for non-BART drawdelta path)
 if(is.null(Prior$Ad) & drawdelta) {Ad=BayesmConstant.A*diag(nvar*nz)}
@@ -320,7 +318,6 @@ if(is.null(Prior$deltabar) & drawdelta) {deltabar=rep(0,nz*nvar)}
 if(drawdelta & !useBART) {
   if(length(deltabar) != nz*nvar) {pandterm("deltabar must be of length nvar*nz")}
 }
-# ---- end HART prior modification ----
 
 } else {
   cfg=.hart_previous_config(saved)
@@ -470,7 +467,7 @@ if (useBART) Beta = Beta_init
 }
 if(!is.null(saved)) {alpha=state$alpha}
 
-# ---- Mixture initialization (mirrors MNL/linear) ----
+# Mixture initialization
 ninc=floor(nreg/ncomp)
 ind=NULL
 for (i in 1:(ncomp-1)) {ind=c(ind,rep(i,ninc))}
@@ -495,7 +492,6 @@ if (drawdelta) {
 } else {
   olddelta = 0
 }
-# ---- end initialization ----
 
 if (drawdelta && useBART) {
   z_map <- .build_unique_z_map(Z)
@@ -522,7 +518,7 @@ draws=rhierNegbinRw_rcpp_loop(regdata, hess_i, Z, Beta, deltabar,
                               var_params, phi_params, state)
 ###################################################################
 
-# === Format output ===
+# format output
 attributes(draws$alphadraw)$class=c("bayesm.mat","mcmc")
 attributes(draws$alphadraw)$mcpar=c(1,R,keep)
 draws <- .finish_hart_fit(draws, cfg, z_map, R, keep,

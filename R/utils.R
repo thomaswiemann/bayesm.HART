@@ -2,12 +2,8 @@
 # General Helper Functions
 # ==============================================================================
 
-# Helper function to calculate MNL probabilities for one unit/draw
-# @param X_i [(T_i*p) x nvar] matrix
-# @param beta_is [nvar x 1] vector
-# @param p scalar, number of alternatives
-# @return [T_i x p] matrix of probabilities
-# @keywords internal
+# MNL choice probabilities for one unit and draw: X_i is (T_i * p) x nvar,
+# the result T_i x p.
 calculate_mnl_probs_from_beta <- function(X_i, beta_is, p) {
     if (!is.matrix(X_i)) stop("Internal error: X_i must be a matrix")
     if (!is.vector(beta_is)) stop("Internal error: beta_is must be a vector")

@@ -6,14 +6,13 @@
 
 library(testthat)
 
-# --- shared helper ----------------------------------------------------------
 .run_mfx_check <- function(fit, Z, ncoef) {
   nz <- ncol(Z)
   z_grid <- matrix(NA_real_, nrow = 4L, ncol = nz)
   z_grid[, 1] <- seq(min(Z[, 1]), max(Z[, 1]), length.out = 4L)
 
   mfx <- marginal_effects(fit, z_values = z_grid, Z = Z,
-                          burn = 5L, verbose = FALSE)
+                          burn = 5L, r_verbose = FALSE)
   expect_s3_class(mfx, "marginal_effects")
   expect_equal(nrow(mfx$z_values), 4L)
   expect_length(mfx$avg_betabar_draws, 4L)
@@ -25,8 +24,7 @@ library(testthat)
                     "mean", "q5", "q50", "q95") %in% names(mfx_summary$summary_df)))
   expect_equal(nrow(mfx_summary$summary_df), 4L * ncoef)
 
-  # Effects should vary across grid points (heter-cov delta_Z is non-trivial
-  # in Z so the average across units shouldn't collapse to a single value).
+  # Delta(Z) varies in Z, so the unit average varies across grid points.
   for (k in seq_len(ncoef)) {
     means_k <- subset(mfx_summary$summary_df,
                       mfx_summary$summary_df$coefficient_index == k)$mean
@@ -36,7 +34,7 @@ library(testthat)
   invisible(mfx_summary)
 }
 
-# --- MNL --------------------------------------------------------------------
+# MNL
 test_that("marginal_effects() works for rhierMnlRwMixtureHeterCov", {
   set.seed(20260513L)
   nlgt <- 25L; nvar <- 2L; nz <- 3L; p <- 3L; T_i <- 6L
@@ -63,7 +61,6 @@ test_that("marginal_effects() works for rhierMnlRwMixtureHeterCov", {
   .run_mfx_check(fit, Z = Z, ncoef = nvar)
 })
 
-# --- Linear -----------------------------------------------------------------
 test_that("marginal_effects() works for rhierLinearMixtureHeterCov", {
   sim <- sim_hier_linear(
     nreg = 25L, nobs = 12L, nvar = 1L, nz = 3L,
@@ -84,7 +81,7 @@ test_that("marginal_effects() works for rhierLinearMixtureHeterCov", {
   .run_mfx_check(fit, Z = sim$Z, ncoef = ncoef)
 })
 
-# --- Negbin -----------------------------------------------------------------
+# Negbin
 test_that("marginal_effects() works for rhierNegbinRwHeterCov", {
   sim <- sim_hier_negbin(
     nreg = 25L, nobs = 12L, nvar = 1L, nz = 3L,

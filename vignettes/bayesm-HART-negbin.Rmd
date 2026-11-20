@@ -16,8 +16,8 @@ This vignette estimates a hierarchical negative binomial model with HART
 priors using `bayesm.HART`, applied to the `detailing` pharmaceutical
 panel dataset from `bayesm`. The HART prior specifies the
 *representative physician* as a sum-of-trees function of observed
-characteristics, `Delta(Z_i)`, whereas the conventional specification
-uses the linear form `Delta^\\top Z_i`.
+characteristics, $\Delta(Z_i)$, whereas the conventional specification
+uses the linear form $\Delta^\top Z_i$.
 
 ## Pharmaceutical Detailing Data
 
@@ -25,7 +25,6 @@ The `detailing` dataset contains a balanced panel of 1,000 physicians observed o
 
 
 ``` r
-# Load dependencies
 library(bayesm.HART)
 library(bayesm)
 #> 
@@ -33,7 +32,6 @@ library(bayesm)
 #> The following objects are masked from 'package:bayesm.HART':
 #> 
 #>     rhierLinearMixture, rhierMnlRwMixture, rhierNegbinRw
-# Data wrangling and plotting utilities
 library(tidyr)
 library(dplyr)
 #> 
@@ -46,12 +44,10 @@ library(dplyr)
 #>     intersect, setdiff, setequal, union
 library(ggplot2)
 
-# Load pharmaceutical detailing data
 data(detailing)
 counts <- detailing[["counts"]]
 demo <- detailing[["demo"]]
 
-# Build per-physician regdata
 phys_ids <- demo[["id"]]
 nreg <- length(phys_ids)
 regdata <- vector("list", length = nreg)
@@ -63,67 +59,36 @@ for (i in 1:nreg) {
   regdata[[i]] <- list(y = y, X = X)
 }
 
-# Physician-level demographics as Z (omit id column)
 Z <- as.matrix(demo[, -1])
 # De-mean continuous columns only; leave binary indicators as-is
 Z[, "mean_samples"] <- Z[, "mean_samples"] - mean(Z[, "mean_samples"])
 
-# Final data object
 Data <- list(regdata = regdata, Z = Z)
 ```
 
 ## MCMC Estimation
 
-We fit both the HART model (Wiemann, 2025) and a conventional linear hierarchical model (Rossi et al., 2009). Both estimate physician-specific coefficients $\beta_i$ via hierarchical negative binomial regression with shared overdispersion $\alpha$; they differ only in their specification of $\Delta(\cdot)$. Note that `rhierNegbinRw` uses Metropolis-Hastings (the negative binomial likelihood is not conjugate), so a longer chain is recommended.
+We fit both the HART model (Wiemann, 2025) and a conventional linear hierarchical model (Rossi et al., 2009). Both estimate physician-specific coefficients $\beta_i$ via hierarchical negative binomial regression with shared overdispersion $\alpha$; they differ only in their specification of $\Delta(\cdot)$. Both are fitted with `bayesm.HART::rhierNegbinRw`: in `bayesm` 3.1-7, `rhierNegbinRw` stops unless $\alpha$ is fixed. The sampler uses Metropolis-Hastings (the negative binomial likelihood is not conjugate), so a longer chain is recommended.
 
 
 ``` r
-# MCMC parameters
 R <- 10000
 burn <- 1000
 keep <- 1
 Mcmc <- list(R = R, keep = keep)
 
-model_cache_file <- file.path(
-  vignette_cache_dir,
-  sprintf("detailing-negbin-R%s-keep%s.rds", R, keep)
+out_hart <- bayesm.HART::rhierNegbinRw(
+  Data = Data, Mcmc = Mcmc,
+  Prior = list(ncomp = 1, hart_model = "normalized",
+               bart = list(num_trees = 20)),
+  r_verbose = FALSE
 )
 
-model_cache_ok <- FALSE
-if (file.exists(model_cache_file)) {
-  model_cache <- tryCatch(readRDS(model_cache_file), error = function(e) NULL)
-  model_cache_ok <- !is.null(model_cache) &&
-    !is.null(model_cache$out_hart) && !is.null(model_cache$out_lin)
-  if (model_cache_ok) {
-    out_hart <- model_cache$out_hart
-    out_lin  <- model_cache$out_lin
-    cat("Loaded cached model draws from:", model_cache_file, "\n")
-  }
-}
-
-if (!model_cache_ok) {
-  out_hart <- bayesm.HART::rhierNegbinRw(
-    Data = Data, Mcmc = Mcmc,
-    Prior = list(
-      ncomp = 1,
-      hart_model = "normalized",
-      bart = list(num_trees = 20)
-    ),
-    r_verbose = FALSE
-  )
-
-  out_lin <- bayesm.HART::rhierNegbinRw(
-    Data = Data, Mcmc = Mcmc,
-    Prior = list(ncomp = 1),
-    r_verbose = FALSE
-  )
-
-  saveRDS(
-    list(out_hart = out_hart, out_lin = out_lin, generated_at = Sys.time()),
-    model_cache_file
-  )
-  cat("Saved model draws cache to:", model_cache_file, "\n")
-}
+out_lin <- bayesm.HART::rhierNegbinRw(
+  Data = Data, Mcmc = Mcmc,
+  Prior = list(ncomp = 1),
+  r_verbose = FALSE
+)
 ```
 
 We use the log-likelihood trace as a basic MCMC diagnostic.
@@ -158,7 +123,7 @@ ggplot(mcmc_data, aes(x = Iteration, y = LogLikelihood, color = Model)) +
 
 ## Posterior Inference about Physician-level Coefficients
 
-We compare posterior distributions of the detailing coefficient for two physicians: Physician 840 (GP, no samples) and Physician 888 (specialist, moderate samples).
+We compare posterior distributions of the detailing coefficient for two physicians: Physician 840 (GP, no samples) and Physician 888 (specialist, many samples).
 
 
 ``` r
@@ -166,7 +131,6 @@ selected_phys <- c(840, 888)
 coef_indx <- 2 # "Detailing" coefficient
 coef_name <- "Detailing"
 
-# Create a combined factor for filling histograms
 beta_draws <- bind_rows(
   as.data.frame(t(out_hart$betadraw[selected_phys, coef_indx, -c(1:burnin_draws)])) %>% 
     mutate(Model = "HART", Draw = row_number()),
@@ -182,11 +146,10 @@ beta_draws_long <- beta_draws %>%
     values_to = "Coefficient"
   ) %>% 
   mutate(
-      Model = factor(Model, levels = c("Linear", "HART")), # Control facet order
+      Model = factor(Model, levels = c("Linear", "HART")),
       Group = interaction(Physician, Model)
   )
 
-# Define colors
 model_fills <- c(
     "Physician 840.Linear" = "lightcoral", "Physician 888.Linear" = "darkred",
     "Physician 840.HART" = "lightblue", "Physician 888.HART" = "darkblue"
@@ -196,7 +159,6 @@ model_colors <- c(
     "Physician 840.HART" = "blue", "Physician 888.HART" = "darkblue"
 )
 
-# Calculate means
 means <- beta_draws_long %>%
   group_by(Group, Model) %>%
   summarise(mean_val = mean(Coefficient), .groups = "drop")
@@ -229,13 +191,11 @@ ggplot(beta_draws_long, aes(x = Coefficient, fill = Group)) +
 
 
 ``` r
-# Extract posterior draws for the selected physicians and coefficient
 hart_draws_840 <- out_hart$betadraw[840, coef_indx, -c(1:burnin_draws)]
 hart_draws_888 <- out_hart$betadraw[888, coef_indx, -c(1:burnin_draws)]
 lin_draws_840 <- out_lin$betadraw[840, coef_indx, -c(1:burnin_draws)]
 lin_draws_888 <- out_lin$betadraw[888, coef_indx, -c(1:burnin_draws)]
 
-# Create summary table
 summary_results <- data.frame(
   Model = c("Linear", "Linear", "HART", "HART"),
   Physician = c("840", "888", "840", "888"),
@@ -264,18 +224,16 @@ The models differ in how they characterize the expected coefficient $\Delta(Z)$ 
 
 
 ``` r
-# We predict for all physicians
 DeltaZ_hat_hart <- predict(out_hart, newdata = list(Z = Z), type = "DeltaZ+mu", burn = burnin_draws)
 DeltaZ_hat_lin <- predict(out_lin, newdata = list(Z = Z), type = "DeltaZ+mu", burn = burnin_draws)
 ```
 
 
 ``` r
-segment_phys <- selected_phys  # Same physicians as individual-level analysis
 deltaZ_draws <- bind_rows(
-  as.data.frame(t(DeltaZ_hat_hart[segment_phys, coef_indx, ])) %>% 
+  as.data.frame(t(DeltaZ_hat_hart[selected_phys, coef_indx, ])) %>% 
     mutate(Model = "HART", Draw = row_number()),
-  as.data.frame(t(DeltaZ_hat_lin[segment_phys, coef_indx, ])) %>% 
+  as.data.frame(t(DeltaZ_hat_lin[selected_phys, coef_indx, ])) %>% 
     mutate(Model = "Linear", Draw = row_number())
 )
 colnames(deltaZ_draws)[1:2] <- c("Segment 1", "Segment 2")
@@ -287,11 +245,10 @@ deltaZ_draws_long <- deltaZ_draws %>%
     values_to = "Coefficient"
   ) %>% 
   mutate(
-      Model = factor(Model, levels = c("Linear", "HART")), # Control facet order
+      Model = factor(Model, levels = c("Linear", "HART")),
       Group = interaction(Physician_Segment, Model)
   )
   
-# Update color definitions to match segment terminology
 model_fills <- c(
     "Segment 1.Linear" = "lightcoral", "Segment 2.Linear" = "darkred",
     "Segment 1.HART" = "lightblue", "Segment 2.HART" = "darkblue"
@@ -301,7 +258,6 @@ model_colors <- c(
     "Segment 1.HART" = "blue", "Segment 2.HART" = "darkblue"
 )
 
-# Calculate means
 means_deltaZ <- deltaZ_draws_long %>%
   group_by(Group, Model) %>%
   summarise(mean_val = mean(Coefficient), .groups = "drop")
@@ -334,10 +290,9 @@ ggplot(deltaZ_draws_long, aes(x = Coefficient, fill = Group)) +
 
 
 ``` r
-# Extract expected coefficients for the two segments
 deltaZ_summary <- data.frame(
   Segment = c("Segment 1 (GP, No Samples)", 
-              "Segment 2 (Specialist, Moderate Samples)"),
+              "Segment 2 (Specialist, Many Samples)"),
   Linear_Mean = c(mean(DeltaZ_hat_lin[840, coef_indx, ]), 
                   mean(DeltaZ_hat_lin[888, coef_indx, ])),
   Linear_SD = c(sd(DeltaZ_hat_lin[840, coef_indx, ]), 
@@ -349,14 +304,10 @@ deltaZ_summary <- data.frame(
 )
 
 print(deltaZ_summary, digits = 3)
-#>                                    Segment Linear_Mean Linear_SD HART_Mean
-#> 1               Segment 1 (GP, No Samples)      0.0321    0.0118    0.0559
-#> 2 Segment 2 (Specialist, Moderate Samples)      0.0096    0.0198    0.0253
-#>   HART_SD
-#> 1  0.0179
-#> 2  0.0321
+#>                                Segment Linear_Mean Linear_SD HART_Mean HART_SD
+#> 1           Segment 1 (GP, No Samples)      0.0321    0.0118    0.0559  0.0179
+#> 2 Segment 2 (Specialist, Many Samples)      0.0096    0.0198    0.0253  0.0321
 
-# Calculate differences between segments
 cat("\nDifferences between segments:\n")
 #> 
 #> Differences between segments:
@@ -372,7 +323,7 @@ For the selected physicians, segment-level posterior locations are
 consistent with the corresponding individual-level posteriors shown
 above. The linear specification restricts segment means to an affine
 function of demographics, while HART allows nonlinear and interaction
-structure in `Z` through `Delta(Z)`.
+structure in $Z$ through $\Delta(Z)$.
 
 ## References
 

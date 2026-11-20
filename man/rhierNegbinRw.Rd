@@ -109,7 +109,6 @@ Per-unit \eqn{\beta_i} are drawn via Random Walk Metropolis-Hastings; the disper
 The unit-level coefficients are modeled as:
 \eqn{\beta_i = Z_i \Delta + u_i} \cr
 \eqn{u_i \sim N(0, \Sigma_i)} \cr
-Note: This documentation describes \code{ncomp = 1} behavior as higher-order components are not supported. \cr
 }
 
 \subsection{HART Prior Details}{

@@ -293,14 +293,13 @@ if(is.null(Prior$V)) {V=nu*diag(nvar)}
    else {V=Prior$V}
 if(sum(dim(V)==c(nvar,nvar)) != 2) pandterm("Invalid V in prior")
 
-# ---- HART preference model (see R/hart_priors.R) ----
+# HART preference model (R/hart_priors.R).
 # Prior$hart_model selects "none" (bayesm paths), "normalized", or "direct".
 useBART     <- cfg$model != "none"
 useHeterCov <- cfg$model == "direct" && identical(cfg$cov, "heteroskedastic")
 bart_params <- cfg$bart
 var_params  <- cfg$vartree %||% list()
 phi_params  <- cfg$phitree %||% list()
-# ---- end HART preference model ----
 
 if(is.null(Prior$Ad) & drawdelta) {Ad=BayesmConstant.A*diag(nvar*nz)}
    else {Ad=Prior$Ad}
@@ -398,7 +397,7 @@ ninc=floor(nreg/ncomp)
 for (i in 1:(ncomp-1)) {ind=c(ind,rep(i,ninc))}
 if(ncomp != 1) {ind = c(ind,rep(ncomp,nreg-length(ind)))} else {ind=rep(1,nreg)}
 
-# ---- HART initialization ----
+# HART initialization
 if (drawdelta & useBART){
   olddelta = rep(0, 1)
   deltabar = 0
@@ -415,7 +414,6 @@ if (drawdelta & useBART){
 if (!useBART) {
   bart_params = list(0)
 }
-# ---- end HART initialization ----
 
 if (drawdelta && useBART) {
   z_map <- .build_unique_z_map(Z)

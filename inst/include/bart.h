@@ -36,11 +36,11 @@
 // (allfit, r, ftemp) and raw pointers (x, y) into externally-owned data.
 // To keep that bookkeeping sane:
 //
-//  * The copy constructor and copy-assignment operator DO NOT copy
+//  * The copy constructor and copy-assignment operator do not copy
 //    allfit / r / ftemp.  They null those pointers in the destination, so a
 //    naive copy yields a bart object on which f(i) and predict() are unsafe.
 //
-//  * There is NO move constructor / move-assignment.  std::vector growth
+//  * There is no move constructor / move-assignment.  std::vector growth
 //    therefore falls back on the (lossy) copy operations.
 //
 // The canonical ownership pattern, used by initializeBART and required for
@@ -52,12 +52,12 @@
 //          models[i].setprior(...);
 //          models[i].setdata(...);           // allocates heap in place
 //      }
-//      // models is then NEVER resized; pointers held inside each bart
+//      // models is then never resized; pointers held inside each bart
 //      // (x, y, allfit, ...) stay valid for the lifetime of `models`.
 //
 // Buffers passed to setdata (typically arma::mat / arma::vec memory belonging
-// to the surrounding MCMC loop) MUST outlive every bart that holds pointers
-// into them, and MUST NOT be reallocated underneath the bart.
+// to the surrounding MCMC loop) must outlive every bart that holds pointers
+// into them, and must not be reallocated underneath the bart.
 // =====================================================================
 
 class bart {

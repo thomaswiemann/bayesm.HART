@@ -14,13 +14,8 @@
 //      = pi^{-n/2} * (nu*lambda)^{nu/2} / Gamma(nu/2)
 //                  * Gamma((n+nu)/2)    / (S + nu*lambda)^{(n+nu)/2}.
 //
-// All terms are kept.  The leaf-prior normalization
-//      C1(nu, lambda) = (nu/2) log(nu*lambda) - lgamma(nu/2)
-// scales with nu and contributes a +/- C1 offset to MH birth/death ratios
-// (one extra leaf is integrated out under birth, one fewer under death), so
-// it cannot be dropped without distorting the tree-structure posterior.  The
-// -n/2 log(pi) term cancels exactly (n_l + n_r = n_t) but is included for
-// auditability.
+// The leaf-prior normalization (nu/2) log(nu*lambda) - lgamma(nu/2) depends
+// on nu and does not cancel in the birth/death ratio; it is kept.
 //--------------------------------------------------
 double varlh(double S, double n, double nu, double lambda)
 {

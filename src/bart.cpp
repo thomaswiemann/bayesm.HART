@@ -111,32 +111,12 @@ void bart::predict(size_t p, size_t n, double *x, double *fp)
 //uses: m,t,xi
 {
     double* fptemp = new double[n];
-    //printf("predict - m: %zu\n", m);  // Print number of trees
 
     for (size_t j = 0; j < n; j++) fp[j] = 0.0;
     for (size_t j = 0; j < m; j++) {
         fit(t[j], xi, p, n, x, fptemp);
-        // For first tree, print range and sample values
-        if (j == 0) {
-            double min_val = fptemp[0], max_val = fptemp[0];
-            for (size_t k = 1; k < n; k++) {
-                if (fptemp[k] < min_val) min_val = fptemp[k];
-                if (fptemp[k] > max_val) max_val = fptemp[k];
-            }
-            //printf("predict - First tree: min=%f, max=%f, first 3 values: %f %f %f\n",
-                //min_val, max_val, fptemp[0], fptemp[1], fptemp[2]);
-        }
         for (size_t k = 0; k < n; k++) fp[k] += fptemp[k];
     }
-
-    // Also print range for final predictions
-    double min_fp = fp[0], max_fp = fp[0];
-    for (size_t k = 1; k < n; k++) {
-        if (fp[k] < min_fp) min_fp = fp[k];
-        if (fp[k] > max_fp) max_fp = fp[k];
-    }
-    //printf("predict - Final: min=%f, max=%f, first 3 values: %f %f %f\n",
-        //min_fp, max_fp, fp[0], fp[1], fp[2]);
 
     delete[] fptemp;
 }
@@ -199,50 +179,6 @@ void bart::draw(double sigma, rn& gen) {
 		for (size_t j = 0; j < p; j++) pv[j] = ::exp(lpv[j]);
 	}
 }
-
-//void bart::draw(double sigma, rn& gen) {
-//
-//	for (size_t j = 0; j < m; j++) {
-//		// Remove current tree's contribution
-//		fit(t[j], xi, p, n, x, ftemp);
-//
-//		}
-//
-//		for (size_t k = 0; k < n; k++) {
-//			allfit[k] = allfit[k] - ftemp[k];
-//			r[k] = y[k] - allfit[k];
-//		}
-//
-//		}
-//
-//		// Do BART updates
-//		bd(t[j], xi, di, pi, sigma, nv, pv, aug, gen);
-//		drmu(t[j], xi, di, pi, sigma, gen);
-//
-//		// Add back updated tree's contribution
-//		fit(t[j], xi, p, n, x, ftemp);
-//
-//
-//			// Get detailed node information
-//			tree::tree_p bottom_node = t[j].bn(xx, xi);
-//				bottom_node->gettheta(),
-//				bottom_node->nid(),
-//		}
-//
-//		for (size_t k = 0; k < n; k++) allfit[k] += ftemp[k];
-//
-//		}
-//	}
-//
-//	// Log summary of all tree predictions at end of iteration
-//	}
-//
-//	if (dartOn) {
-//		draw_s(nv, lpv, theta, gen);
-//		draw_theta0(const_theta, theta, lpv, a, b, rho, gen);
-//		for (size_t j = 0; j < p; j++) pv[j] = ::exp(lpv[j]);
-//	}
-//}
 
 //--------------------------------------------------
 void bart::updateY(double* newy) {

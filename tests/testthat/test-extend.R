@@ -37,16 +37,16 @@ extend_cutpoints <- function(x) {
   lapply(x, extend_cutpoints)
 }#EXTEND_CUTPOINTS
 
-for (likelihood in names(.guard_mcmc)) {
-  for (model in names(.guard_priors)) {
+for (likelihood in names(.test_mcmc)) {
+  for (model in names(.test_priors)) {
     if (likelihood != "linear" && model != "heteroskedastic") next
     local({
       family <- likelihood
       regime <- model
       test_that(paste("mixed extension preserves inputs and cutpoints", family, regime), {
-        data <- .guard_data(family)
+        data <- .test_data(family)
         units <- if (family == "mnl") "lgtdata" else "regdata"
-        prior <- .guard_priors[[regime]]
+        prior <- .test_priors[[regime]]
         if (family == "mnl") prior$SignRes <- c(-1, 0)
         a <- extend_fit(family, Data = data, Prior = prior,
                         Mcmc = list(R = 6, keep = 1, nprint = 0))
@@ -99,8 +99,8 @@ for (likelihood in names(.guard_mcmc)) {
 }
 
 test_that("old-only and new-only batches retain exact order and observations", {
-  for (family in names(.guard_mcmc)) {
-    a <- extend_fit(family, Data = .guard_data(family), Prior = list(ncomp = 1),
+  for (family in names(.test_mcmc)) {
+    a <- extend_fit(family, Data = .test_data(family), Prior = list(ncomp = 1),
                     Mcmc = list(R = 4, keep = 1, nprint = 0))
     for (ids in list(c("4", "1"), c("new-z", "new-y"))) {
       batch <- extend_batch(a$restart, ids)
@@ -124,7 +124,7 @@ test_that("old-only and new-only batches retain exact order and observations", {
 })
 
 test_that("linear ssq retains old values and defaults for no-Z extension", {
-  data <- .guard_data("linear")
+  data <- .test_data("linear")
   data$Z <- NULL
   a <- extend_fit("linear", Data = data, Prior = list(ncomp = 1),
                   Mcmc = list(R = 4, keep = 1, nprint = 0))
@@ -143,7 +143,7 @@ test_that("linear ssq retains old values and defaults for no-Z extension", {
 
 test_that("NB fixed and sampled alpha extend above the subsampling threshold", {
   for (fixed in c(FALSE, TRUE)) {
-    a <- extend_fit("negbin", Data = .guard_data("negbin"),
+    a <- extend_fit("negbin", Data = .test_data("negbin"),
                     Prior = list(ncomp = 1),
                     Mcmc = list(R = 4, keep = 1, nprint = 0,
                                 fixalpha = fixed, alpha = 2))
@@ -160,8 +160,8 @@ test_that("NB fixed and sampled alpha extend above the subsampling threshold", {
 })
 
 test_that("batch validation rejects incompatible IDs, coordinates and priors", {
-  for (family in names(.guard_mcmc)) {
-    a <- extend_fit(family, Data = .guard_data(family), Prior = list(ncomp = 1),
+  for (family in names(.test_mcmc)) {
+    a <- extend_fit(family, Data = .test_data(family), Prior = list(ncomp = 1),
                     Mcmc = list(R = 4, keep = 1, nprint = 0))
     units <- if (family == "mnl") "lgtdata" else "regdata"
     batch <- extend_batch(a$restart, c("2", "new"))
@@ -194,7 +194,7 @@ test_that("batch validation rejects incompatible IDs, coordinates and priors", {
 })
 
 test_that("state extension preserves old live values and initializes new rows", {
-  a <- extend_fit("linear", Data = .guard_data("linear"), Prior = list(ncomp = 1),
+  a <- extend_fit("linear", Data = .test_data("linear"), Prior = list(ncomp = 1),
                   Mcmc = list(R = 4, keep = 1, nprint = 0))
   beta <- matrix(7, 14, 2)
   state <- .hart_extend_state(a$restart, beta, rep(3, 14))
@@ -208,7 +208,7 @@ test_that("state extension preserves old live values and initializes new rows", 
 
 
 test_that("new linear units use their variance and matrix responses append by row", {
-  a <- extend_fit("linear", Data = .guard_data("linear"), Prior = list(ncomp = 1),
+  a <- extend_fit("linear", Data = .test_data("linear"), Prior = list(ncomp = 1),
                   Mcmc = list(R = 4, keep = 1, nprint = 0))
   batch <- extend_batch(a$restart, "new")
   batch$regdata[[1]] <- a$restart$data$regdata[[1]]
@@ -246,12 +246,12 @@ extend_loglike <- function(fit, family) {
   }, numeric(1))
 }#EXTEND_LOGLIKE
 
-for (family in names(.guard_mcmc)) {
+for (family in names(.test_mcmc)) {
   local({
     likelihood <- family
     test_that(paste("kept likelihood accounts for every appended observation", likelihood), {
-      a <- extend_fit(likelihood, Data = .guard_data(likelihood),
-                      Prior = .guard_priors$heteroskedastic,
+      a <- extend_fit(likelihood, Data = .test_data(likelihood),
+                      Prior = .test_priors$heteroskedastic,
                       Mcmc = list(R = 6, keep = 1, nprint = 0))
       b <- extend_fit(likelihood, Data = extend_batch(a$restart),
                       previous = a, Mcmc = list(R = 8, keep = 1))

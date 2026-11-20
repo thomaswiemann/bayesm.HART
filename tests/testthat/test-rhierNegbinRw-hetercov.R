@@ -7,8 +7,6 @@
 #   * class assignment ("bayesm.HART.HeterCov" marker) and return-slot shape,
 #   * predict.* dispatch on the marker class for "DeltaZ" and "DeltaZ+mu",
 #   * the covariance-tree banner under r_verbose = TRUE.
-#
-# Recovery accuracy is exercised by dev/smoke-heter-negbin.R.
 
 library(testthat)
 
@@ -75,7 +73,7 @@ test_that("vartree only with nvar > 1 auto-promotes to full Cholesky", {
   sim   <- make_small_negbin_sim()
   Prior <- list(ncomp = 1L, hart_model = "direct",
                 bart    = list(num_trees = 5L),
-                vartree = list(num_trees = 5L))   # NO phitree
+                vartree = list(num_trees = 5L))   # no phitree
   Mcmc  <- list(R = 20L, keep = 1L, nprint = 0L)
 
   capture.output({

@@ -43,14 +43,14 @@ sim_hier_negbin <- function(nreg = 100, nobs = 50, nvar = 2, nz = 3,
 
   ncoef <- nvar + as.integer(const)
 
-  # --- Generate Z ---
+  # Z
   Z <- NULL
   if (nz > 0 && het_observed != "none") {
     Z <- matrix(rnorm(nreg * nz), nrow = nreg, ncol = nz)
     Z <- scale(Z, center = TRUE, scale = FALSE)
   }
 
-  # --- Generate betabar_i ---
+  # betabar_i
   betabar_true <- matrix(0, nrow = nreg, ncol = ncoef)
 
   if (!is.null(Z) && het_observed != "none") {
@@ -75,7 +75,7 @@ sim_hier_negbin <- function(nreg = 100, nobs = 50, nvar = 2, nz = 3,
     }
     betabar_true[, 1] <- raw_k1
 
-    # Fixed small values for remaining coefficients (negbin needs small betas for stable lambda)
+    # Small fixed values keep lambda stable.
     if (ncoef > 1) {
       fixed_remaining <- c(0.5, -0.3, 0.2, -0.1)
       n_remaining <- min(ncoef - 1, length(fixed_remaining))
@@ -84,12 +84,12 @@ sim_hier_negbin <- function(nreg = 100, nobs = 50, nvar = 2, nz = 3,
       }
     }
   } else {
-    # Default small constant betabar for stability
+    # Small constant betabar.
     if (ncoef >= 1) betabar_true[, 1] <- 0.5
     if (ncoef >= 2) betabar_true[, 2] <- -0.3
   }
 
-  # --- Generate eps_i ---
+  # eps_i
   Sigma_eps <- diag(target_var_eps, ncoef)
   Sigma_true <- NULL
   if (is.null(Sigma_func)) {
@@ -104,7 +104,7 @@ sim_hier_negbin <- function(nreg = 100, nobs = 50, nvar = 2, nz = 3,
 
   beta_true <- betabar_true + eps_true
 
-  # --- Generate regdata ---
+  # regdata
   regdata <- vector("list", nreg)
   hessdata <- vector("list", nreg)
 
@@ -113,7 +113,7 @@ sim_hier_negbin <- function(nreg = 100, nobs = 50, nvar = 2, nz = 3,
     if (const) Xi <- cbind(1, Xi)
 
     lambda_i <- exp(Xi %*% beta_true[i, ])
-    # Clamp lambda to avoid numerical issues
+    # Clamp lambda.
     lambda_i <- pmin(lambda_i, 1e6)
     prob_i <- alpha / (alpha + lambda_i)
 

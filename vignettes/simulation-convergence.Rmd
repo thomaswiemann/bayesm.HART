@@ -12,7 +12,7 @@ vignette: |
 
 ## Introduction
 
-This article studies how the posterior means of a hierarchical logit model
+This vignette studies how the posterior means of a hierarchical logit model
 behave as the number of units `n` and the number of choice occasions per
 unit `T` grow. Two kinds of quantities are tracked: the individual
 coefficients $\beta_i$, which are learned from unit $i$'s own choices and
@@ -323,10 +323,11 @@ explained part, the linear and normalized models shrink toward similar
 targets and their $\beta_i$ errors coincide. The two direct models separate
 the two ingredients of the direct specification. With a constant covariance,
 the vector-leaf mean leaves $\beta_i$ where the normalized model has it but
-lowers the error in $\Delta(Z_i)$ by 15 to 20 percent, since one partition
-serves both coefficients. The covariance trees then lower $\beta_i$ by a
-further 7 to 13 percent at short panels and $\Delta(Z_i)$ by 13 to 28
-percent: $v_1(Z)$ varies by more than an order of magnitude across $Z_1$,
+lowers the error in $\Delta(Z_i)$ by 15 to 24 percent once `n` reaches 400,
+since one partition
+serves both coefficients. The covariance trees then lower $\beta_i$ by up
+to 13 percent and $\Delta(Z_i)$ by up to 22 percent (12 to 19 percent at
+`n = 3200`): $v_1(Z)$ varies by more than an order of magnitude across $Z_1$,
 and the shrinkage weights follow it. The population mean reaches 0.10
 (direct, heteroskedastic covariance), 0.12 (direct, constant covariance), and 0.15
 (normalized) at `n = 3200`, while the linear model levels off at 0.36. Only
@@ -365,7 +366,7 @@ takes over. $\Delta(Z_i)$ falls steadily in `n` for the HART models, to
 0.19 to 0.20 at `n = 3200`, `T = 160`, while the linear model stays at
 0.80. Here the three HART specifications are nearly indistinguishable in
 $\beta_i$ and $\Delta(Z_i)$: the constant-covariance direct model tracks the
-normalized model within 3 percent, and the covariance trees lower $\beta_i$
+normalized model within 3 percent once `n` reaches 200, and the covariance trees lower $\beta_i$
 by at most 6 percent at the largest `n`. The unobserved heterogeneity is a
 smaller share of the variation than in the step design, so how its
 covariance is modeled matters less for the coefficients. The covariance

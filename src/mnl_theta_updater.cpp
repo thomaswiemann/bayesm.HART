@@ -12,7 +12,7 @@ MnlThetaUpdaterAdapter::MnlThetaUpdaterAdapter(
       nacceptbeta_(0), s_(s),
       nlgt_(oldbetas.n_rows), nvar_(oldbetas.n_cols), R_(R)
 {
-    // Initialize log-likelihoods (deterministic, no RNG impact)
+    // Log-likelihood at the starting coefficients.
     oldll_.zeros(nlgt_);
     hess_plus_prec_work_.set_size(nvar_, nvar_);
     incroot_work_.set_size(nvar_, nvar_);

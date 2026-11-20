@@ -1,7 +1,7 @@
 /*
  *  Birth/death Metropolis-Hastings step for variance trees.
  *
- *  Mirrors heterbd, but uses the chi^-2 conjugate marginal likelihood (varlh)
+ *  Mirrors bd, but uses the chi^-2 conjugate marginal likelihood (varlh)
  *  and the chi^-2 leaf draws (vardrawnodemu) from varbartfuns.
  *
  *  Tree-structure prior, proposal mechanics (bprop / dprop / getpb), and

@@ -4,10 +4,9 @@
 # These helpers are model-agnostic and used by predict methods for
 # rhierMnlRwMixture, rhierLinearMixture, and rhierNegbinRw.
 
-# Helper 1: Minimal Input Validation
+# Checks type, betadraw, burn and nsim; returns the total number of draws.
 .validate_predict_inputs <- function(object, newdata, type, burn, nsim,
                                       valid_types = c("DeltaZ", "DeltaZ+mu")) {
-  # Minimal validation: Type and basic object structure
   if (!(type %in% valid_types)) {
     stop(paste("Invalid type specified. Choose one of:",
                paste(valid_types, collapse = ", ")))
@@ -19,7 +18,6 @@
 
   ndraws_total <- dim(object$betadraw)[3]
 
-  # Minimal validation: burn and nsim (assuming numeric)
   if (burn < 0 || burn >= ndraws_total) {
     stop(paste0("burn must be >= 0 and < ndraws_total (", ndraws_total, ")."))
   }
@@ -30,7 +28,7 @@
   return(ndraws_total)
 }#VALIDATE_PREDICT_INPUTS
 
-# Global-mixture prediction paths currently support only single-component models.
+# Global-mixture prediction requires a single component.
 .assert_single_component_nmix <- function(object, context) {
   if (.hart_cov_kind(object) == "heteroskedastic") return(invisible(NULL))
   if (is.null(object$nmix) || is.null(object$nmix$probdraw)) return(invisible(NULL))
@@ -71,8 +69,6 @@
   !is.null(object$bart_models)
 }
 
-# Helper 2: Calculate DeltaZ component
-#
 # Returns a (npred x nvar x ndraws_kept) array of representative-consumer
 # predictions Delta(Z*) at user-supplied newdata$Z; .hart_delta() knows where
 # each fit keeps them.
@@ -86,8 +82,6 @@
               r_verbose = r_verbose, comps = hetercov_comps, ...)
 }#CALCULATE_DELTA_Z
 
-# Helper 3: Return Sigma(Z*) draws
-#
 # Returns a [npred, nvar, nvar, ndraws_out] array.  Under a constant
 # covariance the same matrix is repeated on every row of Z.
 .calculate_sigma_z <- function(object, newdata, burn, r_verbose,
@@ -100,11 +94,8 @@
               r_verbose = r_verbose, comps = hetercov_comps)
 }#CALCULATE_SIGMA_Z
 
-# Helper 4: Add mu component
-#
-# Two paths:
-#   (a) BART / linear with mixture: pull mu from object$nmix$compdraw[[r]][[1]]$mu
-#   (b) Heter-cov:                   pull mu from object$mu_draw[r, ]
+# Adds mu to Delta(Z): from nmix$compdraw on the mixture paths, from mu_draw
+# under heteroskedastic covariance.
 .add_mu_component <- function(delta_z_array, object, kept_draws_indices) {
   npred      <- dim(delta_z_array)[1]
   nvar       <- dim(delta_z_array)[2]

@@ -5,7 +5,9 @@
 # rhierMnlRwMixture, rhierLinearMixture, or rhierNegbinRw (with or without
 # HART / heteroscedastic extensions).
 
-# --- Internal helpers (not exported) ------------------------------------------
+# ==============================================================================
+# Internal helpers
+# ==============================================================================
 
 # Weighted variance (population weights; denominator = sum(w), not sum(w)-1)
 .wvar <- function(x, w) {
@@ -21,15 +23,13 @@
 
   is_heter <- .hart_cov_kind(object) == "heteroskedastic"
 
-  # --- Obtain DeltaZ draws ---
-  # When Z is NULL, work directly on unique-row cache (zero expansion).
+  # With Z = NULL the unique-row cache is used, weighted by z_counts.
   cache <- attr(object, "hart_cache", exact = TRUE)
   used_cache <- FALSE
 
   if (is.null(Z) && !is.null(cache$DeltaZ_unique_draws)) {
-    # Work on unique rows; use z_counts for weighted variance
     DeltaZ <- cache$DeltaZ_unique_draws   # [n_unique x nvar x ndraws]
-    w      <- cache$z_counts              # integer weights
+    w      <- cache$z_counts
     used_cache <- TRUE
   } else if (!is.null(Z)) {
     DeltaZ <- predict(object, newdata = list(Z = Z), type = "DeltaZ",
@@ -40,17 +40,16 @@
   }
 
   npred <- dim(DeltaZ)[1]
-  # Apply burn-in to cached draws (cache stores all R/keep draws)
+  # The cache holds all R/keep draws.
   if (used_cache) {
     keep_idx <- seq.int(min(burn + 1, ndraws), ndraws)
     DeltaZ <- DeltaZ[, , keep_idx, drop = FALSE]
   }
   ndraws_out <- dim(DeltaZ)[3]
 
-  # Variance helper: weighted if from cache, standard if from predict
   vfun <- if (!is.null(w)) function(x) .wvar(x, w) else var
 
-  # --- Obtain Sigma_kk draws ---
+  # Sigma_kk draws
   if (is_heter) {
     if (used_cache && !is.null(cache$SigmaZ_unique_draws)) {
       SigmaZ <- cache$SigmaZ_unique_draws[, , , keep_idx, drop = FALSE]
@@ -69,7 +68,7 @@
     }, numeric(nvar)))
   }
 
-  # --- Compute R-squared per coefficient ---
+  # R2 per coefficient
   if (is_heter) {
     R2_draws <- vector("list", length(coefs))
     R2_mean  <- numeric(length(coefs))
@@ -107,7 +106,9 @@
   list(R2_draws = R2_draws, R2_mean = R2_mean, heteroscedastic = is_heter)
 }
 
-# --- Shared summary implementation -------------------------------------------
+# ==============================================================================
+# Shared summary implementation
+# ==============================================================================
 
 .summary_hier <- function(object, Z = NULL, burn = 0, coefs = NULL,
                            r_verbose = FALSE, model_type = "MNL") {
@@ -123,25 +124,24 @@
   out$is_bart        <- !is.null(object$bart_models)
   out$is_heter       <- .hart_cov_kind(object) == "heteroskedastic"
 
-  # --- Acceptance rates (MNL & NegBin only) ---
+  # Acceptance rates (MNL, NegBin)
   if (!is.null(object$acceptrbeta))
     out$accept_beta <- object$acceptrbeta
   if (!is.null(object$acceptralpha))
     out$accept_alpha <- object$acceptralpha
 
-  # --- Posterior mean betas ---
+  # Posterior mean coefficients
   beta_mean <- apply(object$betadraw[, , max(1, burn + 1):ndraws, drop = FALSE],
                      c(1, 2), mean)
   out$beta_mean <- beta_mean
 
-  # --- BART variable importance ---
+  # Variable importance
   if (out$is_bart && !is.null(object$varcount)) {
     out$varcount <- object$varcount
     out$varprob  <- object$varprob
   }
 
-  # --- R^2 ---
-  # Auto-compute when: (a) Z supplied, or (b) cached DeltaZ available
+  # R2, computed when Z is supplied or the DeltaZ cache exists.
   cache <- attr(object, "hart_cache", exact = TRUE)
   has_cache <- !is.null(cache$DeltaZ_unique_draws)
   if (!is.null(Z) || has_cache) {
@@ -152,7 +152,9 @@
   out
 }
 
-# --- Print method for the summary object -------------------------------------
+# ==============================================================================
+# Print method
+# ==============================================================================
 
 #' @export
 print.summary.rhierModel <- function(x, digits = 3, ...) {

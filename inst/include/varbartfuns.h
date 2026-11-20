@@ -21,10 +21,8 @@
 #include "rn.h"
 
 // Log integrated marginal likelihood for one leaf with sufficient stats (S, n).
-// Includes the full leaf-prior normalization (nu/2)*log(nu*lambda) - lgamma(nu/2),
-// because in MH birth/death this term contributes a +/- offset that scales with
-// nu and therefore *does not* cancel.  (Contrast with vclh, where the
-// analogous dropped term is -log(tau) and is harmless.)
+// Includes the leaf-prior normalization (nu/2)*log(nu*lambda) - lgamma(nu/2),
+// which does not cancel in the birth/death ratio.
 double varlh(double S, double n, double nu, double lambda);
 
 // (n, S) for proposed left/right children of a birth at node nx.

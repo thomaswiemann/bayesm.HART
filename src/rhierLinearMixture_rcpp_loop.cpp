@@ -28,7 +28,6 @@ List rhierLinearMixture_rcpp_loop(List const& regdata, mat const& Z,
   int nreg = regdata.size();
   int nvar = V.n_cols;
 
-  // convert List to std::vector of type "moments"
   std::vector<moments> regdata_vector;
   moments regdatai_struct;
   List regdatai;
@@ -43,7 +42,6 @@ List rhierLinearMixture_rcpp_loop(List const& regdata, mat const& Z,
     regdata_vector.push_back(regdatai_struct);
   }
 
-  // allocate driver-owned storage
   mat oldbetas = zeros<mat>(nreg, nvar);
   cube betadraw(nreg, nvar, R/keep);
   vec loglike(R/keep);
@@ -66,9 +64,6 @@ List rhierLinearMixture_rcpp_loop(List const& regdata, mat const& Z,
       || offset < 0)
     stop("Invalid sampler state dimensions or completed sweeps.");
 
-  // ====================================================================
-  // Create backend + updater adapters, then run the unified MCMC loop.
-  // ====================================================================
   std::unique_ptr<CovarianceBackend> backend = make_backend(
       hart_model, hart_cov, oldbetas, Z, mubar, Amu, nu, V, a,
       deltabar, Ad, drawdelta, olddelta, oldprob, ind, R, keep,
@@ -87,9 +82,6 @@ List rhierLinearMixture_rcpp_loop(List const& regdata, mat const& Z,
                                                 updater.tau().end()),
                               Named("backend") = backend->checkpoint());
 
-  // ====================================================================
-  // Output assembly: backend.pack() + updater.pack() + betadraw/loglike
-  // ====================================================================
   BackendPackPayload bp = backend->pack();
   UpdaterPackPayload up = updater.pack();
 
@@ -98,7 +90,6 @@ List rhierLinearMixture_rcpp_loop(List const& regdata, mat const& Z,
   out["betadraw"] = betadraw;
   out["loglike"]  = loglike;
 
-  // Merge updater fields (taudraw)
   CharacterVector upnames = up.fields.names();
   for (int i = 0; i < up.fields.size(); i++) {
     out[as<std::string>(upnames[i])] = up.fields[i];

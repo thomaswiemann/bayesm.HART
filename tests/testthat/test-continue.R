@@ -95,9 +95,9 @@ continue_difference <- function(x, y, path = "") {
 
 continue_split <- function(case, k = 8L, keep = 1L, prior = NULL,
                             no_z = FALSE, extra = list(), label = case$name, data = NULL) {
-  if (is.null(data)) data <- .guard_data(case$likelihood)
+  if (is.null(data)) data <- .test_data(case$likelihood)
   if (no_z) data$Z <- NULL
-  if (is.null(prior)) prior <- .guard_priors[[case$model]]
+  if (is.null(prior)) prior <- .test_priors[[case$model]]
   sampler <- continue_sampler(case$likelihood)
   controls <- c(list(R = 2L * k, keep = 1L, nprint = 0L), extra)
   set.seed(case$seed)
@@ -127,14 +127,14 @@ continue_split <- function(case, k = 8L, keep = 1L, prior = NULL,
   invisible(b)
 }#CONTINUE_SPLIT
 
-for (case in .guard_cases()) {
+for (case in .test_cases()) {
   if (case$likelihood != "linear" && case$model != "heteroskedastic") next
   test_that(paste("split run:", case$name), {
     continue_split(case)
   })
   if (case$likelihood == "linear") test_that(
     paste("unkept terminal sweep:", case$name), {
-    prior <- .guard_priors[[case$model]]
+    prior <- .test_priors[[case$model]]
     if (case$model != "none") prior$store_trees <- FALSE
     continue_split(case, k = 7L, keep = 3L, prior = prior,
                    label = paste0(case$name, "-thinned-no-history"))
@@ -146,7 +146,7 @@ for (case in .guard_cases()) {
   } else if (case$likelihood == "linear" &&
              case$model %in% c("normalized", "heteroskedastic")) {
     test_that(paste("DART split boundaries:", case$name), {
-      prior <- .guard_priors[[case$model]]
+      prior <- .test_priors[[case$model]]
       prior$bart$sparse <- TRUE
       prior$bart$burn <- 2L
       if (case$model == "heteroskedastic") {
@@ -161,7 +161,7 @@ for (case in .guard_cases()) {
   }
   if (case$likelihood == "mnl") {
     test_that(paste("signed MNL split run:", case$model), {
-      prior <- .guard_priors[[case$model]]
+      prior <- .test_priors[[case$model]]
       prior$SignRes <- c(-1, 0)
       continue_split(case, prior = prior, label = paste0(case$name, "-signs"))
     })
@@ -176,10 +176,10 @@ for (case in .guard_cases()) {
 
 for (likelihood in c("linear", "negbin")) {
   test_that(paste("repeated, serialized continuation and prediction:", likelihood), {
-    data <- .guard_data(likelihood)
+    data <- .test_data(likelihood)
     sampler <- continue_sampler(likelihood)
     set.seed(201)
-    capture.output(a <- sampler(data, .guard_priors$heteroskedastic,
+    capture.output(a <- sampler(data, .test_priors$heteroskedastic,
       list(R = 8L, keep = 2L, nprint = 0L), r_verbose = FALSE))
     path <- tempfile(fileext = ".rds")
     saveRDS(a, path)
@@ -212,8 +212,8 @@ for (likelihood in c("linear", "negbin")) {
   if (likelihood == "linear") test_that(
     paste("continuation argument errors:", likelihood), {
     sampler <- continue_sampler(likelihood)
-    data <- .guard_data(likelihood)
-    capture.output(a <- sampler(data, .guard_priors$none,
+    data <- .test_data(likelihood)
+    capture.output(a <- sampler(data, .test_priors$none,
       list(R = 4L, keep = 1L, nprint = 0L), r_verbose = FALSE))
     expect_error(sampler(previous = a), "Requires R")
     expect_error(sampler(previous = a, Mcmc = list(keep = 1L)), "Requires R")
@@ -238,8 +238,8 @@ for (likelihood in c("linear", "negbin")) {
 for (likelihood in c("mnl", "linear", "negbin")) {
   test_that(paste("continuation rejects proposal controls:", likelihood), {
     sampler <- continue_sampler(likelihood)
-    data <- .guard_data(likelihood)
-    capture.output(a <- sampler(data, .guard_priors$none,
+    data <- .test_data(likelihood)
+    capture.output(a <- sampler(data, .test_priors$none,
       list(R = 4L, keep = 1L, nprint = 0L), r_verbose = FALSE))
     fields <- switch(likelihood, mnl = "s", linear = "w",
                       negbin = c("s_beta", "alpha"))
@@ -253,8 +253,8 @@ for (likelihood in c("mnl", "linear", "negbin")) {
 }
 
 test_that("NB continuation skips pooled subsampling on unchanged data", {
-  case <- .guard_cases()[[3]]
-  data <- .guard_data("negbin")
+  case <- .test_cases()[[3]]
+  data <- .test_data("negbin")
   data$regdata <- lapply(data$regdata, function(u) {
     index <- rep(seq_along(u$y), 12L)
     list(y = u$y[index], X = u$X[index, , drop = FALSE])

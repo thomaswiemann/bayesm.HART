@@ -11,7 +11,7 @@
  *
  *  Inherits all bookkeeping from `bart` (xinfo, dinfo, allfit, r, ftemp, dart).
  *  Differences from `bart`:
- *   1. Backfitting is **multiplicative**:   allfit /= ftemp;  ...;  allfit *= ftemp.
+ *   1. Backfitting is multiplicative:       allfit /= ftemp;  ...;  allfit *= ftemp.
  *   2. Tree update uses chi^-2 conjugacy:   varbd  + vardrmu.
  *   3. Leaf draws return s^2 > 0 directly (no scaling argument).
  *   4. Stumps are initialized to lambda^{1/m} so the initial product equals lambda.
@@ -46,7 +46,7 @@ public:
    void setvarprior(double nu_, double lambda_, double init);
 
    // Multiplicative backfitting sweep: one MH step per tree, then chi^-2 leaf draw.
-   // No sigma argument — variance residuals e_i^2 = y[i] / allfit_{-l}(i)
+   // No sigma argument: variance residuals e_i^2 = y[i] / allfit_{-l}(i)
    // are constructed internally from y (which holds eta_i^2) and the partial product.
    void draw(rn& gen);
 

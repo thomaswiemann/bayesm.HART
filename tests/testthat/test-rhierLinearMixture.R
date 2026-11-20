@@ -1,9 +1,3 @@
-# Tests for rhierLinearMixture (mixture-of-normals linear hierarchical model)
-# Mirrors structure of test-rhierLinearModel.R with API adjustments:
-#   - Prior must include ncomp
-#   - Output has nmix instead of Vbetadraw
-#   - Class is "rhierLinearMixture"
-
 # ==============================================================================
 # Test Data Generation Helpers
 # ==============================================================================
@@ -20,7 +14,7 @@ generate_mixture_linear_data <- function(nreg = 50, nobs = 20, nvar = 2, nz = 3,
 }
 
 # ==============================================================================
-# 1. Basic Execution
+# Basic Execution
 # ==============================================================================
 
 test_that("rhierLinearMixture runs with Z and ncomp=1", {
@@ -50,10 +44,10 @@ test_that("rhierLinearMixture runs without Z", {
     r_verbose = FALSE
   )
   expect_s3_class(out, "rhierLinearMixture")
-  expect_equal(dim(out$betadraw)[1], 20)  # nreg
-  expect_equal(dim(out$betadraw)[2], 2)   # nvar + intercept
-  expect_equal(dim(out$betadraw)[3], 30)  # R/keep
-  # no-Z path should not have Deltadraw
+  expect_equal(dim(out$betadraw)[1], 20)
+  expect_equal(dim(out$betadraw)[2], 2)
+  expect_equal(dim(out$betadraw)[3], 30)
+  # No Deltadraw without Z.
   expect_null(out$Deltadraw)
   expect_true(!is.null(out$nmix))
 })
@@ -72,12 +66,12 @@ test_that("rhierLinearMixture rejects ncomp > 1", {
 })
 
 # ==============================================================================
-# 2. Output Structure
+# Output Structure
 # ==============================================================================
 
 test_that("rhierLinearMixture output dimensions are correct", {
   nreg <- 25; nvar_x <- 2; nz <- 3; R <- 40; keep <- 2
-  ncoef <- nvar_x + 1  # with intercept
+  ncoef <- nvar_x + 1
   sim <- generate_mixture_linear_data(nreg = nreg, nobs = 10, nvar = nvar_x, nz = nz)
   out <- rhierLinearMixture(
     Data = list(regdata = sim$regdata, Z = sim$Z),
@@ -112,7 +106,7 @@ test_that("rhierLinearMixture has correct S3 class attributes", {
 })
 
 # ==============================================================================
-# 3. Input Validation
+# Input Validation
 # ==============================================================================
 
 test_that("rhierLinearMixture validates missing Data", {
@@ -145,7 +139,7 @@ test_that("rhierLinearMixture validates missing R", {
 
 test_that("rhierLinearMixture validates Z dimensions", {
   sim <- generate_mixture_linear_data(nreg = 10, nobs = 5, nvar = 1, nz = 2)
-  bad_Z <- sim$Z[1:5, ]  # Wrong number of rows
+  bad_Z <- sim$Z[1:5, ]
   expect_error(rhierLinearMixture(
     Data = list(regdata = sim$regdata, Z = bad_Z),
     Prior = list(ncomp = 1),
@@ -163,12 +157,12 @@ test_that("rhierLinearMixture validates Z must be matrix", {
 })
 
 # ==============================================================================
-# 4. Prior Specification
+# Prior Specification
 # ==============================================================================
 
 test_that("rhierLinearMixture accepts custom priors", {
   sim <- generate_mixture_linear_data(nreg = 20, nobs = 10, nvar = 1, nz = 2)
-  ncoef <- 2  # 1 + intercept
+  ncoef <- 2
   nz <- 2
   out <- rhierLinearMixture(
     Data = list(regdata = sim$regdata, Z = sim$Z),
@@ -186,7 +180,7 @@ test_that("rhierLinearMixture accepts custom priors", {
 })
 
 # ==============================================================================
-# 5. Reproducibility
+# Reproducibility
 # ==============================================================================
 
 test_that("rhierLinearMixture is reproducible with same seed", {
@@ -214,7 +208,7 @@ test_that("rhierLinearMixture is reproducible with same seed", {
 })
 
 # ==============================================================================
-# 6. Parameter Recovery
+# Parameter Recovery
 # ==============================================================================
 
 test_that("rhierLinearMixture recovers beta (linear DGP, moderate R)", {
@@ -238,7 +232,6 @@ test_that("rhierLinearMixture recovers beta (linear DGP, moderate R)", {
   burn <- floor(ndraws / 2)
   beta_post_mean <- apply(out$betadraw[, , (burn + 1):ndraws], c(1, 2), mean)
 
-  # Check correlation between posterior mean and true beta
   ncoef <- ncol(sim$true_values$beta_true)
   for (k in 1:ncoef) {
     cor_k <- cor(beta_post_mean[, k], sim$true_values$beta_true[, k])
@@ -275,22 +268,19 @@ test_that("rhierLinearMixture precision matrix is rootpi * t(rootpi)", {
   
   Data <- list(regdata = list(list(y=y, X=X)))
   
-  # Run the sampler
   set.seed(123)
   out <- rhierLinearMixture(Data=Data, Prior=Prior, 
                             Mcmc=list(R=1000, keep=1, nprint=0), r_verbose=FALSE)
   
-  # Get posterior mean
   beta_post_mean <- apply(out$betadraw[1,,501:1000], 1, mean)
   
-  # Check against known correct values from the patched implementation
   expect_equal(beta_post_mean[1], 1.04265, tolerance = 0.05)
   expect_equal(beta_post_mean[2], -0.04129, tolerance = 0.05)
   expect_equal(beta_post_mean[3],  0.82022, tolerance = 0.05)
 })
 
 # ==============================================================================
-# 7. BART Integration
+# BART Integration
 # ==============================================================================
 
 test_that("rhierLinearMixture runs with BART prior", {
@@ -306,7 +296,6 @@ test_that("rhierLinearMixture runs with BART prior", {
   expect_true(!is.null(out$nmix))
   expect_true(!is.null(out$betadraw))
   expect_true(!is.null(out$taudraw))
-  # BART path should NOT have Deltadraw
   expect_null(out$Deltadraw)
 })
 
@@ -349,7 +338,7 @@ test_that("rhierLinearMixture BART with minimal trees works", {
     r_verbose = FALSE
   )
   expect_s3_class(out, "rhierLinearMixture")
-  expect_equal(length(out$bart_models), 2)  # ncoef = 1 + intercept
+  expect_equal(length(out$bart_models), 2)
 })
 
 test_that("rhierLinearMixture BART recovers beta (step DGP)", {
@@ -381,7 +370,7 @@ test_that("rhierLinearMixture BART recovers beta (step DGP)", {
 })
 
 # ==============================================================================
-# 8. predict.rhierLinearMixture Tests
+# predict.rhierLinearMixture Tests
 # ==============================================================================
 
 test_that("predict.rhierLinearMixture DeltaZ works (non-BART)", {
@@ -396,9 +385,9 @@ test_that("predict.rhierLinearMixture DeltaZ works (non-BART)", {
   pred <- predict(out, newdata = list(Z = sim$Z), type = "DeltaZ", burn = 0)
   expect_true(is.array(pred))
   expect_equal(length(dim(pred)), 3)
-  expect_equal(dim(pred)[1], 30)  # npred = nreg
-  expect_equal(dim(pred)[2], 3)   # ncoef = nvar + intercept
-  expect_equal(dim(pred)[3], 30)  # ndraws = R/keep
+  expect_equal(dim(pred)[1], 30)
+  expect_equal(dim(pred)[2], 3)
+  expect_equal(dim(pred)[3], 30)
 })
 
 test_that("predict.rhierLinearMixture DeltaZ+mu works (non-BART)", {
@@ -414,8 +403,8 @@ test_that("predict.rhierLinearMixture DeltaZ+mu works (non-BART)", {
                   burn = 5, r_verbose = FALSE)
   expect_true(is.array(pred))
   expect_equal(dim(pred)[1], 25)
-  expect_equal(dim(pred)[2], 2)   # ncoef
-  expect_equal(dim(pred)[3], 25)  # 30 - 5
+  expect_equal(dim(pred)[2], 2)
+  expect_equal(dim(pred)[3], 25)
 })
 
 test_that("predict.rhierLinearMixture burn-in discards draws", {
@@ -446,9 +435,9 @@ test_that("predict.rhierLinearMixture DeltaZ+mu works (BART)", {
   pred <- predict(out, newdata = list(Z = sim$Z), type = "DeltaZ+mu",
                   burn = 5, r_verbose = FALSE)
   expect_true(is.array(pred))
-  expect_equal(dim(pred)[1], 25)  # npred
-  expect_equal(dim(pred)[2], 3)   # ncoef
-  expect_equal(dim(pred)[3], 25)  # 30 - 5 burn
+  expect_equal(dim(pred)[1], 25)
+  expect_equal(dim(pred)[2], 3)
+  expect_equal(dim(pred)[3], 25)
 })
 
 test_that("predict.rhierLinearMixture errors on invalid type", {
@@ -474,7 +463,7 @@ test_that("predict.rhierLinearMixture errors on invalid type", {
 })
 
 # ==============================================================================
-# 9. marginal_effects.rhierLinearMixture Tests
+# marginal_effects.rhierLinearMixture Tests
 # ==============================================================================
 
 test_that("marginal_effects.rhierLinearMixture works (non-BART)", {
@@ -493,8 +482,8 @@ test_that("marginal_effects.rhierLinearMixture works (non-BART)", {
                             burn = 5, verbose = FALSE)
   expect_s3_class(mfx, "marginal_effects")
   expect_length(mfx$avg_betabar_draws, 3)
-  expect_equal(nrow(mfx$avg_betabar_draws[[1]]), 3)  # ncoef
-  expect_equal(ncol(mfx$avg_betabar_draws[[1]]), 25)  # 30 - 5
+  expect_equal(nrow(mfx$avg_betabar_draws[[1]]), 3)
+  expect_equal(ncol(mfx$avg_betabar_draws[[1]]), 25)
 })
 
 test_that("summary.marginal_effects works on rhierLinearMixture results", {

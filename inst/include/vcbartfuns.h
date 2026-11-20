@@ -11,8 +11,7 @@
 //   y_i | lambda ~ N(a_i lambda, var_i),    lambda ~ N(0, tau^2),
 //
 // with sufficient statistics P = sum a_i^2 / var_i and b = sum a_i y_i / var_i.
-// The regressor a_i multiplies instead of dividing, so no clamp is needed and
-// a leaf with P = 0 has score one and draws from its prior.
+// A leaf with P = 0 has score one and draws from its prior.
 
 // log integral of the leaf prior against the likelihood, up to -log(tau),
 // which cancels in the birth/death ratio.

@@ -1,8 +1,7 @@
 # ==============================================================================
-# Predictive API (Phase B scaffold)
+# Predictive dispatch
 # ==============================================================================
-# Internal dispatcher for clean prior/posterior predictive interfaces.
-# Public rollout can be done after all three model families are wired.
+# Routes predict() to the likelihood's prior and posterior predictive paths.
 
 .predictive_dispatch <- function(object, newdata, mode, type,
                                  burn = 0, nsim = 10,

@@ -428,7 +428,7 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE, previous = NULL){
     cat("MCMC Parms: ",fill=TRUE)
     cat(paste("s=",round(s,3)," w= ",w," R= ",R," keep= ",keep," nprint= ",nprint),fill=TRUE)
     cat("",fill=TRUE)
-  } # End r_verbose block for initial setup printing
+  } # end r_verbose
   
   oldbetas = matrix(double(nlgt * nvar), ncol = nvar)
   
@@ -506,8 +506,7 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE, previous = NULL){
   #
   #  compute pooled optimum
   #
-  # Use explicit BFGS here (including nvar == 1) to avoid default Nelder-Mead
-  # scalar warnings and keep optimizer behavior consistent with other setup steps.
+  # BFGS also for nvar = 1; the default Nelder-Mead warns on scalars.
   out=optim(betainit,llmnl_con,method="BFGS",control=list( fnscale=-1,trace=0,reltol=1e-6), 
             X=Xpooled,y=ypooled,SignRes=SignRes)
   
@@ -523,7 +522,6 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE, previous = NULL){
     cat("check any constrained values with absolute value > 10 above",fill=TRUE)
     cat("      - implies abs(beta) > exp(10) or abs(beta) < exp(-10)",fill=TRUE)
   }
-  
   
   H=mnlHess_con(betapooled,ypooled,Xpooled,SignRes)                                         
   rootH=chol(H)
@@ -621,19 +619,6 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE, previous = NULL){
 
 # Methods ======================================================================
 
-# --- Shared Helper Functions (in R/predict_helpers.R) ---
-# .validate_predict_inputs()  - Input validation for predict methods
-# .calculate_delta_z()        - Compute Delta(Z) via Deltadraw or the trees
-# .add_mu_component()         - Add prior component mean mu
-
-# --- Predictive engines ---
-# Implementations are in R/predictive_engine.R:
-#   .hart_predict_posterior()
-#   .hart_predict_prior()
-
-
-# --- Refactored predict.rhierMnlRwMixture Method ---
-
 #' Predict Method for rhierMnlRwMixture Objects
 #' @param object A fitted rhierMnlRwMixture object.
 #' @param newdata Optional list containing data for prediction. Structure depends
@@ -708,9 +693,8 @@ predict.rhierMnlRwMixture <- function(object, newdata = NULL,
                                            valid_types = structural_types)
   kept_draws_indices <- .kept_draw_indices(ndraws_total, burn)
 
-  # Heter-cov: evaluate every BART / varBART / phi-BART ensemble at newdata$Z
-  # exactly ONCE, then share the result with both .calculate_delta_z and
-  # .calculate_sigma_z.
+  # Under heteroskedastic covariance the ensembles are evaluated once at
+  # newdata$Z and shared by Delta(Z) and Sigma(Z).
   hetercov_comps <- NULL
   if (type == "SigmaZ") {
     return(.predict_structural_common(

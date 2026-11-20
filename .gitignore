@@ -1,24 +1,15 @@
 .Rproj.user
 .Rhistory
-.RData
 .Ruserdata
-/.vs
-directory_structure.txt
 *.log
-debug_covar.log
-debug_delta.log
-debug_misc.log
-debug_trees.log
 *.RData
-/tasks
 /.cursor
 /.vscode
 inst/doc
 docs/
-/data-raw
-/tex_draft
 /vignettes/cache
 *.rds
+README.html
 
 # AI stuff
 discussions/
@@ -28,4 +19,3 @@ notes/
 GEMINI.md
 AGENTS.md
 /dev/
-/scratch/

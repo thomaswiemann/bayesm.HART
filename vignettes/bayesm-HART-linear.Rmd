@@ -15,8 +15,8 @@ vignette: |
 This vignette estimates a hierarchical linear model with HART priors
 using `bayesm.HART`, applied to the `orangeJuice` scanner panel dataset
 from `bayesm`. The HART prior specifies the *representative store* as a
-sum-of-trees function of observed demographics, `Delta(Z_i)`, whereas
-the conventional specification uses the linear form `Delta^\\top Z_i`.
+sum-of-trees function of observed demographics, $\Delta(Z_i)$, whereas
+the conventional specification uses the linear form $\Delta^\top Z_i$.
 
 ## Orange Juice Scanner Panel Data
 
@@ -24,7 +24,6 @@ The `orangeJuice` dataset contains weekly store-level scanner data for 83 stores
 
 
 ``` r
-# Load dependencies
 library(bayesm.HART)
 library(bayesm)
 #> 
@@ -32,7 +31,6 @@ library(bayesm)
 #> The following objects are masked from 'package:bayesm.HART':
 #> 
 #>     rhierLinearMixture, rhierMnlRwMixture, rhierNegbinRw
-# Data wrangling and plotting utilities
 library(tidyr)
 library(dplyr)
 #> 
@@ -45,12 +43,10 @@ library(dplyr)
 #>     intersect, setdiff, setequal, union
 library(ggplot2)
 
-# Load orange juice scanner panel data
 data(orangeJuice)
 yx <- orangeJuice[["yx"]]
 storedemo <- orangeJuice[["storedemo"]]
 
-# Subset to brand 1 (Tropicana)
 brand1 <- yx[yx[["brand"]] == 1, ]
 
 # Build per-store regdata (following bayesm::orangeJuice documentation)
@@ -66,64 +62,35 @@ for (i in 1:nreg) {
   regdata[[i]] <- list(y = y, X = X)
 }
 
-# Store-level demographics as Z (omit STORE id column, de-mean)
 Z <- as.matrix(storedemo[, -1])
-Z <- t(t(Z) - colMeans(Z)) # de-mean covariates as required by bayesm
+Z <- t(t(Z) - colMeans(Z))  # bayesm requires de-meaned Z
 
-# Final data object
 Data <- list(regdata = regdata, Z = Z)
 ```
 
 ## MCMC Estimation
 
-We fit both the HART model (Wiemann, 2025) and a conventional linear hierarchical model (Rossi et al., 2009). Both estimate store-specific coefficients $\beta_i$ via a hierarchical linear model; they differ only in their specification of $\Delta(\cdot)$. A short chain of 5000 iterations is used here for illustration; longer chains should be run in practice.
+We fit both the HART model (Wiemann, 2025) and a conventional linear hierarchical model (Rossi et al., 2009). Both estimate store-specific coefficients $\beta_i$ via a hierarchical linear model; they differ only in their specification of $\Delta(\cdot)$. The linear model is fitted with `bayesm::rhierLinearMixture`, which does not return a log-likelihood, so its trace is computed from the draws. A short chain of 5,000 iterations is used here for illustration; longer chains should be run in practice.
 
 
 ``` r
-# MCMC parameters
 R <- 5000
 burn <- 250
 keep <- 1
 Mcmc <- list(R = R, keep = keep)
 
-model_cache_file <- file.path(
-  vignette_cache_dir,
-  sprintf("oj-linear-R%s-keep%s.rds", R, keep)
+out_hart <- bayesm.HART::rhierLinearMixture(
+  Data = Data, Mcmc = Mcmc,
+  Prior = list(ncomp = 1, hart_model = "normalized",
+               bart = list(num_trees = 20))
 )
 
-model_cache_ok <- FALSE
-if (file.exists(model_cache_file)) {
-  model_cache <- tryCatch(readRDS(model_cache_file), error = function(e) NULL)
-  model_cache_ok <- !is.null(model_cache) &&
-    !is.null(model_cache$out_hart) && !is.null(model_cache$out_lin)
-  if (model_cache_ok) {
-    out_hart <- model_cache$out_hart
-    out_lin  <- model_cache$out_lin
-    cat("Loaded cached model draws from:", model_cache_file, "\n")
-  }
-}
-
-if (!model_cache_ok) {
-  out_hart <- bayesm.HART::rhierLinearMixture(
-    Data = Data, Mcmc = Mcmc,
-    Prior = list(
-      ncomp = 1,
-      hart_model = "normalized",
-      bart = list(num_trees = 20)
-    )
-  )
-
-  out_lin <- bayesm.HART::rhierLinearMixture(
-    Data = Data, Mcmc = Mcmc,
-    Prior = list(ncomp = 1)
-  )
-
-  saveRDS(
-    list(out_hart = out_hart, out_lin = out_lin, generated_at = Sys.time()),
-    model_cache_file
-  )
-  cat("Saved model draws cache to:", model_cache_file, "\n")
-}
+out_lin <- bayesm::rhierLinearMixture(Data, Prior = list(ncomp = 1), Mcmc)
+class(out_lin) <- "rhierLinearMixture"  # bayesm.HART methods for the bayesm fit
+out_lin$loglike <- sapply(seq_len(R / keep), function(s)
+  sum(sapply(seq_along(regdata), function(i)
+    sum(dnorm(regdata[[i]]$y, regdata[[i]]$X %*% out_lin$betadraw[i, , s],
+              sqrt(out_lin$taudraw[s, i]), log = TRUE)))))
 ```
 
 We use the log-likelihood trace as a basic MCMC diagnostic.
@@ -158,7 +125,7 @@ ggplot(mcmc_data, aes(x = Iteration, y = LogLikelihood, color = Model)) +
 
 ## Posterior Inference about Store-level Coefficients
 
-We compare posterior distributions of the own-price elasticity for two stores: Store 25 (high-income, highly educated area) and Store 79 (lower-income, high ethnic diversity).
+We compare posterior distributions of the own-price elasticity for two stores: Store 25 (high `INCOME`, high `EDUC`) and Store 79 (low `INCOME`, high `ETHNIC`, the share of Black and Hispanic residents).
 
 
 ``` r
@@ -166,7 +133,6 @@ selected_stores <- c(25, 79)
 coef_indx <- 2 # "Log Price 1" = own-price elasticity
 coef_name <- "Own-Price Elasticity"
 
-# Create a combined factor for filling histograms
 beta_draws <- bind_rows(
   as.data.frame(t(out_hart$betadraw[selected_stores, coef_indx, -c(1:burnin_draws)])) %>% 
     mutate(Model = "HART", Draw = row_number()),
@@ -182,11 +148,10 @@ beta_draws_long <- beta_draws %>%
     values_to = "Coefficient"
   ) %>% 
   mutate(
-      Model = factor(Model, levels = c("Linear", "HART")), # Control facet order
+      Model = factor(Model, levels = c("Linear", "HART")),
       Group = interaction(Store, Model)
   )
 
-# Define colors
 model_fills <- c(
     "Store 25.Linear" = "lightcoral", "Store 79.Linear" = "darkred",
     "Store 25.HART" = "lightblue", "Store 79.HART" = "darkblue"
@@ -196,7 +161,6 @@ model_colors <- c(
     "Store 25.HART" = "blue", "Store 79.HART" = "darkblue"
 )
 
-# Calculate means
 means <- beta_draws_long %>%
   group_by(Group, Model) %>%
   summarise(mean_val = mean(Coefficient), .groups = "drop")
@@ -229,13 +193,11 @@ ggplot(beta_draws_long, aes(x = Coefficient, fill = Group)) +
 
 
 ``` r
-# Extract posterior draws for the selected stores and coefficient
 hart_draws_25 <- out_hart$betadraw[25, coef_indx, -c(1:burnin_draws)]
 hart_draws_79 <- out_hart$betadraw[79, coef_indx, -c(1:burnin_draws)]
 lin_draws_25 <- out_lin$betadraw[25, coef_indx, -c(1:burnin_draws)]
 lin_draws_79 <- out_lin$betadraw[79, coef_indx, -c(1:burnin_draws)]
 
-# Create summary table
 summary_results <- data.frame(
   Model = c("Linear", "Linear", "HART", "HART"),
   Store = c("25", "79", "25", "79"),
@@ -247,14 +209,14 @@ summary_results <- data.frame(
 
 print(summary_results, digits = 3)
 #>    Model Store  Mean    SD
-#> 1 Linear    25 -1.84 0.167
-#> 2 Linear    79 -3.62 0.321
+#> 1 Linear    25 -1.83 0.168
+#> 2 Linear    79 -3.63 0.324
 #> 3   HART    25 -1.86 0.165
 #> 4   HART    79 -3.54 0.312
 ```
 
-Both models produce similar individual-level elasticity estimates for the
-selected stores. With about 117 weekly observations per store, the
+Both models produce similar store-level elasticity estimates for the
+selected stores. With about 116 weekly observations per store, the
 individual likelihood contributes most of the posterior information at
 the store level in this application.
 
@@ -264,7 +226,6 @@ The models differ in how they characterize the expected coefficient $\Delta(Z)$ 
 
 
 ``` r
-# We predict for all stores
 DeltaZ_hat_hart <- predict(out_hart, newdata = list(Z = Z), type = "DeltaZ+mu", burn = burnin_draws)
 DeltaZ_hat_lin <- predict(out_lin, newdata = list(Z = Z), type = "DeltaZ+mu", burn = burnin_draws)
 ```
@@ -286,11 +247,10 @@ deltaZ_draws_long <- deltaZ_draws %>%
     values_to = "Coefficient"
   ) %>% 
   mutate(
-      Model = factor(Model, levels = c("Linear", "HART")), # Control facet order
+      Model = factor(Model, levels = c("Linear", "HART")),
       Group = interaction(Store_Segment, Model)
   )
   
-# Update color definitions to match segment terminology
 model_fills <- c(
     "Segment 1.Linear" = "lightcoral", "Segment 2.Linear" = "darkred",
     "Segment 1.HART" = "lightblue", "Segment 2.HART" = "darkblue"
@@ -300,7 +260,6 @@ model_colors <- c(
     "Segment 1.HART" = "blue", "Segment 2.HART" = "darkblue"
 )
 
-# Calculate means
 means_deltaZ <- deltaZ_draws_long %>%
   group_by(Group, Model) %>%
   summarise(mean_val = mean(Coefficient), .groups = "drop")
@@ -333,10 +292,9 @@ ggplot(deltaZ_draws_long, aes(x = Coefficient, fill = Group)) +
 
 
 ``` r
-# Extract expected coefficients for the two segments
 deltaZ_summary <- data.frame(
-  Segment = c("Segment 1 (High Income, High Education)", 
-              "Segment 2 (Low Income, High Ethnic Diversity)"),
+  Segment = c("Segment 1 (High INCOME, High EDUC)", 
+              "Segment 2 (Low INCOME, High ETHNIC)"),
   Linear_Mean = c(mean(DeltaZ_hat_lin[25, coef_indx, ]), 
                   mean(DeltaZ_hat_lin[79, coef_indx, ])),
   Linear_SD = c(sd(DeltaZ_hat_lin[25, coef_indx, ]), 
@@ -348,20 +306,16 @@ deltaZ_summary <- data.frame(
 )
 
 print(deltaZ_summary, digits = 3)
-#>                                         Segment Linear_Mean Linear_SD HART_Mean
-#> 1       Segment 1 (High Income, High Education)       -2.37     0.304     -2.44
-#> 2 Segment 2 (Low Income, High Ethnic Diversity)       -3.50     0.411     -3.21
-#>   HART_SD
-#> 1   0.233
-#> 2   0.262
+#>                               Segment Linear_Mean Linear_SD HART_Mean HART_SD
+#> 1  Segment 1 (High INCOME, High EDUC)       -2.37     0.308     -2.44   0.233
+#> 2 Segment 2 (Low INCOME, High ETHNIC)       -3.50     0.414     -3.21   0.262
 
-# Calculate differences between segments
 cat("\nDifferences between segments:\n")
 #> 
 #> Differences between segments:
 cat("Linear approach difference:", 
     deltaZ_summary$Linear_Mean[2] - deltaZ_summary$Linear_Mean[1], "\n")
-#> Linear approach difference: -1.128987
+#> Linear approach difference: -1.132686
 cat("HART approach difference:", 
     deltaZ_summary$HART_Mean[2] - deltaZ_summary$HART_Mean[1], "\n")
 #> HART approach difference: -0.7691898
@@ -369,7 +323,7 @@ cat("HART approach difference:",
 
 The linear specification restricts segment means to an affine function
 of demographics. HART allows nonlinear and interaction structure in
-`Z` through `Delta(Z)`.
+$Z$ through $\Delta(Z)$.
 
 ## References
 

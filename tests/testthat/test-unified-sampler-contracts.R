@@ -28,7 +28,7 @@ make_mnl_sim <- function(seed = 42L, nlgt = 10L, nvar = 2L, nz = 2L,
 }
 
 # ===========================================================================
-# 8.1 Algebra contract: precision-root R_i * t(R_i) == Sigma_i^{-1}
+# Algebra contract: precision-root R_i * t(R_i) == Sigma_i^{-1}
 # ===========================================================================
 
 test_that("cov_helpers roundtrip: rootpi * t(rootpi) == Sigma^{-1}", {
@@ -50,7 +50,7 @@ test_that("cov_helpers roundtrip: rootpi * t(rootpi) == Sigma^{-1}", {
   expect_true(all(evals > 0),
               label = "rootpi * t(rootpi) must be positive definite")
 
-  # Verify rootpi is upper-triangular
+  # rootpi is upper triangular.
   expect_equal(rootpi[lower.tri(rootpi)], rep(0, sum(lower.tri(rootpi))),
                tolerance = 1e-10, label = "rootpi must be upper-triangular")
 })
@@ -69,7 +69,7 @@ test_that("cov_helpers diagonal case: rootpi * t(rootpi) == diag(1/D)", {
 })
 
 # ===========================================================================
-# 8.1 Algebra contract: global backend precision_root via rmixGibbs
+# Algebra contract: global backend precision_root via rmixGibbs
 # ===========================================================================
 
 test_that("global backend: compdraw rooti satisfies R*t(R) == Sigma^{-1}", {
@@ -81,7 +81,6 @@ test_that("global backend: compdraw rooti satisfies R*t(R) == Sigma^{-1}", {
       Mcmc = list(R = 10, keep = 1, nprint = 0))
   })
 
-  # Check last draw's rooti for component 1
   last_draw <- fit$nmix$compdraw[[length(fit$nmix$compdraw)]][[1]]
   rooti <- last_draw$rooti
   mu_k  <- last_draw$mu
@@ -96,7 +95,7 @@ test_that("global backend: compdraw rooti satisfies R*t(R) == Sigma^{-1}", {
 })
 
 # ===========================================================================
-# 8.4 Schema snapshot: MNL output field names
+# Schema snapshot: MNL output field names
 # ===========================================================================
 
 test_that("MNL global output has expected field names", {
@@ -152,7 +151,7 @@ test_that("MNL heter-cov output has expected field names", {
                      "var_models", "mu_draw", "SignRes", "acceptrbeta")
                   %in% names(fit)))
   expect_s3_class(fit, "rhierMnlRwMixtureHeterCov")
-  # Heter-cov should NOT have nmix or Deltadraw
+  # No nmix or Deltadraw under heteroskedastic covariance.
   expect_true(is.null(fit$nmix))
   expect_true(is.null(fit$Deltadraw))
 })
@@ -201,7 +200,7 @@ test_that("MNL direct HART with a constant Sigma has the nmix schema", {
 })
 
 # ===========================================================================
-# 8.4 Schema snapshot: Linear output field names
+# Schema snapshot: Linear output field names
 # ===========================================================================
 
 test_that("Linear global output has expected field names", {
@@ -227,7 +226,7 @@ test_that("Linear global output has expected field names", {
 })
 
 # ===========================================================================
-# 8.4 Schema snapshot: NegBin output field names
+# Schema snapshot: NegBin output field names
 # ===========================================================================
 
 test_that("NegBin global output has expected field names", {
@@ -255,7 +254,7 @@ test_that("NegBin global output has expected field names", {
 })
 
 # ===========================================================================
-# 8.4 Schema snapshot: HART outputs for Linear and NegBin
+# Schema snapshot: HART outputs for Linear and NegBin
 # ===========================================================================
 
 make_reg_sim <- function(seed, n = 20L, nvar = 2L, nz = 2L, counts = FALSE) {
@@ -329,7 +328,7 @@ test_that("NegBin HART outputs have expected field names and classes", {
 })
 
 # ===========================================================================
-# 8.2 Cross-model parity: betadraw dimensions
+# Cross-model parity: betadraw dimensions
 # ===========================================================================
 
 test_that("betadraw dimensions are consistent across models", {

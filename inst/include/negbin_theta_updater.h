@@ -4,7 +4,7 @@
 #include "bayesm.HART.h"
 #include "theta_updater.h"
 
-// Forward declare (defined in rhierNegbinRw_rcpp_loop.cpp)
+// Defined in rhierNegbinRw_rcpp_loop.cpp.
 double llnegbinpooled(std::vector<moments> const& regdata_vector,
                       arma::mat const& oldbetas,
                       double alpha);

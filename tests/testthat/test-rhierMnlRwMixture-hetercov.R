@@ -7,8 +7,6 @@
 #   * class assignment and return-slot shape,
 #   * sign restrictions are honored under heter-cov (positivity preserved),
 #   * predict.* dispatch on "rhierMnlRwMixtureHeterCov" for all five types.
-#
-# Recovery accuracy is exercised by the longer dev/smoke-heter-mnl*.R scripts.
 
 library(testthat)
 
@@ -88,7 +86,7 @@ test_that("vartree only with nvar > 1 auto-promotes to full Cholesky", {
   sim <- make_small_sim()                # nvar = 2L
   Prior <- list(ncomp = 1L, hart_model = "direct",
                 bart    = list(num_trees = 5L),
-                vartree = list(num_trees = 5L))   # NO phitree
+                vartree = list(num_trees = 5L))   # no phitree
   Mcmc  <- list(R = 20L, keep = 1L, nprint = 0L)
 
   capture.output({

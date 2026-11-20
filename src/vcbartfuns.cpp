@@ -1,6 +1,6 @@
 /*
  *  Varying-coefficient sufficient statistics and leaf draws.
- *  See vcbartfuns.h for the leaf model; the score is heterlh.
+ *  See vcbartfuns.h for the leaf model and score (vclh).
  */
 #include "vcbartfuns.h"
 

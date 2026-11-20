@@ -125,7 +125,7 @@ double vclh_R(double P, double b, double tau) { return vclh(P, b, tau); }
 
 // niter backfitting sweeps of a vcbart with m trees, y_i = a_i f(Z_i) + e_i,
 // e_i ~ N(0, v_i): f(Z_i) after every sweep (n x niter), structure key of
-// tree 1, leaf counts, split counts and probabilities, and the pwbart()
+// tree 1, leaf counts, split counts and probabilities, and the serialized
 // treedraws.
 // [[Rcpp::export]]
 Rcpp::List vcbart_chain_R(arma::mat const& Zt, arma::vec const& y,

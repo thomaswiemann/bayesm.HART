@@ -2,15 +2,15 @@
 
 library(testthat)
 
-for (case in .guard_cases()) {
+for (case in .test_cases()) {
   if (case$likelihood != "linear" && case$model != "heteroskedastic") next
   test_that(paste("fresh restart metadata:", case$name), {
-    data <- .guard_data(case$likelihood)
+    data <- .test_data(case$likelihood)
     units <- if (case$likelihood == "mnl") "lgtdata" else "regdata"
     data$unit_id <- seq_along(data[[units]]) + 100L
     before <- serialize(data, NULL)
-    prior <- .guard_priors[[case$model]]
-    fit <- .guard_fit(case$likelihood, data, prior, case$seed)
+    prior <- .test_priors[[case$model]]
+    fit <- .test_fit(case$likelihood, data, prior, case$seed)
     r <- fit$restart
     expect_named(r, c("schema", "likelihood", "data", "config", "mcmc",
                       "preparation", "state"))
@@ -118,17 +118,17 @@ test_that("unit IDs use explicit IDs, complete names, then positions", {
 
 for (likelihood in c("mnl", "linear", "negbin")) {
   test_that(paste("unit ID validation and absent Z:", likelihood), {
-    data <- .guard_data(likelihood)
+    data <- .test_data(likelihood)
     units <- if (likelihood == "mnl") "lgtdata" else "regdata"
     n <- length(data[[units]])
     for (ids in list(seq_len(n - 1L), c(NA, seq_len(n - 1L)), rep("x", n))) {
       data$unit_id <- ids
-      expect_error(.guard_fit(likelihood, data, .guard_priors$none, 42L), "Data\\$unit_id")
+      expect_error(.test_fit(likelihood, data, .test_priors$none, 42L), "Data\\$unit_id")
     }
     data$unit_id <- NULL
     data$Z <- NULL
     names(data[[units]]) <- paste0("unit", rev(seq_len(n)))
-    fit <- .guard_fit(likelihood, data, .guard_priors$none, 42L)
+    fit <- .test_fit(likelihood, data, .test_priors$none, 42L)
     expect_identical(fit$restart$data$unit_id, names(data[[units]]))
     expect_true("Z" %in% names(fit$restart$data))
     expect_null(fit$restart$data$Z)
@@ -141,29 +141,29 @@ for (likelihood in c("mnl", "linear", "negbin")) {
 }
 
 test_that("linear restart retains variance defaults and supplied scales", {
-  data <- .guard_data("linear")
+  data <- .test_data("linear")
   data$regdata[[1]]$y[] <- 2
   data$regdata[[2]]$y <- data$regdata[[2]]$y[1]
   data$regdata[[2]]$X <- data$regdata[[2]]$X[1, , drop = FALSE]
-  fit <- .guard_fit("linear", data, .guard_priors$none, 42L)
+  fit <- .test_fit("linear", data, .test_priors$none, 42L)
   expected <- sapply(data$regdata, function(u) {
     v <- var(u$y)
     if (is.na(v) || v <= 0) 1 else v
   })
   expect_equal(fit$restart$config$prior$ssq, expected)
   expect_equal(fit$restart$config$prior$nu.e, 3)
-  prior <- .guard_priors$none
+  prior <- .test_priors$none
   prior$ssq <- rep(7, length(data$regdata))
-  fit <- .guard_fit("linear", data, prior, 42L)
+  fit <- .test_fit("linear", data, prior, 42L)
   expect_identical(fit$restart$config$prior$ssq, prior$ssq)
 })
 
 test_that("MNL restart retains final sign-dependent priors", {
-  data <- .guard_data("mnl")
+  data <- .test_data("mnl")
   nvar <- ncol(data$lgtdata[[1]]$X)
-  prior <- .guard_priors$heteroskedastic
+  prior <- .test_priors$heteroskedastic
   prior$SignRes <- c(-1, rep(0, nvar - 1L))
-  fit <- .guard_fit("mnl", data, prior, 42L)
+  fit <- .test_fit("mnl", data, prior, 42L)
   r <- fit$restart$config
   expect_equal(r$prior$nu, nvar + 15)
   expect_equal(r$prior$V, (nvar + 15) * diag(c(.2, rep(1, nvar - 1L))))
@@ -177,13 +177,13 @@ test_that("MNL restart retains final sign-dependent priors", {
 })
 
 test_that("NB restart distinguishes fixed and sampled alpha", {
-  data <- .guard_data("negbin")
+  data <- .test_data("negbin")
   for (fixed in c(TRUE, FALSE)) {
-    mcmc <- .guard_mcmc$negbin
+    mcmc <- .test_mcmc$negbin
     mcmc$alpha <- 2.5
     mcmc$fixalpha <- fixed
     before <- serialize(list(data, mcmc), NULL)
-    capture.output(fit <- rhierNegbinRw(data, .guard_priors$none, mcmc,
+    capture.output(fit <- rhierNegbinRw(data, .test_priors$none, mcmc,
                                          r_verbose = FALSE))
     expect_identical(fit$restart$config$fixalpha, fixed)
     if (fixed) expect_identical(fit$restart$config$alpha_fixed, 2.5)
@@ -196,11 +196,11 @@ test_that("NB restart distinguishes fixed and sampled alpha", {
   }
 })
 
-for (case in .guard_cases()) {
+for (case in .test_cases()) {
   if (case$likelihood != "linear" && case$model != "heteroskedastic") next
   test_that(paste("terminal state ignores thinning and tree history:", case$name), {
-    data <- .guard_data(case$likelihood)
-    prior <- .guard_priors[[case$model]]
+    data <- .test_data(case$likelihood)
+    prior <- .test_priors[[case$model]]
     if (case$model != "none") prior$store_trees <- FALSE
     if (case$likelihood == "mnl") prior$SignRes <- c(-1, 0)
     sampler <- switch(case$likelihood, mnl = rhierMnlRwMixture,
@@ -236,9 +236,9 @@ for (case in .guard_cases()) {
 }
 
 test_that("terminal DART flags follow each ensemble's burn", {
-  data <- .guard_data("linear")
+  data <- .test_data("linear")
   for (model in c("normalized", "heteroskedastic")) {
-    prior <- .guard_priors[[model]]
+    prior <- .test_priors[[model]]
     prior$bart$sparse <- TRUE
     prior$bart$burn <- 2L
     if (model == "heteroskedastic") {

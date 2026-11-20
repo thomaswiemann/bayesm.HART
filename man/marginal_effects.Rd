@@ -7,13 +7,13 @@
 \alias{marginal_effects.rhierNegbinRw}
 \title{Calculate Marginal Effects for Hierarchical Models}
 \usage{
-marginal_effects(object, z_values, Z, burn = 0, verbose = TRUE, ...)
+marginal_effects(object, z_values, Z, burn = 0, r_verbose = TRUE, ...)
 
-\method{marginal_effects}{rhierMnlRwMixture}(object, z_values, Z, burn = 0, verbose = TRUE, ...)
+\method{marginal_effects}{rhierMnlRwMixture}(object, z_values, Z, burn = 0, r_verbose = TRUE, ...)
 
-\method{marginal_effects}{rhierLinearMixture}(object, z_values, Z, burn = 0, verbose = TRUE, ...)
+\method{marginal_effects}{rhierLinearMixture}(object, z_values, Z, burn = 0, r_verbose = TRUE, ...)
 
-\method{marginal_effects}{rhierNegbinRw}(object, z_values, Z, burn = 0, verbose = TRUE, ...)
+\method{marginal_effects}{rhierNegbinRw}(object, z_values, Z, burn = 0, r_verbose = TRUE, ...)
 }
 \arguments{
 \item{object}{A fitted hierarchical model object (e.g.,
@@ -31,7 +31,7 @@ number of columns as \code{z_values}.}
 \item{burn}{Non-negative integer. Number of initial MCMC draws to drop
 before averaging (default \code{0}).}
 
-\item{verbose}{Logical. Print progress per grid point (default \code{TRUE}).}
+\item{r_verbose}{Logical. Print progress per grid point (default \code{TRUE}).}
 
 \item{...}{Other arguments passed to methods.}
 }

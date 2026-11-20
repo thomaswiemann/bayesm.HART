@@ -4,7 +4,7 @@
 #include "bayesm.HART.h"
 #include "theta_updater.h"
 
-// Forward declare (defined in rhierMnlRwMixture_rcpp_loop.cpp)
+// Defined in rhierMnlRwMixture_rcpp_loop.cpp.
 double llmnl_con(arma::vec const& betastar, arma::vec const& y,
                  arma::mat const& X, arma::vec const& SignRes);
 mnlMetropOnceOut mnlMetropOnce_con(arma::vec const& y, arma::mat const& X,

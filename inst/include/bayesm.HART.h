@@ -61,7 +61,7 @@ List rmixGibbs( mat const& y,  mat const& Bbar, mat const& A, double nu, mat con
 vec drawLabelsFromComps(mat const& y, vec const& p, List comps);
 vec drawPFromLabels(vec const& a, vec const& z);
 
-//SUPPORT FUNCTIONS (contained in utilityFunctions.cpp and trunNorm.cpp)-----------------------------------------------------------
+//SUPPORT FUNCTIONS (contained in utilityFunctions.cpp)-----------------------------------------------------------
 
 //Used in rhierLinearModel, rhierLinearMixture and rhierMnlRWMixture
 mat drawDelta(mat const& x,mat const& y,vec const& z,List const& comps,vec const& deltabar,mat const& Ad);
@@ -71,9 +71,6 @@ mat drawDelta(mat const& x,mat const& y,vec const& z,List const& comps,vec const
 std::vector<bart> initializeBART(double* pZt, size_t nlgt, size_t nz, std::vector<double*> const& pstd_oldbetas_cols, List const& bart_params, arn gen);
 
 unireg runiregG(vec const& y, mat const& X, mat const& XpX, vec const& Xpy, double sigmasq, mat const& A, vec const& Abetabar, double nu, double ssq);
-
-//Used in rhierMnlDP and rhierMnlRwMixture
-mnlMetropOnceOut mnlMetropOnce(vec const& y, mat const& X, vec const& oldbeta, double oldll,double s, mat const& incroot, vec const& betabar, mat const& rootpi);
 
 //Used in rnegbinRW and rhierNegbinRw
 double llnegbin(vec const& y, vec const& lambda, double alpha, bool constant);
@@ -86,13 +83,5 @@ double lpostalpha(double alpha, vec const& beta, mat const& X, vec const& y, dou
 void startMcmcTimer();
 void infoMcmcTimer(int rep, int R);
 void endMcmcTimer();
-
-//DEBUG FUNCTIONS
-inline void checkMatrix(mat const& M, const char* name) {
-	cout << "Matrix " << name << " dimensions: " << M.n_rows << "x" << M.n_cols << endl;
-	cout << "Matrix " << name << " condition number: " << cond(M) << endl;
-	cout << "Matrix " << name << " determinant: " << det(M) << endl;
-	cout << "First few elements: " << M(0, 0) << " " << M(0, 1) << endl;
-}
 
 #endif

@@ -74,7 +74,7 @@ for (case in seq_along(cases)) {
       skip_if_not(identical(Sys.getenv("BAYESM_HART_MC"), "true"),
                   "set BAYESM_HART_MC=true for the target tests")
       data <- target_data(family)
-      prior <- .guard_priors[[model]]
+      prior <- .test_priors[[model]]
       if (family == "linear") prior$ssq <- rep(1, 32)
       set.seed(21000 + index)
       a <- target_fit(family, Data = data$initial, Prior = prior,

@@ -41,22 +41,19 @@ sim_hier_linear <- function(nreg = 100, nobs = 10, nvar = 2, nz = 3,
   het_observed <- match.arg(het_observed)
   if (!is.null(seed)) set.seed(seed)
 
-  # Total number of coefficients
   ncoef <- nvar + as.integer(const)
 
-  # --- Generate Z ---
+  # Z
   Z <- NULL
   if (nz > 0 && het_observed != "none") {
     Z <- matrix(rnorm(nreg * nz), nrow = nreg, ncol = nz)
-    # De-mean Z
     Z <- scale(Z, center = TRUE, scale = FALSE)
   }
 
-  # --- Generate betabar_i = f(Z_i) ---
+  # betabar_i = f(Z_i)
   betabar_true <- matrix(0, nrow = nreg, ncol = ncoef)
 
   if (!is.null(Z) && het_observed != "none") {
-    # Generate raw first-coefficient values
     raw_k1 <- numeric(nreg)
 
     if (het_observed == "linear") {
@@ -83,7 +80,7 @@ sim_hier_linear <- function(nreg = 100, nobs = 10, nvar = 2, nz = 3,
       }
     }
 
-    # Scale first coefficient to target variance and de-mean
+    # First coefficient scaled to the target variance and de-meaned.
     raw_var <- var(raw_k1)
     if (raw_var > 1e-10 && target_var_betabar > 0) {
       scale_factor <- sqrt(target_var_betabar / raw_var)
@@ -93,7 +90,7 @@ sim_hier_linear <- function(nreg = 100, nobs = 10, nvar = 2, nz = 3,
     }
 
     betabar_true[, 1] <- raw_k1
-    # Fixed values for remaining coefficients
+    # Remaining coefficients fixed.
     if (ncoef > 1) {
       fixed_remaining <- c(-1, 1, -1, 1)
       n_remaining <- min(ncoef - 1, length(fixed_remaining))
@@ -103,7 +100,7 @@ sim_hier_linear <- function(nreg = 100, nobs = 10, nvar = 2, nz = 3,
     }
   }
 
-  # --- Generate eps_i (unobserved heterogeneity) ---
+  # eps_i
   Sigma_eps <- diag(target_var_eps, ncoef)
   Sigma_true <- NULL
   if (is.null(Sigma_func)) {
@@ -116,10 +113,10 @@ sim_hier_linear <- function(nreg = 100, nobs = 10, nvar = 2, nz = 3,
     eps_true <- .draw_heteroskedastic_eps(Sigma_true)
   }
 
-  # --- beta_i = betabar_i + eps_i ---
+  # beta_i = betabar_i + eps_i
   beta_true <- betabar_true + eps_true
 
-  # --- Generate regdata ---
+  # regdata
   regdata <- vector("list", nreg)
   for (i in 1:nreg) {
     Xi <- matrix(rnorm(nobs * nvar), nrow = nobs, ncol = nvar)
@@ -133,7 +130,7 @@ sim_hier_linear <- function(nreg = 100, nobs = 10, nvar = 2, nz = 3,
     )
   }
 
-  # --- Build true_values ---
+  # true_values
   true_values <- list(
     beta_true = beta_true,
     betabar_true = betabar_true,

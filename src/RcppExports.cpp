@@ -12,20 +12,6 @@ Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
 Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
-// breg
-vec breg(vec const& y, mat const& X, vec const& betabar, mat const& A);
-RcppExport SEXP _bayesm_HART_breg(SEXP ySEXP, SEXP XSEXP, SEXP betabarSEXP, SEXP ASEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< vec const& >::type y(ySEXP);
-    Rcpp::traits::input_parameter< mat const& >::type X(XSEXP);
-    Rcpp::traits::input_parameter< vec const& >::type betabar(betabarSEXP);
-    Rcpp::traits::input_parameter< mat const& >::type A(ASEXP);
-    rcpp_result_gen = Rcpp::wrap(breg(y, X, betabar, A));
-    return rcpp_result_gen;
-END_RCPP
-}
 // cpwtrees
 arma::cube cpwtrees(Rcpp::List const& treedraws, Rcpp::NumericMatrix const& xt, int leaf_dim, int mc_cores, bool product, bool verbose);
 RcppExport SEXP _bayesm_HART_cpwtrees(SEXP treedrawsSEXP, SEXP xtSEXP, SEXP leaf_dimSEXP, SEXP mc_coresSEXP, SEXP productSEXP, SEXP verboseSEXP) {
@@ -212,19 +198,6 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// lndIWishart
-double lndIWishart(double nu, mat const& V, mat const& IW);
-RcppExport SEXP _bayesm_HART_lndIWishart(SEXP nuSEXP, SEXP VSEXP, SEXP IWSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< double >::type nu(nuSEXP);
-    Rcpp::traits::input_parameter< mat const& >::type V(VSEXP);
-    Rcpp::traits::input_parameter< mat const& >::type IW(IWSEXP);
-    rcpp_result_gen = Rcpp::wrap(lndIWishart(nu, V, IW));
-    return rcpp_result_gen;
-END_RCPP
-}
 // lndMvn
 double lndMvn(vec const& x, vec const& mu, mat const& rooti);
 RcppExport SEXP _bayesm_HART_lndMvn(SEXP xSEXP, SEXP muSEXP, SEXP rootiSEXP) {
@@ -392,19 +365,6 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// rmixture
-List rmixture(int n, vec pvec, List comps);
-RcppExport SEXP _bayesm_HART_rmixture(SEXP nSEXP, SEXP pvecSEXP, SEXP compsSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< int >::type n(nSEXP);
-    Rcpp::traits::input_parameter< vec >::type pvec(pvecSEXP);
-    Rcpp::traits::input_parameter< List >::type comps(compsSEXP);
-    rcpp_result_gen = Rcpp::wrap(rmixture(n, pvec, comps));
-    return rcpp_result_gen;
-END_RCPP
-}
 // rmultireg
 List rmultireg(mat const& Y, mat const& X, mat const& Bbar, mat const& A, double nu, mat const& V);
 RcppExport SEXP _bayesm_HART_rmultireg(SEXP YSEXP, SEXP XSEXP, SEXP BbarSEXP, SEXP ASEXP, SEXP nuSEXP, SEXP VSEXP) {
@@ -418,20 +378,6 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type nu(nuSEXP);
     Rcpp::traits::input_parameter< mat const& >::type V(VSEXP);
     rcpp_result_gen = Rcpp::wrap(rmultireg(Y, X, Bbar, A, nu, V));
-    return rcpp_result_gen;
-END_RCPP
-}
-// rtrun
-NumericVector rtrun(NumericVector const& mu, NumericVector const& sigma, NumericVector const& a, NumericVector const& b);
-RcppExport SEXP _bayesm_HART_rtrun(SEXP muSEXP, SEXP sigmaSEXP, SEXP aSEXP, SEXP bSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< NumericVector const& >::type mu(muSEXP);
-    Rcpp::traits::input_parameter< NumericVector const& >::type sigma(sigmaSEXP);
-    Rcpp::traits::input_parameter< NumericVector const& >::type a(aSEXP);
-    Rcpp::traits::input_parameter< NumericVector const& >::type b(bSEXP);
-    rcpp_result_gen = Rcpp::wrap(rtrun(mu, sigma, a, b));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -488,7 +434,6 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_bayesm_HART_breg", (DL_FUNC) &_bayesm_HART_breg, 4},
     {"_bayesm_HART_cpwtrees", (DL_FUNC) &_bayesm_HART_cpwtrees, 6},
     {"_bayesm_HART_veclh_R", (DL_FUNC) &_bayesm_HART_veclh_R, 4},
     {"_bayesm_HART_vecdrawnodemu_R", (DL_FUNC) &_bayesm_HART_vecdrawnodemu_R, 4},
@@ -500,7 +445,6 @@ static const R_CallMethodDef CallEntries[] = {
     {"_bayesm_HART_direct_hart_constant_R", (DL_FUNC) &_bayesm_HART_direct_hart_constant_R, 10},
     {"_bayesm_HART_ensemble_state_R", (DL_FUNC) &_bayesm_HART_ensemble_state_R, 7},
     {"_bayesm_HART_llmnl", (DL_FUNC) &_bayesm_HART_llmnl, 3},
-    {"_bayesm_HART_lndIWishart", (DL_FUNC) &_bayesm_HART_lndIWishart, 3},
     {"_bayesm_HART_lndMvn", (DL_FUNC) &_bayesm_HART_lndMvn, 3},
     {"_bayesm_HART_rdirichlet", (DL_FUNC) &_bayesm_HART_rdirichlet, 1},
     {"_bayesm_HART_rhierLinearMixture_rcpp_loop", (DL_FUNC) &_bayesm_HART_rhierLinearMixture_rcpp_loop, 26},
@@ -508,9 +452,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_bayesm_HART_rhierMnlRwMixture_rcpp_loop", (DL_FUNC) &_bayesm_HART_rhierMnlRwMixture_rcpp_loop, 25},
     {"_bayesm_HART_rhierNegbinRw_rcpp_loop", (DL_FUNC) &_bayesm_HART_rhierNegbinRw_rcpp_loop, 30},
     {"_bayesm_HART_rmixGibbs", (DL_FUNC) &_bayesm_HART_rmixGibbs, 8},
-    {"_bayesm_HART_rmixture", (DL_FUNC) &_bayesm_HART_rmixture, 3},
     {"_bayesm_HART_rmultireg", (DL_FUNC) &_bayesm_HART_rmultireg, 6},
-    {"_bayesm_HART_rtrun", (DL_FUNC) &_bayesm_HART_rtrun, 4},
     {"_bayesm_HART_rwishart", (DL_FUNC) &_bayesm_HART_rwishart, 2},
     {"_bayesm_HART_normalized_kernel_R", (DL_FUNC) &_bayesm_HART_normalized_kernel_R, 8},
     {"_bayesm_HART_normalized_gibbs_R", (DL_FUNC) &_bayesm_HART_normalized_gibbs_R, 11},
