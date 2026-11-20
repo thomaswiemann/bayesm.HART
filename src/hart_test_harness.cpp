@@ -7,6 +7,7 @@
 #include <memory>
 #include "tree_cov.h"
 #include "constant_cov.h"
+#include "bart_pack.h"
 
 using namespace Rcpp;
 using namespace arma;
@@ -339,4 +340,80 @@ Rcpp::List direct_hart_constant_R(arma::mat const& theta, arma::mat const& Z,
     st["rooti"] = cov->rooti();
     return List::create(Named("mu") = mu, Named("tau2") = tau2, Named("f") = f,
                         Named("Sigma") = Sigma, Named("state") = st);
+}
+
+namespace {
+
+void state_prior(bart&) {}
+void state_prior(varbart& f) { f.setvarprior(6.0, 1.0); }
+void state_draw(bart& f, size_t n, arn& gen) { f.draw(0.3, gen); }
+void state_draw(varbart& f, size_t n, arn& gen) { f.draw(gen); }
+void state_draw(vcbart& f, size_t n, arn& gen) {
+    vec a(n, fill::ones), v(n, fill::value(0.09));
+    f.draw(a.memptr(), v.memptr(), gen);
+}
+
+template <class B>
+List scalar_state(B& f, mat& Zt, vec& y, int niter, bool active,
+                  Nullable<List> state) {
+    size_t p = Zt.n_rows, n = Zt.n_cols;
+    f.setprior(0.95, 2.0, 1.0);
+    f.setleafguard(2);
+    f.setdata(p, n, Zt.memptr(), y.memptr(), 20);
+    state_prior(f);
+    f.setdart(0.5, 1.0, (double)p, false, true, 0.0, 1.0);
+    if (state.isNotNull()) restore_bart_state_(f, List(state));
+    else if (active) f.startdart();
+    arn gen;
+    for (int it = 0; it < niter; it++) state_draw(f, n, gen);
+    mat fitted(n, 1);
+    for (size_t i = 0; i < n; i++) fitted(i, 0) = f.f(i);
+    size_t leaves = 0;
+    for (size_t j = 0; j < f.getm(); j++) leaves += f.gettree(j).nbots();
+    return List::create(Named("snapshot") = pack_bart_state_(f),
+                        Named("fit") = fitted, Named("nleaves") = (double)leaves);
+}
+
+}  // namespace
+
+// Terminal state and fitted values on a freshly allocated ensemble.
+// [[Rcpp::export]]
+Rcpp::List ensemble_state_R(std::string kind, arma::mat Zt, arma::mat y,
+                            int m, int niter, bool active,
+                            Rcpp::Nullable<Rcpp::List> state = R_NilValue) {
+    size_t p = Zt.n_rows, n = Zt.n_cols;
+    if (p == 0 || n == 0 || y.n_rows != n || y.n_cols == 0 || m < 1 || niter < 0)
+        stop("ensemble_state_R: invalid dimensions or iteration count");
+    if (kind == "vecbart") {
+        vecbart f(m, y.n_cols);
+        f.setprior(0.95, 2.0);
+        f.setleafguard(2);
+        f.setdata(p, n, Zt.memptr(), 20);
+        f.setleafcov(eye<mat>(y.n_cols, y.n_cols));
+        f.setdart(0.5, 1.0, (double)p, false, true, 0.0, 1.0);
+        if (state.isNotNull()) restore_bart_state_(f, List(state));
+        else if (active) f.startdart();
+        std::vector<mat> Q(n, eye<mat>(y.n_cols, y.n_cols) / 0.09);
+        arn gen;
+        for (int it = 0; it < niter; it++) f.draw(y, Q, gen);
+        return List::create(Named("snapshot") = pack_bart_state_(f),
+                            Named("fit") = f.allfit(),
+                            Named("nleaves") = (double)f.nleaves(),
+                            Named("leaf_sumsq") = f.leaf_sumsq());
+    }
+    if (y.n_cols != 1) stop("ensemble_state_R: scalar response required");
+    vec yc = y.col(0);
+    if (kind == "bart") {
+        bart f(m);
+        return scalar_state(f, Zt, yc, niter, active, state);
+    }
+    if (kind == "varbart") {
+        varbart f(m);
+        return scalar_state(f, Zt, yc, niter, active, state);
+    }
+    if (kind == "vcbart") {
+        vcbart f(m);
+        return scalar_state(f, Zt, yc, niter, active, state);
+    }
+    stop("ensemble_state_R: unknown ensemble");
 }

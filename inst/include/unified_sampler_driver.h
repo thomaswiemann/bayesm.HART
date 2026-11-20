@@ -19,6 +19,7 @@ void run_unified_sampler(
     ThetaUpdater& updater,
     arma::mat& oldbetas,
     arma::cube& betadraw,
-    arma::vec& loglike);
+    arma::vec& loglike,
+    int offset = 0);
 
 #endif

@@ -55,3 +55,15 @@ void ConstantCov::pack(List& out, bool /*store_trees*/) {
                                Named("zdraw")    = R_NilValue,
                                Named("compdraw") = compdraw_);
 }
+
+List ConstantCov::checkpoint() {
+    return List::create(Named("Sigma") = Sigma_);
+}
+
+void ConstantCov::restore(List const& state) {
+    Sigma_ = as<mat>(state["Sigma"]);
+    if ((int)Sigma_.n_rows != D_ || (int)Sigma_.n_cols != D_)
+        stop("ConstantCov: state dimension mismatch.");
+    refresh_root();
+    set_precision();
+}

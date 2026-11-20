@@ -36,7 +36,8 @@ List rhierNegbinRw_rcpp_loop(List const& regdata, List const& hessdata, mat cons
                              std::string const& hart_model, std::string const& hart_cov,
                              List const& bart_params,
                              List const& var_params,
-                             List const& phi_params){
+                             List const& phi_params,
+                             Rcpp::Nullable<Rcpp::List> state = R_NilValue){
 
 // Wayne Taylor 12/01/2014
 // Modified by Thomas Wiemann 2025 -- HART support.
@@ -67,6 +68,18 @@ List rhierNegbinRw_rcpp_loop(List const& regdata, List const& hessdata, mat cons
   cube betadraw = zeros<cube>(nreg, nvar, R/keep);
   vec loglike = zeros<vec>(R/keep);
 
+  int offset = 0;
+  List saved;
+  if (state.isNotNull()) {
+    saved = List(state);
+    oldbetas = as<mat>(saved["betas"]);
+    offset = as<int>(saved["completed_sweeps"]);
+    alpha = as<double>(saved["alpha"]);
+  }
+  if (oldbetas.n_rows != (uword)nreg || oldbetas.n_cols != (uword)nvar
+      || offset < 0)
+    stop("Invalid sampler state dimensions or completed sweeps.");
+
   // ====================================================================
   // Create backend + updater adapters, then run the unified MCMC loop.
   // ====================================================================
@@ -74,13 +87,19 @@ List rhierNegbinRw_rcpp_loop(List const& regdata, List const& hessdata, mat cons
       hart_model, hart_cov, oldbetas, Z, mubar, Amu, nu, V, a_mix,
       deltabar, Ad, drawdelta, olddelta, oldprob, ind, R, keep,
       bart_params, var_params, phi_params);
+  if (state.isNotNull()) backend->restore(as<List>(saved["backend"]));
 
   NegbinThetaUpdaterAdapter updater(oldbetas, regdata_vector,
                                      sbeta, alpha, alphacroot,
                                      a, b, fixalpha, R, keep);
 
   run_unified_sampler(R, keep, nprint, nreg,
-                      *backend, updater, oldbetas, betadraw, loglike);
+                      *backend, updater, oldbetas, betadraw, loglike, offset);
+
+  List terminal = List::create(Named("completed_sweeps") = offset + R,
+                              Named("betas") = oldbetas,
+                              Named("alpha") = updater.alpha(),
+                              Named("backend") = backend->checkpoint());
 
   // ====================================================================
   // Output assembly
@@ -90,6 +109,7 @@ List rhierNegbinRw_rcpp_loop(List const& regdata, List const& hessdata, mat cons
   AcceptanceMetrics am = updater.acceptance_metrics();
 
   List out = bp.fields;
+  out["state"] = terminal;
   out["betadraw"]     = betadraw;
   out["loglike"]      = loglike;
   out["acceptrbeta"]  = am.acceptrbeta;

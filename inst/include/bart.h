@@ -109,6 +109,10 @@ public:
    std::vector<double>& getpv() {return pv;}
    double gettheta() {return theta;}
 
+   std::vector<double>& getlpv() {return lpv;}
+   bool getdartOn() const {return dartOn;}
+   void setdartstate(double value, bool on) {theta=value; dartOn=on;}
+   void rebuildfit() {predict(p,n,x,allfit);}
    //------------------------------
    //public methods
    void birth(size_t i, size_t nid,size_t v, size_t c, double ml, double mr)

@@ -30,6 +30,8 @@ public:
     virtual void store(int mkeep, arma::vec const& mu, bool store_trees,
                        UniqueZCache& zc) = 0;
     virtual void pack(Rcpp::List& out, bool store_trees) = 0;
+    virtual Rcpp::List checkpoint() = 0;
+    virtual void restore(Rcpp::List const& state) = 0;
     // Sigma varies with Z: drives capabilities() and the Sigma(Z) cache.
     virtual bool covariate_sigma() const = 0;
 };

@@ -30,6 +30,8 @@ public:
     void store(int mkeep, arma::vec const& mu, bool store_trees,
                UniqueZCache& zc) override;
     void pack(Rcpp::List& out, bool store_trees) override;
+    Rcpp::List checkpoint() override;
+    void restore(Rcpp::List const& state) override;
     bool covariate_sigma() const override { return true; }
 
 protected:

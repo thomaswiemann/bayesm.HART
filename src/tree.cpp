@@ -328,6 +328,8 @@ std::istream& operator>>(std::istream& is, tree& t)
     return is;
   }
   
+  if(nn == 0) {is.setstate(std::ios::failbit); return is;}
+
   //read in vector of node information----------
   std::vector<node_info> nv(nn);
   for(size_t i=0;i!=nn;i++) {

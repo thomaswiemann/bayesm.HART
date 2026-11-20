@@ -95,3 +95,23 @@ BackendPackPayload GlobalCovarianceBackend::pack() {
 BackendCapabilities GlobalCovarianceBackend::capabilities() const {
     return {true, false, drawdelta_};
 }
+
+List GlobalCovarianceBackend::checkpoint() {
+    return List::create(Named("delta") = olddelta_,
+                        Named("prob") = NumericVector(oldprob_.begin(),
+                                                       oldprob_.end()),
+                        Named("ind") = NumericVector(ind_.begin(), ind_.end()));
+}
+
+void GlobalCovarianceBackend::restore(List const& state) {
+    olddelta_ = as<mat>(state["delta"]);
+    oldprob_ = as<vec>(state["prob"]);
+    ind_ = as<vec>(state["ind"]);
+    if ((int)ind_.n_elem != nreg_ || oldprob_.n_elem != a_.n_elem)
+        stop("GlobalCovarianceBackend: state dimension mismatch.");
+    if (drawdelta_) {
+        if ((int)olddelta_.n_rows != nvar_ || (int)olddelta_.n_cols != nz_)
+            stop("GlobalCovarianceBackend: delta dimension mismatch.");
+        delta_Z_ = Z_ * olddelta_.t();
+    }
+}

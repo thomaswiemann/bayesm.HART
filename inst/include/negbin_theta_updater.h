@@ -27,6 +27,8 @@ public:
     double current_loglike() const override;
     void post_iteration() override { draw_alpha(); }
 
+    double alpha() const { return alpha_; }
+
 protected:
     arma::mat& oldbetas_;
     std::vector<moments> const& regdata_;

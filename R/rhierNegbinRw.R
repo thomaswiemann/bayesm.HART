@@ -15,6 +15,15 @@
 #'     - `X`: `n_i x nvar` design matrix (including intercept column).
 #'   - `Z` (optional): `nreg x nz` matrix of unit-level covariates. If omitted,
 #'     `drawdelta` is set to FALSE and no second-stage covariates are used.
+#'   - `unit_id` (optional): Unit IDs, unique and non-missing, in unit
+#'     order. Default: names of the unit list if complete and unique,
+#'     otherwise "1", "2", ...
+#'   With `previous`, omit `Data` or use NULL for unchanged data. Otherwise
+#'   `Data` is a batch and `unit_id` is required: observations append to matching
+#'   IDs, new IDs append after old units, and units absent from the batch remain.
+#'   X columns must match the saved design. If the fit has Z, supply one batch
+#'   Z row per ID with the saved columns; old-unit rows must equal stored rows.
+#'   Z is not recentered or rescaled, and cannot be added to a fit without Z.
 #' @param Prior A list containing prior parameters:
 #'   - `ncomp` (required): Number of components. Must be 1.
 #'   - `nu` (optional): Degrees of freedom for IW prior on the normal prior covariance (default: nvar + 3).
@@ -40,6 +49,7 @@
 #'   - `phitree` (optional, `hart_model = "direct"` and `nvar > 1` only): List
 #'     of hyperparameters for the sum-of-trees models on the Modified Cholesky
 #'     off-diagonals \eqn{\phi_{jk}(\cdot)}.
+#'   With `previous`, prior settings are inherited; see Continuing a Fit.
 #' @param Mcmc A list containing MCMC parameters:
 #'   - `R`: Number of MCMC iterations (required).
 #'   - `keep` (optional): Thinning parameter (default: 1).
@@ -50,7 +60,11 @@
 #'   - `alpha` (optional): Fixed alpha value. If provided, alpha is not sampled (sets `fixalpha = TRUE`).
 #'   - `fixalpha` (optional): Logical, whether to fix alpha (default: FALSE).
 #'
+#'   With `previous`, only `R`, `keep` and `nprint` are accepted; `R` counts
+#'   additional sweeps and the other controls are inherited.
 #' @param r_verbose Logical. Print startup messages? Default TRUE.
+#'
+#' @param previous A fitted object with `restart`, or NULL for a fresh fit.
 #'
 #' @details
 #' ## Model Specification
@@ -76,6 +90,15 @@
 #' `predict()` dispatches on them to evaluate \eqn{\Sigma(Z^*)} at new
 #' \eqn{Z^*}.
 #'
+#' ## Continuing a Fit
+#' The result contains only the new run's draws. Old draws are not pooled
+#' with them. Priors, tree cutpoints and the fixed-alpha setting are inherited
+#' from the first fit. New units outside the original Z range are resolved
+#' on the original grid. Settling sweeps may be needed after adding data.
+#' Passing the same batch twice counts its observations twice. Fits retain
+#' their data and are therefore larger. Fits made before restart support
+#' cannot be continued. `Prior` is not accepted with `previous`.
+#'
 #' @return A list of class `"rhierNegbinRw"` containing:
 #'   - `betadraw`: `nreg x nvar x (R/keep)` array of unit-level beta draws.
 #'   - `alphadraw`: `(R/keep) x 1` vector of overdispersion draws.
@@ -87,6 +110,8 @@
 #'   - Under `hart_model = "direct"` (additional class `"rhierNegbinRwHeterCov"`):
 #'     `var_models`, `phi_models` (jagged or `NULL`), `mu_draw`,
 #'     `mean_scale_draw`, `var_varcount`, `var_varprob`.
+#'   - `restart`: Retained data, resolved configuration, proposal preparation
+#'     and terminal sampler state for continuation through `previous`.
 #'
 #' @seealso [predict.rhierNegbinRw()], [marginal_effects.rhierNegbinRw()]
 #'
@@ -108,10 +133,17 @@
 #'   Data = list(regdata = sim$regdata, Z = sim$Z),
 #'   Prior = Prior, Mcmc = Mcmc, r_verbose = FALSE)
 #' str(fit, max.level = 1)
+#' continued <- rhierNegbinRw(previous = fit, Mcmc = list(R = 200))
+#' batch_units <- lapply(sim$regdata[1:2], function(u)
+#'   list(y = rpois(1, 2), X = u$X[1, , drop = FALSE]))
+#' batch <- list(regdata = batch_units, unit_id = c("1", "new"),
+#'               Z = sim$Z[1:2, , drop = FALSE])
+#' extended <- rhierNegbinRw(Data = batch, previous = continued,
+#'                                 Mcmc = list(R = 200))
 #' }
 #'
 #' @export
-rhierNegbinRw= function(Data, Prior, Mcmc, r_verbose = TRUE) {
+rhierNegbinRw= function(Data, Prior, Mcmc, r_verbose = TRUE, previous = NULL) {
 #   Revision History
 #	  Sridhar Narayanan - 05/2005
 #         P. Rossi 6/05
@@ -158,12 +190,28 @@ function(par,X,y,Xpooled, ypooled, w,wgt, nvar,lnalpha)  {
 #
 # Error Checking
 #
+saved=NULL
+state=NULL
+batch=FALSE
+if(!is.null(previous)) {
+  saved=.hart_previous(previous, "negbin")
+  batch=!missing(Data) && !is.null(Data)
+  if(!missing(Prior)) {
+    pandterm("Prior is inherited with previous")
+  }
+  if(missing(Mcmc)) pandterm("Requires R in Mcmc for continuation")
+  Mcmc=.hart_continue_controls(Mcmc, saved)
+  if(batch) Data=.hart_merge_data(saved, Data) else Data=saved$data
+  state=saved$state
+}
+
 if(missing(Data)) {pandterm("Requires Data argument -- list of regdata and (possibly) Z")}
 
 if(is.null(Data$regdata)) {
     pandterm("Requires Data element regdata -- list of data for each unit : y and X")
 }
 regdata=Data$regdata
+restart_data=.hart_restart_data(Data, "regdata")
 nreg = length(regdata)
 
 drawdelta=TRUE
@@ -218,6 +266,7 @@ nvar=ncol(Xpooled)
 #
 # check for prior elements
 #
+if(is.null(saved)) {
 if(missing(Prior)) {
     pandterm("Requires Prior list argument (at least ncomp)")
 }
@@ -272,6 +321,26 @@ if(drawdelta & !useBART) {
   if(length(deltabar) != nz*nvar) {pandterm("deltabar must be of length nvar*nz")}
 }
 # ---- end HART prior modification ----
+
+} else {
+  cfg=.hart_previous_config(saved)
+  ncomp=cfg$ncomp
+  mubar=cfg$prior$mubar
+  Amu=cfg$prior$Amu
+  nu=cfg$prior$nu
+  V=cfg$prior$V
+  Ad=cfg$prior$Ad
+  deltabar=cfg$prior$deltabar
+  a=cfg$prior$a
+  a_mix=cfg$prior$a_mix
+  b=cfg$prior$b
+  useBART=cfg$model != "none"
+  useHeterCov=cfg$model == "direct" &&
+              identical(cfg$cov, "heteroskedastic")
+  bart_params=cfg$bart
+  var_params=cfg$vartree %||% list()
+  phi_params=cfg$phitree %||% list()
+}
 
 #
 # check for Mcmc 
@@ -336,6 +405,8 @@ cat("Fractional Likelihood Weight Parameter = ",w,fill=TRUE)
 cat(" ",fill=TRUE)
 } # end r_verbose
 
+reuse=!is.null(saved) && !batch
+if(!reuse) {
 par = rep(0,(nvar+1))
 if (r_verbose) {
   cat("initializing Metropolis candidate densities for ",nreg," units ...",fill=TRUE)
@@ -357,6 +428,11 @@ if (r_verbose) {
   fsh()
 }
 
+} else {
+  alphacroot=saved$preparation$alphacroot
+}
+
+if(!reuse) {
 hess_i=NULL
 # Per-unit MLEs; the pooled MLE where a unit's optimizer fails.
 Beta_init = matrix(rep(beta_mle, nreg), nrow = nreg, ncol = nvar, byrow = TRUE)
@@ -387,6 +463,12 @@ for (i in 1:nreg) {
 
 # Warm start at the per-unit MLEs under a HART model.
 if (useBART) Beta = Beta_init
+
+} else {
+  hess_i=lapply(saved$preparation$hess, function(h) list(hess=h))
+  Beta=state$betas
+}
+if(!is.null(saved)) {alpha=state$alpha}
 
 # ---- Mixture initialization (mirrors MNL/linear) ----
 ninc=floor(nreg/ncomp)
@@ -428,6 +510,8 @@ if (drawdelta && useBART) {
 # Modified by Thomas Wiemann 2025 -- HART support
 ###################################################################
 if (fixalpha) {alpha=Mcmc$alpha}
+if(batch) state=.hart_extend_state(saved, Beta)
+
 draws=rhierNegbinRw_rcpp_loop(regdata, hess_i, Z, Beta, deltabar,
                               Ad, mubar, Amu, nu, V, a, b,
                               R, keep, s_beta, alphacroot, nprint,
@@ -435,7 +519,7 @@ draws=rhierNegbinRw_rcpp_loop(regdata, hess_i, Z, Beta, deltabar,
                               oldprob, ind,
                               alpha, fixalpha,
                               cfg$model, cfg$cov %||% "heteroskedastic", bart_params,
-                              var_params, phi_params)
+                              var_params, phi_params, state)
 ###################################################################
 
 # === Format output ===
@@ -443,6 +527,17 @@ attributes(draws$alphadraw)$class=c("bayesm.mat","mcmc")
 attributes(draws$alphadraw)$mcpar=c(1,R,keep)
 draws <- .finish_hart_fit(draws, cfg, z_map, R, keep,
                           base_class = "rhierNegbinRw")
+
+draws$restart=.hart_restart("negbin", restart_data, cfg, ncomp, drawdelta,
+    list(mubar=mubar, Amu=Amu, nu=nu, V=V, Ad=Ad, deltabar=deltabar,
+         a=a, a_mix=a_mix, b=b),
+    list(keep=keep, nprint=nprint, s_alpha=s_alpha, s_beta=s_beta, w=w),
+    list(hess=lapply(hess_i, function(l) l$hess), alphacroot=alphacroot))
+draws$restart$config$fixalpha=fixalpha
+if(fixalpha) {draws$restart$config$alpha_fixed=alpha}
+
+draws$restart$state=draws$state
+draws$state=NULL
 
 return(draws)
 }

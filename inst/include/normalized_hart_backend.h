@@ -30,6 +30,8 @@ public:
     arma::mat const& precision_root(int) const override { return rooti_; }
     void store(int mkeep) override;
     BackendPackPayload pack() override;
+    Rcpp::List checkpoint() override;
+    void restore(Rcpp::List const& state) override;
     BackendCapabilities capabilities() const override {
         return {true, false, true};
     }

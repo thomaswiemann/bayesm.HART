@@ -92,7 +92,7 @@ test_that("vartree only with nvar > 1 auto-promotes to full Cholesky", {
   expected_slots <- c("bart_models", "var_models", "phi_models", "mu_draw",
                       "mean_scale_draw",
                       "varcount", "varprob", "var_varcount", "var_varprob",
-                      "betadraw", "taudraw", "loglike", "hart")
+                      "betadraw", "taudraw", "loglike", "hart", "restart")
   expect_named(fit, expected_slots, ignore.order = TRUE)
   expect_null(fit$nmix)
   expect_null(fit$Deltadraw)

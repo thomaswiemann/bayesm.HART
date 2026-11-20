@@ -44,8 +44,14 @@ public:
    void startdart() { this->dartOn=!(this->dartOn); }
    vectree& gettree(size_t i) { return t[i]; }
    xinfo& getxinfo() { return xi; }
+   void setxinfo(xinfo& _xi);
    std::vector<size_t>& getnv() { return nv; }
    std::vector<double>& getpv() { return pv; }
+   std::vector<double>& getlpv() {return lpv;}
+   bool getdartOn() const {return dartOn;}
+   void setdartstate(double value, bool on) {theta=value; dartOn=on;}
+   double gettheta() const {return theta;}
+   void rebuildfit() {predict(p,n,x,fit_);}
    //------------------------------
    //public methods
    void predict(size_t p, size_t n, double *x, arma::mat& fp);

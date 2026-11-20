@@ -102,7 +102,7 @@ test_that("vartree only with nvar > 1 auto-promotes to full Cholesky", {
                c("bart_models", "var_models", "phi_models", "mu_draw",
                  "mean_scale_draw", "varcount", "varprob", "var_varcount",
                  "var_varprob", "betadraw", "loglike", "SignRes",
-                 "acceptrbeta", "hart"),
+                 "acceptrbeta", "hart", "restart"),
                ignore.order = TRUE)
   # phi_models is jagged: entry j holds j - 1 trees.
   expect_length(fit$phi_models, sim$nvar)

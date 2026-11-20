@@ -179,3 +179,30 @@ void TreeCov::pack(List& out, bool store_trees) {
             ? (SEXP) pack_bart_jagged_(D_, phi_, phi_treess_) : R_NilValue;
     }
 }
+
+List TreeCov::checkpoint() {
+    List variance(D_), phi(D_);
+    for (int j = 0; j < D_; ++j) {
+        variance[j] = pack_bart_state_(v_[j]);
+        List row(j);
+        for (int k = 0; k < j; ++k) row[k] = pack_bart_state_(phi_[j][k]);
+        phi[j] = row;
+    }
+    return List::create(Named("variance") = variance, Named("phi") = phi);
+}
+
+void TreeCov::restore(List const& state) {
+    List variance = state["variance"], phi = state["phi"];
+    if (variance.size() != D_ || phi.size() != D_)
+        stop("TreeCov: state dimension mismatch.");
+    for (int j = 0; j < D_; ++j) {
+        restore_bart_state_(v_[j], as<List>(variance[j]));
+        List row = phi[j];
+        if (row.size() != j) stop("TreeCov: phi dimension mismatch.");
+        for (int k = 0; k < j; ++k)
+            restore_bart_state_(phi_[j][k], as<List>(row[k]));
+    }
+    for (int j = 0; j < D_; ++j)
+        for (int i = 0; i < n_; ++i) vmat_(i, j) = v_[j].f(i);
+    refresh_precision();
+}

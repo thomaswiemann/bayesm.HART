@@ -134,3 +134,23 @@ BackendPackPayload DirectHartBackend::pack() {
     bp.caps = capabilities();
     return bp;
 }
+
+List DirectHartBackend::checkpoint() {
+    return List::create(Named("mu") = NumericVector(mu_.begin(), mu_.end()),
+                        Named("tau2") = NumericVector(tau2_.begin(),
+                                                       tau2_.end()),
+                        Named("mean") = pack_bart_state_(f_),
+                        Named("covariance") = cov_->checkpoint());
+}
+
+void DirectHartBackend::restore(List const& state) {
+    mu_ = as<vec>(state["mu"]);
+    tau2_ = as<vec>(state["tau2"]);
+    if ((int)mu_.n_elem != D_ || (int)tau2_.n_elem != D_)
+        stop("DirectHartBackend: state dimension mismatch.");
+    restore_bart_state_(f_, as<List>(state["mean"]));
+    f_.setscale(tau2_, Hf_);
+    cov_->restore(as<List>(state["covariance"]));
+    refresh_residuals();
+    refresh_kernels();
+}

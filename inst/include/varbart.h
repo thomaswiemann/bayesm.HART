@@ -50,6 +50,9 @@ public:
    // are constructed internally from y (which holds eta_i^2) and the partial product.
    void draw(rn& gen);
 
+   // Product fit; hides bart::rebuildfit.
+   void rebuildfit() {predict_prod(p,n,x,allfit);}
+
    void pr();
 
 protected:

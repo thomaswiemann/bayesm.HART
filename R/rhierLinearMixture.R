@@ -14,6 +14,15 @@
 #'     - `X`: `n_i x nvar` design matrix.
 #'   - `Z` (optional): `nreg x nz` matrix of unit-level covariates. If omitted,
 #'     `drawdelta` is set to FALSE and no second-stage covariates are used.
+#'   - `unit_id` (optional): Unit IDs, unique and non-missing, in unit
+#'     order. Default: names of the unit list if complete and unique,
+#'     otherwise "1", "2", ...
+#'   With `previous`, omit `Data` or use NULL for unchanged data. Otherwise
+#'   `Data` is a batch and `unit_id` is required: observations append to matching
+#'   IDs, new IDs append after old units, and units absent from the batch remain.
+#'   X columns must match the saved design. If the fit has Z, supply one batch
+#'   Z row per ID with the saved columns; old-unit rows must equal stored rows.
+#'   Z is not recentered or rescaled, and cannot be added to a fit without Z.
 #' @param Prior A list containing prior parameters:
 #'   - `ncomp` (required): Number of components. Must be 1.
 #'   - `nu.e` (optional): Degrees of freedom for error variance prior (default: 3).
@@ -40,11 +49,16 @@
 #'   - `phitree` (optional, `hart_model = "direct"` and `nvar > 1` only): List
 #'     of hyperparameters for the sum-of-trees models on the Modified Cholesky
 #'     off-diagonals \eqn{\phi_{jk}(\cdot)}.
+#'   With `previous`, prior settings are inherited; see Continuing a Fit.
 #' @param Mcmc A list containing MCMC parameters:
 #'   - `R`: Number of MCMC iterations (required).
 #'   - `keep` (optional): Thinning parameter (default: 1).
 #'   - `nprint` (optional): Print progress every `nprint` draws (default: 100, 0 for none).
+#'   With `previous`, only `R`, `keep` and `nprint` are accepted; `R` counts
+#'   additional sweeps and the other controls are inherited.
 #' @param r_verbose Logical. Print startup messages? Default TRUE.
+#'
+#' @param previous A fitted object with `restart`, or NULL for a fresh fit.
 #'
 #' @details
 #' ## Model Specification
@@ -68,6 +82,16 @@
 #' `predict()` dispatches on them to evaluate \eqn{\Sigma(Z^*)} at new
 #' \eqn{Z^*}.
 #'
+#' ## Continuing a Fit
+#' The result contains only the new run's draws. Old draws are not pooled
+#' with them. Priors and tree cutpoints are inherited from the first fit.
+#' New units outside the original Z range are resolved on the original grid.
+#' Settling sweeps may be needed after adding data. Passing the same batch
+#' twice counts its observations twice. Fits retain their data and are
+#' therefore larger. Fits made before restart support cannot be continued.
+#' `Prior` is not accepted with `previous`. New units default to their
+#' response variance, or 1 for a single observation.
+#'
 #' @return A list of class `"rhierLinearMixture"` containing:
 #'   - `betadraw`: `nreg x nvar x (R/keep)` array of unit-level beta draws.
 #'   - `taudraw`: `(R/keep) x nreg` matrix of error variance draws.
@@ -78,6 +102,8 @@
 #'   - Under `hart_model = "direct"` (additional class `"rhierLinearMixtureHeterCov"`):
 #'     `var_models`, `phi_models` (jagged or `NULL`), `mu_draw`,
 #'     `mean_scale_draw`, `var_varcount`, `var_varprob`.
+#'   - `restart`: Retained data, resolved configuration, proposal preparation
+#'     and terminal sampler state for continuation through `previous`.
 #'
 #' @seealso [predict.rhierLinearMixture()], [marginal_effects.rhierLinearMixture()]
 #'
@@ -99,11 +125,18 @@
 #'   Data = list(regdata = sim$regdata, Z = sim$Z),
 #'   Prior = Prior, Mcmc = Mcmc, r_verbose = FALSE)
 #' str(fit, max.level = 1)
+#' continued <- rhierLinearMixture(previous = fit, Mcmc = list(R = 200))
+#' batch_units <- lapply(sim$regdata[1:2], function(u)
+#'   list(y = rnorm(1), X = u$X[1, , drop = FALSE]))
+#' batch <- list(regdata = batch_units, unit_id = c("1", "new"),
+#'               Z = sim$Z[1:2, , drop = FALSE])
+#' extended <- rhierLinearMixture(Data = batch, previous = continued,
+#'                                 Mcmc = list(R = 200))
 #' }
 #'
 #' @export
 rhierLinearMixture=
-function(Data,Prior,Mcmc, r_verbose = TRUE)
+function(Data,Prior,Mcmc, r_verbose = TRUE, previous = NULL)
 {
 #
 # Revision History
@@ -161,9 +194,25 @@ getvar=function(l) {
 #
 # check arguments
 #
+saved=NULL
+state=NULL
+batch=FALSE
+if(!is.null(previous)) {
+  saved=.hart_previous(previous, "linear")
+  batch=!missing(Data) && !is.null(Data)
+  if(!missing(Prior)) {
+    pandterm("Prior is inherited with previous")
+  }
+  if(missing(Mcmc)) pandterm("Requires R in Mcmc for continuation")
+  Mcmc=.hart_continue_controls(Mcmc, saved)
+  if(batch) Data=.hart_merge_data(saved, Data) else Data=saved$data
+  state=saved$state
+}
+
 if(missing(Data)) {pandterm("Requires Data argument -- list of regdata, and (possibly) Z")}
 if(is.null(Data$regdata)) {pandterm("Requires Data element regdata (list of data for each unit)")}
 regdata=Data$regdata
+restart_data=.hart_restart_data(Data, "regdata")
 nreg=length(regdata)
 drawdelta=TRUE
 if(is.null(Data$Z)) {
@@ -180,10 +229,12 @@ else {
 }
 if(drawdelta) {
   nz=ncol(Z)
+  if(is.null(saved)) {
   colmeans=apply(Z,2,mean)
   if(sum(colmeans) > 1e-05) {
     if (r_verbose) cat(paste("Warning: Z does not appear to be de-meaned: colmeans= ",
                               paste(round(colmeans, 4), collapse=", ")),fill=TRUE)
+  }
   }
 }
 #
@@ -209,6 +260,7 @@ for (i in 1:nreg)
 #
 # check for Prior
 #
+if(is.null(saved)) {
 if(missing(Prior))
    { pandterm("Requires Prior list argument (at least ncomp)")}
 if(is.null(Prior$nu.e)) {nu.e=BayesmConstant.nu.e}
@@ -265,6 +317,30 @@ if(length(a) != ncomp) {pandterm("Requires dim(a)= ncomp (no of components)")}
 bada=FALSE
 for (i in 1:ncomp) { if(a[i] < 0) bada=TRUE }
 if(bada) pandterm("invalid values in a vector")
+
+} else {
+  cfg=.hart_previous_config(saved)
+  ncomp=cfg$ncomp
+  mubar=cfg$prior$mubar
+  Amu=cfg$prior$Amu
+  nu=cfg$prior$nu
+  V=cfg$prior$V
+  Ad=cfg$prior$Ad
+  deltabar=cfg$prior$deltabar
+  a=cfg$prior$a
+  nu.e=cfg$prior$nu.e
+  ssq=cfg$prior$ssq
+  if(batch) {
+    nold=length(saved$data$unit_id)
+    if(nreg > nold) ssq=c(ssq, sapply(regdata[(nold+1):nreg], getvar))
+  }
+  useBART=cfg$model != "none"
+  useHeterCov=cfg$model == "direct" &&
+              identical(cfg$cov, "heteroskedastic")
+  bart_params=cfg$bart
+  var_params=cfg$vartree %||% list()
+  phi_params=cfg$phitree %||% list()
+}
 
 #
 # check MCMC argument
@@ -366,11 +442,13 @@ if (useBART) {
 # Modified by Thomas Wiemann 2025 -- added HART support,
 #   and heter-cov (Sigma(Z_i)) extension.
 ###################################################################
+if(batch) state=.hart_extend_state(saved, Beta_init, tau)
+
 draws = rhierLinearMixture_rcpp_loop(regdata, Z, deltabar,
     Ad, mubar, Amu, nu, V, nu.e, ssq, R, keep, nprint, drawdelta,
     as.matrix(olddelta), a, oldprob, ind, tau,
     cfg$model, cfg$cov %||% "heteroskedastic", bart_params,
-    var_params, phi_params, Beta_init)
+    var_params, phi_params, Beta_init, state)
 ###################################################################
 
 #
@@ -380,6 +458,15 @@ attributes(draws$taudraw)$class=c("bayesm.mat","mcmc")
 attributes(draws$taudraw)$mcpar=c(1,R,keep)
 draws <- .finish_hart_fit(draws, cfg, z_map, R, keep,
                           base_class = "rhierLinearMixture")
+
+draws$restart=.hart_restart("linear", restart_data, cfg, ncomp, drawdelta,
+    list(mubar=mubar, Amu=Amu, nu=nu, V=V, Ad=Ad, deltabar=deltabar,
+         a=a, nu.e=nu.e, ssq=ssq),
+    list(keep=keep, nprint=nprint),
+    list())
+
+draws$restart$state=draws$state
+draws$state=NULL
 
 return(draws)
 }

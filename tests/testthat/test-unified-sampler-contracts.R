@@ -171,7 +171,7 @@ test_that("MNL direct HART with a constant Sigma has the nmix schema", {
   expect_equal(class(fit), "rhierMnlRwMixture")
   expect_named(fit, c("mu_draw", "mean_scale_draw", "varcount", "varprob",
                       "nmix", "bart_models", "betadraw", "loglike", "SignRes",
-                      "acceptrbeta", "hart"), ignore.order = TRUE)
+                      "acceptrbeta", "hart", "restart"), ignore.order = TRUE)
   expect_equal(dim(fit$mu_draw), c(6L, nvar))
   expect_equal(fit$mu_draw[1, ], fit$nmix$compdraw[[1]][[1]]$mu)
   expect_s3_class(fit$nmix, "bayesm.nmix")
@@ -280,7 +280,7 @@ hart_priors <- list(
 
 direct_fields <- c("bart_models", "var_models", "phi_models", "mu_draw",
                    "mean_scale_draw", "varcount", "varprob", "var_varcount",
-                   "var_varprob", "betadraw", "loglike", "hart")
+                   "var_varprob", "betadraw", "loglike", "hart", "restart")
 
 test_that("Linear HART outputs have expected field names and classes", {
   dat  <- make_reg_sim(700)

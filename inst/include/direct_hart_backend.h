@@ -37,6 +37,8 @@ public:
     }
     void store(int mkeep) override;
     BackendPackPayload pack() override;
+    Rcpp::List checkpoint() override;
+    void restore(Rcpp::List const& state) override;
     BackendCapabilities capabilities() const override {
         bool cz = cov_->covariate_sigma();
         return {!cz, cz, true};

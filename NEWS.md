@@ -1,5 +1,6 @@
 # bayesm.HART 0.1.0
 
+* Adds `previous` to the three hierarchical fitters for continuation on retained data or batches of observations and units, with terminal state stored in `restart`. Each result contains only the new run's draws.
 * Adds `Prior$hart_model` to select the preference model: `"none"` (the bayesm paths), `"normalized"` (HART prior on the representative unit), or `"direct"` (HART mean trees in coefficient units with covariate-dependent covariance).
 * Adds the direct HART model for `rhierMnlRwMixture()`, `rhierLinearMixture()`, and `rhierNegbinRw()`: one vector-leaf mean ensemble with learned scales (`Prior$bart$a_tau`, `tau0`), product-of-trees variances (`Prior$vartree$tau`, `v0`), and sum-of-trees Cholesky off-diagonals (`Prior$phitree$tau`). Outputs add `mean_scale_draw`; `predict()` supports `type = "SigmaZ"`.
 * Adds `Prior$hart_cov` for the direct model: `"heteroskedastic"` (default) keeps the covariance ensembles, `"constant"` draws one `Sigma ~ IW(nu, V)` for all units under the same vector-leaf mean ensemble, so the mean and covariance models can be assessed separately. Both emit `mu_draw`; `"constant"` also carries bayesm's `nmix`.

@@ -4,7 +4,7 @@
 \alias{rhierLinearMixture}
 \title{Bayesian Hierarchical Linear Model with HART Prior}
 \usage{
-rhierLinearMixture(Data, Prior, Mcmc, r_verbose = TRUE)
+rhierLinearMixture(Data, Prior, Mcmc, r_verbose = TRUE, previous = NULL)
 }
 \arguments{
 \item{Data}{A list containing:
@@ -16,6 +16,15 @@ rhierLinearMixture(Data, Prior, Mcmc, r_verbose = TRUE)
 }
 \item \code{Z} (optional): \verb{nreg x nz} matrix of unit-level covariates. If omitted,
 \code{drawdelta} is set to FALSE and no second-stage covariates are used.
+\item \code{unit_id} (optional): Unit IDs, unique and non-missing, in unit
+order. Default: names of the unit list if complete and unique,
+otherwise "1", "2", ...
+With \code{previous}, omit \code{Data} or use NULL for unchanged data. Otherwise
+\code{Data} is a batch and \code{unit_id} is required: observations append to matching
+IDs, new IDs append after old units, and units absent from the batch remain.
+X columns must match the saved design. If the fit has Z, supply one batch
+Z row per ID with the saved columns; old-unit rows must equal stored rows.
+Z is not recentered or rescaled, and cannot be added to a fit without Z.
 }}
 
 \item{Prior}{A list containing prior parameters:
@@ -45,6 +54,7 @@ in Details.
 \item \code{phitree} (optional, \code{hart_model = "direct"} and \code{nvar > 1} only): List
 of hyperparameters for the sum-of-trees models on the Modified Cholesky
 off-diagonals \eqn{\phi_{jk}(\cdot)}.
+With \code{previous}, prior settings are inherited; see Continuing a Fit.
 }}
 
 \item{Mcmc}{A list containing MCMC parameters:
@@ -52,9 +62,13 @@ off-diagonals \eqn{\phi_{jk}(\cdot)}.
 \item \code{R}: Number of MCMC iterations (required).
 \item \code{keep} (optional): Thinning parameter (default: 1).
 \item \code{nprint} (optional): Print progress every \code{nprint} draws (default: 100, 0 for none).
+With \code{previous}, only \code{R}, \code{keep} and \code{nprint} are accepted; \code{R} counts
+additional sweeps and the other controls are inherited.
 }}
 
 \item{r_verbose}{Logical. Print startup messages? Default TRUE.}
+
+\item{previous}{A fitted object with \code{restart}, or NULL for a fresh fit.}
 }
 \value{
 A list of class \code{"rhierLinearMixture"} containing:
@@ -68,6 +82,8 @@ A list of class \code{"rhierLinearMixture"} containing:
 \item Under \code{hart_model = "direct"} (additional class \code{"rhierLinearMixtureHeterCov"}):
 \code{var_models}, \code{phi_models} (jagged or \code{NULL}), \code{mu_draw},
 \code{mean_scale_draw}, \code{var_varcount}, \code{var_varprob}.
+\item \code{restart}: Retained data, resolved configuration, proposal preparation
+and terminal sampler state for continuation through \code{previous}.
 }
 }
 \description{
@@ -104,6 +120,18 @@ inherits classes \code{"rhierLinearMixtureHeterCov"} and \code{"bayesm.HART.Hete
 \code{predict()} dispatches on them to evaluate \eqn{\Sigma(Z^*)} at new
 \eqn{Z^*}.
 }
+
+\subsection{Continuing a Fit}{
+
+The result contains only the new run's draws. Old draws are not pooled
+with them. Priors and tree cutpoints are inherited from the first fit.
+New units outside the original Z range are resolved on the original grid.
+Settling sweeps may be needed after adding data. Passing the same batch
+twice counts its observations twice. Fits retain their data and are
+therefore larger. Fits made before restart support cannot be continued.
+\code{Prior} is not accepted with \code{previous}. New units default to their
+response variance, or 1 for a single observation.
+}
 }
 \note{
 Currently, only \code{ncomp = 1} is supported.
@@ -124,6 +152,13 @@ fit   <- bayesm.HART::rhierLinearMixture(
   Data = list(regdata = sim$regdata, Z = sim$Z),
   Prior = Prior, Mcmc = Mcmc, r_verbose = FALSE)
 str(fit, max.level = 1)
+continued <- rhierLinearMixture(previous = fit, Mcmc = list(R = 200))
+batch_units <- lapply(sim$regdata[1:2], function(u)
+  list(y = rnorm(1), X = u$X[1, , drop = FALSE]))
+batch <- list(regdata = batch_units, unit_id = c("1", "new"),
+              Z = sim$Z[1:2, , drop = FALSE])
+extended <- rhierLinearMixture(Data = batch, previous = continued,
+                                Mcmc = list(R = 200))
 }
 
 }

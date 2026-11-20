@@ -182,6 +182,23 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// ensemble_state_R
+Rcpp::List ensemble_state_R(std::string kind, arma::mat Zt, arma::mat y, int m, int niter, bool active, Rcpp::Nullable<Rcpp::List> state);
+RcppExport SEXP _bayesm_HART_ensemble_state_R(SEXP kindSEXP, SEXP ZtSEXP, SEXP ySEXP, SEXP mSEXP, SEXP niterSEXP, SEXP activeSEXP, SEXP stateSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< std::string >::type kind(kindSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type Zt(ZtSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type y(ySEXP);
+    Rcpp::traits::input_parameter< int >::type m(mSEXP);
+    Rcpp::traits::input_parameter< int >::type niter(niterSEXP);
+    Rcpp::traits::input_parameter< bool >::type active(activeSEXP);
+    Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::List> >::type state(stateSEXP);
+    rcpp_result_gen = Rcpp::wrap(ensemble_state_R(kind, Zt, y, m, niter, active, state));
+    return rcpp_result_gen;
+END_RCPP
+}
 // llmnl
 double llmnl(vec const& beta, vec const& y, mat const& X);
 RcppExport SEXP _bayesm_HART_llmnl(SEXP betaSEXP, SEXP ySEXP, SEXP XSEXP) {
@@ -233,8 +250,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // rhierLinearMixture_rcpp_loop
-List rhierLinearMixture_rcpp_loop(List const& regdata, mat const& Z, vec const& deltabar, mat const& Ad, mat const& mubar, mat const& Amu, double nu, mat const& V, double nu_e, vec const& ssq, int R, int keep, int nprint, bool drawdelta, mat olddelta, vec const& a, vec oldprob, vec ind, vec tau, std::string const& hart_model, std::string const& hart_cov, List const& bart_params, List const& var_params, List const& phi_params, mat const& Beta_init);
-RcppExport SEXP _bayesm_HART_rhierLinearMixture_rcpp_loop(SEXP regdataSEXP, SEXP ZSEXP, SEXP deltabarSEXP, SEXP AdSEXP, SEXP mubarSEXP, SEXP AmuSEXP, SEXP nuSEXP, SEXP VSEXP, SEXP nu_eSEXP, SEXP ssqSEXP, SEXP RSEXP, SEXP keepSEXP, SEXP nprintSEXP, SEXP drawdeltaSEXP, SEXP olddeltaSEXP, SEXP aSEXP, SEXP oldprobSEXP, SEXP indSEXP, SEXP tauSEXP, SEXP hart_modelSEXP, SEXP hart_covSEXP, SEXP bart_paramsSEXP, SEXP var_paramsSEXP, SEXP phi_paramsSEXP, SEXP Beta_initSEXP) {
+List rhierLinearMixture_rcpp_loop(List const& regdata, mat const& Z, vec const& deltabar, mat const& Ad, mat const& mubar, mat const& Amu, double nu, mat const& V, double nu_e, vec const& ssq, int R, int keep, int nprint, bool drawdelta, mat olddelta, vec const& a, vec oldprob, vec ind, vec tau, std::string const& hart_model, std::string const& hart_cov, List const& bart_params, List const& var_params, List const& phi_params, mat const& Beta_init, Rcpp::Nullable<Rcpp::List> state);
+RcppExport SEXP _bayesm_HART_rhierLinearMixture_rcpp_loop(SEXP regdataSEXP, SEXP ZSEXP, SEXP deltabarSEXP, SEXP AdSEXP, SEXP mubarSEXP, SEXP AmuSEXP, SEXP nuSEXP, SEXP VSEXP, SEXP nu_eSEXP, SEXP ssqSEXP, SEXP RSEXP, SEXP keepSEXP, SEXP nprintSEXP, SEXP drawdeltaSEXP, SEXP olddeltaSEXP, SEXP aSEXP, SEXP oldprobSEXP, SEXP indSEXP, SEXP tauSEXP, SEXP hart_modelSEXP, SEXP hart_covSEXP, SEXP bart_paramsSEXP, SEXP var_paramsSEXP, SEXP phi_paramsSEXP, SEXP Beta_initSEXP, SEXP stateSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -263,7 +280,8 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< List const& >::type var_params(var_paramsSEXP);
     Rcpp::traits::input_parameter< List const& >::type phi_params(phi_paramsSEXP);
     Rcpp::traits::input_parameter< mat const& >::type Beta_init(Beta_initSEXP);
-    rcpp_result_gen = Rcpp::wrap(rhierLinearMixture_rcpp_loop(regdata, Z, deltabar, Ad, mubar, Amu, nu, V, nu_e, ssq, R, keep, nprint, drawdelta, olddelta, a, oldprob, ind, tau, hart_model, hart_cov, bart_params, var_params, phi_params, Beta_init));
+    Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::List> >::type state(stateSEXP);
+    rcpp_result_gen = Rcpp::wrap(rhierLinearMixture_rcpp_loop(regdata, Z, deltabar, Ad, mubar, Amu, nu, V, nu_e, ssq, R, keep, nprint, drawdelta, olddelta, a, oldprob, ind, tau, hart_model, hart_cov, bart_params, var_params, phi_params, Beta_init, state));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -282,8 +300,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // rhierMnlRwMixture_rcpp_loop
-List rhierMnlRwMixture_rcpp_loop(List const& lgtdata, mat const& Z, vec const& deltabar, mat const& Ad, mat const& mubar, mat const& Amu, double nu, mat const& V, double s, int R, int keep, int nprint, bool drawdelta, mat olddelta, vec const& a, vec oldprob, mat oldbetas, vec ind, vec const& SignRes, std::string const& hart_model, std::string const& hart_cov, List const& bart_params, List const& var_params, List const& phi_params);
-RcppExport SEXP _bayesm_HART_rhierMnlRwMixture_rcpp_loop(SEXP lgtdataSEXP, SEXP ZSEXP, SEXP deltabarSEXP, SEXP AdSEXP, SEXP mubarSEXP, SEXP AmuSEXP, SEXP nuSEXP, SEXP VSEXP, SEXP sSEXP, SEXP RSEXP, SEXP keepSEXP, SEXP nprintSEXP, SEXP drawdeltaSEXP, SEXP olddeltaSEXP, SEXP aSEXP, SEXP oldprobSEXP, SEXP oldbetasSEXP, SEXP indSEXP, SEXP SignResSEXP, SEXP hart_modelSEXP, SEXP hart_covSEXP, SEXP bart_paramsSEXP, SEXP var_paramsSEXP, SEXP phi_paramsSEXP) {
+List rhierMnlRwMixture_rcpp_loop(List const& lgtdata, mat const& Z, vec const& deltabar, mat const& Ad, mat const& mubar, mat const& Amu, double nu, mat const& V, double s, int R, int keep, int nprint, bool drawdelta, mat olddelta, vec const& a, vec oldprob, mat oldbetas, vec ind, vec const& SignRes, std::string const& hart_model, std::string const& hart_cov, List const& bart_params, List const& var_params, List const& phi_params, Rcpp::Nullable<Rcpp::List> state);
+RcppExport SEXP _bayesm_HART_rhierMnlRwMixture_rcpp_loop(SEXP lgtdataSEXP, SEXP ZSEXP, SEXP deltabarSEXP, SEXP AdSEXP, SEXP mubarSEXP, SEXP AmuSEXP, SEXP nuSEXP, SEXP VSEXP, SEXP sSEXP, SEXP RSEXP, SEXP keepSEXP, SEXP nprintSEXP, SEXP drawdeltaSEXP, SEXP olddeltaSEXP, SEXP aSEXP, SEXP oldprobSEXP, SEXP oldbetasSEXP, SEXP indSEXP, SEXP SignResSEXP, SEXP hart_modelSEXP, SEXP hart_covSEXP, SEXP bart_paramsSEXP, SEXP var_paramsSEXP, SEXP phi_paramsSEXP, SEXP stateSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -311,13 +329,14 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< List const& >::type bart_params(bart_paramsSEXP);
     Rcpp::traits::input_parameter< List const& >::type var_params(var_paramsSEXP);
     Rcpp::traits::input_parameter< List const& >::type phi_params(phi_paramsSEXP);
-    rcpp_result_gen = Rcpp::wrap(rhierMnlRwMixture_rcpp_loop(lgtdata, Z, deltabar, Ad, mubar, Amu, nu, V, s, R, keep, nprint, drawdelta, olddelta, a, oldprob, oldbetas, ind, SignRes, hart_model, hart_cov, bart_params, var_params, phi_params));
+    Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::List> >::type state(stateSEXP);
+    rcpp_result_gen = Rcpp::wrap(rhierMnlRwMixture_rcpp_loop(lgtdata, Z, deltabar, Ad, mubar, Amu, nu, V, s, R, keep, nprint, drawdelta, olddelta, a, oldprob, oldbetas, ind, SignRes, hart_model, hart_cov, bart_params, var_params, phi_params, state));
     return rcpp_result_gen;
 END_RCPP
 }
 // rhierNegbinRw_rcpp_loop
-List rhierNegbinRw_rcpp_loop(List const& regdata, List const& hessdata, mat const& Z, mat oldbetas, vec const& deltabar, mat const& Ad, mat const& mubar, mat const& Amu, double nu, mat const& V, double a, double b, int R, int keep, double sbeta, double alphacroot, int nprint, bool drawdelta, mat olddelta, vec const& a_mix, vec oldprob, vec ind, double alpha, bool fixalpha, std::string const& hart_model, std::string const& hart_cov, List const& bart_params, List const& var_params, List const& phi_params);
-RcppExport SEXP _bayesm_HART_rhierNegbinRw_rcpp_loop(SEXP regdataSEXP, SEXP hessdataSEXP, SEXP ZSEXP, SEXP oldbetasSEXP, SEXP deltabarSEXP, SEXP AdSEXP, SEXP mubarSEXP, SEXP AmuSEXP, SEXP nuSEXP, SEXP VSEXP, SEXP aSEXP, SEXP bSEXP, SEXP RSEXP, SEXP keepSEXP, SEXP sbetaSEXP, SEXP alphacrootSEXP, SEXP nprintSEXP, SEXP drawdeltaSEXP, SEXP olddeltaSEXP, SEXP a_mixSEXP, SEXP oldprobSEXP, SEXP indSEXP, SEXP alphaSEXP, SEXP fixalphaSEXP, SEXP hart_modelSEXP, SEXP hart_covSEXP, SEXP bart_paramsSEXP, SEXP var_paramsSEXP, SEXP phi_paramsSEXP) {
+List rhierNegbinRw_rcpp_loop(List const& regdata, List const& hessdata, mat const& Z, mat oldbetas, vec const& deltabar, mat const& Ad, mat const& mubar, mat const& Amu, double nu, mat const& V, double a, double b, int R, int keep, double sbeta, double alphacroot, int nprint, bool drawdelta, mat olddelta, vec const& a_mix, vec oldprob, vec ind, double alpha, bool fixalpha, std::string const& hart_model, std::string const& hart_cov, List const& bart_params, List const& var_params, List const& phi_params, Rcpp::Nullable<Rcpp::List> state);
+RcppExport SEXP _bayesm_HART_rhierNegbinRw_rcpp_loop(SEXP regdataSEXP, SEXP hessdataSEXP, SEXP ZSEXP, SEXP oldbetasSEXP, SEXP deltabarSEXP, SEXP AdSEXP, SEXP mubarSEXP, SEXP AmuSEXP, SEXP nuSEXP, SEXP VSEXP, SEXP aSEXP, SEXP bSEXP, SEXP RSEXP, SEXP keepSEXP, SEXP sbetaSEXP, SEXP alphacrootSEXP, SEXP nprintSEXP, SEXP drawdeltaSEXP, SEXP olddeltaSEXP, SEXP a_mixSEXP, SEXP oldprobSEXP, SEXP indSEXP, SEXP alphaSEXP, SEXP fixalphaSEXP, SEXP hart_modelSEXP, SEXP hart_covSEXP, SEXP bart_paramsSEXP, SEXP var_paramsSEXP, SEXP phi_paramsSEXP, SEXP stateSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -350,7 +369,8 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< List const& >::type bart_params(bart_paramsSEXP);
     Rcpp::traits::input_parameter< List const& >::type var_params(var_paramsSEXP);
     Rcpp::traits::input_parameter< List const& >::type phi_params(phi_paramsSEXP);
-    rcpp_result_gen = Rcpp::wrap(rhierNegbinRw_rcpp_loop(regdata, hessdata, Z, oldbetas, deltabar, Ad, mubar, Amu, nu, V, a, b, R, keep, sbeta, alphacroot, nprint, drawdelta, olddelta, a_mix, oldprob, ind, alpha, fixalpha, hart_model, hart_cov, bart_params, var_params, phi_params));
+    Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::List> >::type state(stateSEXP);
+    rcpp_result_gen = Rcpp::wrap(rhierNegbinRw_rcpp_loop(regdata, hessdata, Z, oldbetas, deltabar, Ad, mubar, Amu, nu, V, a, b, R, keep, sbeta, alphacroot, nprint, drawdelta, olddelta, a_mix, oldprob, ind, alpha, fixalpha, hart_model, hart_cov, bart_params, var_params, phi_params, state));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -478,14 +498,15 @@ static const R_CallMethodDef CallEntries[] = {
     {"_bayesm_HART_cov_eval_R", (DL_FUNC) &_bayesm_HART_cov_eval_R, 4},
     {"_bayesm_HART_direct_hart_R", (DL_FUNC) &_bayesm_HART_direct_hart_R, 10},
     {"_bayesm_HART_direct_hart_constant_R", (DL_FUNC) &_bayesm_HART_direct_hart_constant_R, 10},
+    {"_bayesm_HART_ensemble_state_R", (DL_FUNC) &_bayesm_HART_ensemble_state_R, 7},
     {"_bayesm_HART_llmnl", (DL_FUNC) &_bayesm_HART_llmnl, 3},
     {"_bayesm_HART_lndIWishart", (DL_FUNC) &_bayesm_HART_lndIWishart, 3},
     {"_bayesm_HART_lndMvn", (DL_FUNC) &_bayesm_HART_lndMvn, 3},
     {"_bayesm_HART_rdirichlet", (DL_FUNC) &_bayesm_HART_rdirichlet, 1},
-    {"_bayesm_HART_rhierLinearMixture_rcpp_loop", (DL_FUNC) &_bayesm_HART_rhierLinearMixture_rcpp_loop, 25},
+    {"_bayesm_HART_rhierLinearMixture_rcpp_loop", (DL_FUNC) &_bayesm_HART_rhierLinearMixture_rcpp_loop, 26},
     {"_bayesm_HART_llmnl_con", (DL_FUNC) &_bayesm_HART_llmnl_con, 4},
-    {"_bayesm_HART_rhierMnlRwMixture_rcpp_loop", (DL_FUNC) &_bayesm_HART_rhierMnlRwMixture_rcpp_loop, 24},
-    {"_bayesm_HART_rhierNegbinRw_rcpp_loop", (DL_FUNC) &_bayesm_HART_rhierNegbinRw_rcpp_loop, 29},
+    {"_bayesm_HART_rhierMnlRwMixture_rcpp_loop", (DL_FUNC) &_bayesm_HART_rhierMnlRwMixture_rcpp_loop, 25},
+    {"_bayesm_HART_rhierNegbinRw_rcpp_loop", (DL_FUNC) &_bayesm_HART_rhierNegbinRw_rcpp_loop, 30},
     {"_bayesm_HART_rmixGibbs", (DL_FUNC) &_bayesm_HART_rmixGibbs, 8},
     {"_bayesm_HART_rmixture", (DL_FUNC) &_bayesm_HART_rmixture, 3},
     {"_bayesm_HART_rmultireg", (DL_FUNC) &_bayesm_HART_rmultireg, 6},
