@@ -1,27 +1,18 @@
 # ==============================================================================
-# marginal_effects() smoke tests under heter-cov for all three model families.
-#
-# These tests verify that:
-#   1. The generic dispatches correctly on heter-cov subclasses
-#      (rhierMnlRwMixtureHeterCov / rhierLinearMixtureHeterCov /
-#       rhierNegbinRwHeterCov inherit from their respective base classes).
-#   2. .marginal_effects_impl() picks `predict_type = "DeltaZ+mu"` for objects
-#      that carry mu in `mu_draw` (heter-cov) just as it does for those that
-#      carry it in `nmix$compdraw` (linear / mix-BART).
-#   3. summary() returns a well-formed `summary.marginal_effects` object.
-#   4. Effects vary across grid points (sanity: not constant in z).
+# marginal_effects() under heter-cov for the three model families: dispatch on
+# the HeterCov subclasses, predict_type = "DeltaZ+mu" from mu_draw, a
+# well-formed summary, and effects that vary in z.
 # ==============================================================================
 
 library(testthat)
 
-# --- shared helper ----------------------------------------------------------
 .run_mfx_check <- function(fit, Z, ncoef) {
   nz <- ncol(Z)
   z_grid <- matrix(NA_real_, nrow = 4L, ncol = nz)
   z_grid[, 1] <- seq(min(Z[, 1]), max(Z[, 1]), length.out = 4L)
 
   mfx <- marginal_effects(fit, z_values = z_grid, Z = Z,
-                          burn = 5L, verbose = FALSE)
+                          burn = 5L, r_verbose = FALSE)
   expect_s3_class(mfx, "marginal_effects")
   expect_equal(nrow(mfx$z_values), 4L)
   expect_length(mfx$avg_betabar_draws, 4L)
@@ -33,8 +24,7 @@ library(testthat)
                     "mean", "q5", "q50", "q95") %in% names(mfx_summary$summary_df)))
   expect_equal(nrow(mfx_summary$summary_df), 4L * ncoef)
 
-  # Effects should vary across grid points (heter-cov delta_Z is non-trivial
-  # in Z so the average across units shouldn't collapse to a single value).
+  # Delta(Z) varies in Z, so the unit average varies across grid points.
   for (k in seq_len(ncoef)) {
     means_k <- subset(mfx_summary$summary_df,
                       mfx_summary$summary_df$coefficient_index == k)$mean
@@ -44,7 +34,7 @@ library(testthat)
   invisible(mfx_summary)
 }
 
-# --- MNL --------------------------------------------------------------------
+# MNL
 test_that("marginal_effects() works for rhierMnlRwMixtureHeterCov", {
   set.seed(20260513L)
   nlgt <- 25L; nvar <- 2L; nz <- 3L; p <- 3L; T_i <- 6L
@@ -60,7 +50,7 @@ test_that("marginal_effects() works for rhierMnlRwMixtureHeterCov", {
     list(y = y, X = X)
   })
   Data <- list(p = p, lgtdata = lgtdata, Z = Z)
-  Prior <- list(ncomp = 1L,
+  Prior <- list(ncomp = 1L, hart_model = "direct",
                 bart    = list(num_trees = 5L),
                 vartree = list(num_trees = 5L))
   Mcmc  <- list(R = 30L, keep = 1L, nprint = 0L)
@@ -71,14 +61,13 @@ test_that("marginal_effects() works for rhierMnlRwMixtureHeterCov", {
   .run_mfx_check(fit, Z = Z, ncoef = nvar)
 })
 
-# --- Linear -----------------------------------------------------------------
 test_that("marginal_effects() works for rhierLinearMixtureHeterCov", {
   sim <- sim_hier_linear(
     nreg = 25L, nobs = 12L, nvar = 1L, nz = 3L,
     const = TRUE, het_observed = "linear",
     target_var_betabar = 1.0, target_var_eps = 0.5,
     sigma_sq = 0.5, seed = 20260513L)
-  Prior <- list(ncomp = 1L,
+  Prior <- list(ncomp = 1L, hart_model = "direct",
                 bart    = list(num_trees = 5L),
                 vartree = list(num_trees = 5L))
   Mcmc  <- list(R = 30L, keep = 1L, nprint = 0L)
@@ -92,14 +81,14 @@ test_that("marginal_effects() works for rhierLinearMixtureHeterCov", {
   .run_mfx_check(fit, Z = sim$Z, ncoef = ncoef)
 })
 
-# --- Negbin -----------------------------------------------------------------
+# Negbin
 test_that("marginal_effects() works for rhierNegbinRwHeterCov", {
   sim <- sim_hier_negbin(
     nreg = 25L, nobs = 12L, nvar = 1L, nz = 3L,
     const = TRUE, het_observed = "linear",
     target_var_betabar = 0.5, target_var_eps = 0.25,
     alpha = 5.0, seed = 20260513L)
-  Prior <- list(ncomp = 1L,
+  Prior <- list(ncomp = 1L, hart_model = "direct",
                 bart    = list(num_trees = 5L),
                 vartree = list(num_trees = 5L))
   Mcmc  <- list(R = 30L, keep = 1L, nprint = 0L)

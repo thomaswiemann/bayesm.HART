@@ -6,9 +6,7 @@
 #   * end-to-end execution via the user wrapper,
 #   * class assignment ("bayesm.HART.HeterCov" marker) and return-slot shape,
 #   * predict.* dispatch on the marker class for "DeltaZ" and "DeltaZ+mu",
-#   * lambda auto-calibration message under r_verbose = TRUE.
-#
-# Recovery accuracy is exercised by dev/smoke-heter-negbin.R.
+#   * the covariance-tree banner under r_verbose = TRUE.
 
 library(testthat)
 
@@ -25,10 +23,10 @@ make_small_negbin_sim <- function(seed = 20260513L,
 }
 
 # --- input validation --------------------------------------------------------
-test_that("vartree requires bart, ncomp == 1, and Z (drawdelta = TRUE)", {
+test_that("vartree requires hart_model, ncomp == 1, and Z (drawdelta = TRUE)", {
   sim <- make_small_negbin_sim()
 
-  # vartree without bart -> error
+  # vartree without hart_model -> error
   expect_error(
     capture.output(
       rhierNegbinRw(
@@ -37,7 +35,7 @@ test_that("vartree requires bart, ncomp == 1, and Z (drawdelta = TRUE)", {
         Mcmc  = list(R = 4L, keep = 1L, nprint = 0L),
         r_verbose = FALSE)
     ),
-    regexp = "requires Prior\\$bart"
+    regexp = "require Prior\\$hart_model"
   )
 
   # ncomp > 1 with vartree -> error
@@ -45,7 +43,7 @@ test_that("vartree requires bart, ncomp == 1, and Z (drawdelta = TRUE)", {
     capture.output(
       rhierNegbinRw(
         Data  = list(regdata = sim$regdata, Z = sim$Z),
-        Prior = list(ncomp = 2L,
+        Prior = list(ncomp = 2L, hart_model = "direct",
                      bart    = list(num_trees = 5L),
                      vartree = list(num_trees = 5L)),
         Mcmc  = list(R = 4L, keep = 1L, nprint = 0L),
@@ -59,13 +57,13 @@ test_that("vartree requires bart, ncomp == 1, and Z (drawdelta = TRUE)", {
     capture.output(
       rhierNegbinRw(
         Data  = list(regdata = sim$regdata),       # no Z
-        Prior = list(ncomp = 1L,
+        Prior = list(ncomp = 1L, hart_model = "direct",
                      bart    = list(num_trees = 5L),
                      vartree = list(num_trees = 5L)),
         Mcmc  = list(R = 4L, keep = 1L, nprint = 0L),
         r_verbose = FALSE)
     ),
-    regexp = "requires Z"
+    regexp = "requires Data\\$Z"
   )
 })
 
@@ -73,9 +71,9 @@ test_that("vartree requires bart, ncomp == 1, and Z (drawdelta = TRUE)", {
 test_that("vartree only with nvar > 1 auto-promotes to full Cholesky", {
   # Default sim has nvar = 1 + intercept = ncoef = 2, so auto-promotion fires.
   sim   <- make_small_negbin_sim()
-  Prior <- list(ncomp = 1L,
+  Prior <- list(ncomp = 1L, hart_model = "direct",
                 bart    = list(num_trees = 5L),
-                vartree = list(num_trees = 5L))   # NO phitree
+                vartree = list(num_trees = 5L))   # no phitree
   Mcmc  <- list(R = 20L, keep = 1L, nprint = 0L)
 
   capture.output({
@@ -89,22 +87,23 @@ test_that("vartree only with nvar > 1 auto-promotes to full Cholesky", {
   expect_s3_class(fit, "rhierNegbinRw")
 
   expected_slots <- c("bart_models", "var_models", "phi_models", "mu_draw",
+                      "mean_scale_draw",
                       "varcount", "varprob", "var_varcount", "var_varprob",
                       "betadraw", "alphadraw", "loglike",
-                      "acceptrbeta", "acceptralpha")
+                      "acceptrbeta", "acceptralpha", "hart", "restart")
   expect_named(fit, expected_slots, ignore.order = TRUE)
   expect_null(fit$nmix)
   expect_null(fit$Deltadraw)
 
   ncoef <- ncol(sim$regdata[[1]]$X)
-  # Auto-promotion: phi_models is non-null and jagged (length-1 at j=2 here).
+  # phi_models is jagged.
   expect_length(fit$phi_models, ncoef)
   expect_length(fit$phi_models[[2]], 1L)
 
   expect_equal(dim(fit$mu_draw),  c(20L, ncoef))
   expect_equal(dim(fit$betadraw), c(length(sim$regdata), ncoef, 20L))
   expect_length(fit$alphadraw, 20L)
-  expect_length(fit$bart_models, ncoef)
+  expect_equal(fit$bart_models$treedraws$leaf_dim, ncoef)
   expect_length(fit$var_models,  ncoef)
   expect_s3_class(fit$mu_draw,    "mcmc")
   expect_s3_class(fit$alphadraw,  "mcmc")
@@ -117,7 +116,7 @@ test_that("vartree only with ncoef == 1 stays diagonal (scalar case)", {
     const = FALSE, het_observed = "linear",
     target_var_betabar = 0.5, target_var_eps = 0.25,
     alpha = 5.0, seed = 20260513L)
-  Prior <- list(ncomp = 1L,
+  Prior <- list(ncomp = 1L, hart_model = "direct",
                 bart    = list(num_trees = 5L),
                 vartree = list(num_trees = 5L))
   Mcmc  <- list(R = 20L, keep = 1L, nprint = 0L)
@@ -130,18 +129,18 @@ test_that("vartree only with ncoef == 1 stays diagonal (scalar case)", {
 
   expect_s3_class(fit, "rhierNegbinRwHeterCov")
   expect_null(fit$phi_models)
-  expect_length(fit$bart_models, 1L)
+  expect_equal(fit$bart_models$treedraws$leaf_dim, 1L)
   expect_length(fit$var_models,  1L)
   expect_equal(dim(fit$mu_draw), c(20L, 1L))
 })
 
-# --- Phase 2: vartree + phitree ---------------------------------------------
-test_that("Phase 2 (vartree + phitree) returns jagged phi_models", {
-  # nvar = 2 so we have one off-diagonal phi_{2,1}(.) tree
+# --- vartree + phitree ------------------------------------------------------
+test_that("vartree + phitree returns jagged phi_models", {
+  # nvar = 2: one off-diagonal tree phi_21.
   sim   <- make_small_negbin_sim(nvar = 2L, nz = 2L,
                                  nreg = 25L, nobs = 15L,
                                  seed = 20260514L)
-  Prior <- list(ncomp = 1L,
+  Prior <- list(ncomp = 1L, hart_model = "direct",
                 bart    = list(num_trees = 5L),
                 vartree = list(num_trees = 5L),
                 phitree = list(num_trees = 5L))
@@ -175,7 +174,7 @@ test_that("predict.rhierNegbinRw dispatches via marker class for heter-cov", {
   sim   <- make_small_negbin_sim(nvar = 2L, nz = 2L,
                                  nreg = 25L, nobs = 15L,
                                  seed = 20260515L)
-  Prior <- list(ncomp = 1L,
+  Prior <- list(ncomp = 1L, hart_model = "direct",
                 bart    = list(num_trees = 5L),
                 vartree = list(num_trees = 5L),
                 phitree = list(num_trees = 5L))
@@ -225,12 +224,38 @@ test_that("predict.rhierNegbinRw dispatches via marker class for heter-cov", {
   }
 })
 
-# --- lambda auto-calibration --------------------------------------------------
-test_that("auto-calibrated lambda is announced when Prior$vartree$lambda is NULL", {
-  sim   <- make_small_negbin_sim()
-  Prior <- list(ncomp = 1L,
+# --- caches -------------------------------------------------------------------
+test_that("DeltaZ and SigmaZ caches match tree evaluation", {
+  sim   <- make_small_negbin_sim(nvar = 2L, nz = 2L, nreg = 25L, nobs = 15L,
+                                 seed = 20260516L)
+  Prior <- list(ncomp = 1L, hart_model = "direct",
                 bart    = list(num_trees = 5L),
-                vartree = list(num_trees = 5L))   # no lambda -> auto
+                vartree = list(num_trees = 5L))
+  Mcmc  <- list(R = 10L, keep = 1L, nprint = 0L)
+  capture.output({
+    fit <- rhierNegbinRw(
+      Data  = list(regdata = sim$regdata, Z = sim$Z),
+      Prior = Prior, Mcmc = Mcmc, r_verbose = FALSE)
+  })
+  newdata <- list(Z = sim$Z)
+  dz <- predict(fit, newdata = newdata, type = "DeltaZ", burn = 0L,
+                r_verbose = FALSE)
+  expect_equal(dz, bayesm.HART:::.pw_vec_trees(sim$Z, fit$bart_models$treedraws,
+                                           dim(fit$betadraw)[2]),
+               tolerance = 1e-7, ignore_attr = TRUE)
+  sz <- predict(fit, newdata = newdata, type = "SigmaZ", burn = 0L,
+                r_verbose = FALSE)
+  sz_trees <- bayesm.HART:::.calculate_sigma_z(
+    fit, newdata, burn = 0, r_verbose = FALSE, force_tree_eval = TRUE)
+  expect_equal(sz, sz_trees, tolerance = 1e-7, ignore_attr = TRUE)
+})
+
+# --- verbose banner -----------------------------------------------------------
+test_that("verbose output lists the covariance-tree priors", {
+  sim   <- make_small_negbin_sim()
+  Prior <- list(ncomp = 1L, hart_model = "direct",
+                bart    = list(num_trees = 5L),
+                vartree = list(num_trees = 5L))
   Mcmc  <- list(R = 6L, keep = 1L, nprint = 0L)
 
   out <- capture.output({
@@ -240,8 +265,6 @@ test_that("auto-calibrated lambda is announced when Prior$vartree$lambda is NULL
   })
 
   expect_s3_class(fit, "rhierNegbinRwHeterCov")
-  expect_true(any(grepl("auto-calibrated", out)),
-              info = "expected lambda auto-calibration line in verbose output")
-  expect_true(any(grepl("Heteroscedastic Sigma", out)),
-              info = "expected heter-cov banner in verbose output")
+  expect_true(any(grepl("Covariance trees", out)))
+  expect_true(any(grepl("vartree: num_trees = 5", out)))
 })

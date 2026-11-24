@@ -23,9 +23,8 @@ struct BackendPackPayload {
 //   prior_mean(i) returns m_i such that theta_i | . ~ N(m_i, Sigma_i).
 //   Returned references remain valid until the next draw_iteration() call.
 //
-// Implementations:
-//   GlobalCovarianceBackend   - mixture-of-normals + optional BART/linear delta
-//   CovarDepCovarianceBackend - modified-Cholesky tree ensembles for Sigma(Z_i)
+// Implementations: GlobalCovarianceBackend (bayesm paths), NormalizedHartBackend,
+// DirectHartBackend.
 class CovarianceBackend {
 public:
     virtual ~CovarianceBackend() = default;
@@ -45,6 +44,8 @@ public:
 
     // Post-loop: return all backend outputs.
     virtual BackendPackPayload pack() = 0;
+    virtual Rcpp::List checkpoint() = 0;
+    virtual void restore(Rcpp::List const& state) = 0;
 
     // Report capabilities (static after init).
     virtual BackendCapabilities capabilities() const = 0;

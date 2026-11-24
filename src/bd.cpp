@@ -44,7 +44,11 @@ bool bd(tree& x, xinfo& xi, dinfo& di, pinfo& pi, double sigma,
       //compute alpha
       double alpha=0.0, lalpha=0.0;
       double lhl, lhr, lht;
-      if((nl>=5) && (nr>=5)) { //cludge?
+      // Admissibility floor: a birth leaving fewer than pi.nmin units in a
+      // child is rejected.  This truncates the tree-prior support; prior and
+      // proposal share the same grid rules, so the MH ratio stays exact.
+      // The default (5) reproduces the historical hard-coded constant.
+      if((nl>=pi.nmin) && (nr>=pi.nmin)) {
          lhl = lh(nl,syl,sigma,pi.tau);
          lhr = lh(nr,syr,sigma,pi.tau);
          lht = lh(nl+nr,syl+syr,sigma,pi.tau);

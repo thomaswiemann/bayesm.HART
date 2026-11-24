@@ -7,8 +7,6 @@
 #   * class assignment and return-slot shape,
 #   * sign restrictions are honored under heter-cov (positivity preserved),
 #   * predict.* dispatch on "rhierMnlRwMixtureHeterCov" for all five types.
-#
-# Recovery accuracy is exercised by the longer dev/smoke-heter-mnl*.R scripts.
 
 library(testthat)
 
@@ -31,10 +29,10 @@ make_small_sim <- function(seed = 20260512L, nlgt = 30L, nvar = 2L, nz = 2L,
        theta_true = theta_true, Z = Z, p = p, nvar = nvar)
 }
 
-test_that("vartree requires bart, ncomp == 1, and Z", {
+test_that("vartree requires hart_model, ncomp == 1, and Z", {
   sim <- make_small_sim()
 
-  # vartree without bart
+  # vartree without hart_model
   expect_error(
     capture.output(
       rhierMnlRwMixture(
@@ -43,7 +41,7 @@ test_that("vartree requires bart, ncomp == 1, and Z", {
         Mcmc  = list(R = 4L, keep = 1L, nprint = 0L),
         r_verbose = FALSE)
     ),
-    regexp = "requires Prior\\$bart"
+    regexp = "require Prior\\$hart_model"
   )
 
   # ncomp > 1 with vartree
@@ -51,7 +49,8 @@ test_that("vartree requires bart, ncomp == 1, and Z", {
     capture.output(
       rhierMnlRwMixture(
         Data  = sim$Data,
-        Prior = list(ncomp = 2L, bart = list(num_trees = 5L),
+        Prior = list(ncomp = 2L, hart_model = "direct",
+                     bart = list(num_trees = 5L),
                      vartree = list(num_trees = 5L)),
         Mcmc  = list(R = 4L, keep = 1L, nprint = 0L),
         r_verbose = FALSE)
@@ -60,13 +59,10 @@ test_that("vartree requires bart, ncomp == 1, and Z", {
   )
 })
 
-test_that("Sign restrictions under heter-cov preserve positivity (lifted validator)", {
-  # Sigma(Z) is the heteroscedastic covariance of beta* = log|beta|/SignRes;
-  # post-loop transform beta = SignRes * exp(beta*) preserves the sign for
-  # every kept draw.  This regression test guards against any future change
-  # that re-introduces a SignRes block in .validate_heter_cov.
+test_that("Sign restrictions under heter-cov preserve positivity", {
+  # beta = SignRes * exp(beta*) keeps the sign of every kept draw.
   sim <- make_small_sim()                  # nvar = 2L
-  Prior <- list(ncomp = 1L,
+  Prior <- list(ncomp = 1L, hart_model = "direct",
                 SignRes = c(1L, 0L),       # constrain coef 1 to be positive
                 bart    = list(num_trees = 5L),
                 vartree = list(num_trees = 5L))
@@ -86,15 +82,11 @@ test_that("Sign restrictions under heter-cov preserve positivity (lifted validat
 })
 
 test_that("vartree only with nvar > 1 auto-promotes to full Cholesky", {
-  # Diagonal-only Sigma(Z) for nvar > 1 would force every conditional
-  # cross-correlation to hard zero at every Z, which is essentially never a
-  # believable posterior.  The wrapper auto-synthesizes phi_params from the
-  # default .parse_phi_params(NULL, nz) so the user gets full Cholesky even
-  # without explicitly passing Prior$phitree.
+  # nvar > 1 without phitree: the off-diagonal ensembles exist anyway.
   sim <- make_small_sim()                # nvar = 2L
-  Prior <- list(ncomp = 1L,
+  Prior <- list(ncomp = 1L, hart_model = "direct",
                 bart    = list(num_trees = 5L),
-                vartree = list(num_trees = 5L))   # NO phitree
+                vartree = list(num_trees = 5L))   # no phitree
   Mcmc  <- list(R = 20L, keep = 1L, nprint = 0L)
 
   capture.output({
@@ -106,10 +98,11 @@ test_that("vartree only with nvar > 1 auto-promotes to full Cholesky", {
   expect_s3_class(fit, "rhierMnlRwMixture")
   expect_named(fit,
                c("bart_models", "var_models", "phi_models", "mu_draw",
-                 "varcount", "varprob", "var_varcount", "var_varprob",
-                 "betadraw", "loglike", "SignRes", "acceptrbeta"),
+                 "mean_scale_draw", "varcount", "varprob", "var_varcount",
+                 "var_varprob", "betadraw", "loglike", "SignRes",
+                 "acceptrbeta", "hart", "restart"),
                ignore.order = TRUE)
-  # Auto-promotion: phi_models is now non-null and properly jagged.
+  # phi_models is jagged: entry j holds j - 1 trees.
   expect_length(fit$phi_models, sim$nvar)
   for (j in seq_len(sim$nvar)) {
     if (j == 1L) {
@@ -120,16 +113,20 @@ test_that("vartree only with nvar > 1 auto-promotes to full Cholesky", {
     }
   }
   expect_equal(dim(fit$mu_draw), c(20L, sim$nvar))
+  expect_equal(dim(fit$mean_scale_draw), c(20L, sim$nvar))
+  expect_true(all(fit$mean_scale_draw > 0))
   expect_equal(dim(fit$betadraw)[1:2], c(nrow(sim$Z), sim$nvar))
-  expect_length(fit$bart_models, sim$nvar)
+  # One vector-leaf ensemble with a shared partition.
+  expect_equal(fit$bart_models$treedraws$leaf_dim, sim$nvar)
+  expect_equal(dim(fit$varcount), c(ncol(sim$Z), 20L))
   expect_length(fit$var_models, sim$nvar)
+  expect_equal(dim(fit$var_varcount), c(ncol(sim$Z), sim$nvar, 20L))
 })
 
 test_that("vartree only with nvar == 1 stays diagonal (scalar case)", {
-  # When nvar == 1 there are no off-diagonals to model, so phi_models is
-  # legitimately NULL and Sigma(Z) is just d_1(Z).  Auto-promotion is a no-op.
+  # nvar == 1: no off-diagonals, Sigma(Z) = d_1(Z).
   sim <- make_small_sim(nvar = 1L)
-  Prior <- list(ncomp = 1L,
+  Prior <- list(ncomp = 1L, hart_model = "direct",
                 bart    = list(num_trees = 5L),
                 vartree = list(num_trees = 5L))
   Mcmc  <- list(R = 20L, keep = 1L, nprint = 0L)
@@ -141,26 +138,19 @@ test_that("vartree only with nvar == 1 stays diagonal (scalar case)", {
 
   expect_s3_class(fit, "rhierMnlRwMixtureHeterCov")
   expect_null(fit$phi_models)
-  expect_length(fit$bart_models, 1L)
+  expect_equal(fit$bart_models$treedraws$leaf_dim, 1L)
   expect_length(fit$var_models,  1L)
   expect_equal(dim(fit$mu_draw), c(20L, 1L))
 })
 
-test_that("DART (sparse=TRUE) on vartree concentrates var_varprob away from uniform", {
-  # Validates the full DART pipeline (parse Prior$vartree$sparse + burn ->
-  # initializeVarBART:setdart -> startdart at burn+1).  Phi-tree DART is plumbed
-  # via the same mechanism (s.phi_sparse / s.phi_burn / startdart in
-  # hetercov_draw_iter); validating the var path confirms the activation.
-  #
-  # Robust check: under a uniform Dirichlet over `nz` columns, each varprob
-  # entry has expected value 1/nz.  DART, post-activation, drives varprob away
-  # from uniform whenever ANY column is more informative than others; we don't
-  # over-specify which one wins (sample-size noise can shuffle the winner).
+test_that("DART on vartree moves var_varprob away from uniform", {
+  # Only Z[, 1] drives the variance; after activation var_varprob leaves 1/nz.
   set.seed(20260513L)
-  nlgt <- 30L; nz <- 5L; nvar <- 1L; p <- 3L; T_i <- 6L
-  Z <- cbind(runif(nlgt, -1, 1), matrix(runif(nlgt * (nz - 1L), -1, 1), nlgt, nz - 1L))
+  nlgt <- 60L; nz <- 5L; nvar <- 1L; p <- 3L; T_i <- 6L
+  Z <- cbind(runif(nlgt, -1, 1),
+             matrix(runif(nlgt * (nz - 1L), -1, 1), nlgt, nz - 1L))
   Z <- scale(Z, center = TRUE, scale = FALSE)
-  theta_true <- rnorm(nlgt, mean = 0, sd = exp(0.6 * Z[, 1]))
+  theta_true <- rnorm(nlgt, mean = 0, sd = exp(1.0 * Z[, 1]))
   lgtdata <- lapply(seq_len(nlgt), function(i) {
     X <- matrix(rnorm(T_i * p * nvar), T_i * p, nvar)
     eta  <- X %*% theta_true[i]
@@ -170,29 +160,26 @@ test_that("DART (sparse=TRUE) on vartree concentrates var_varprob away from unif
     list(y = y, X = X)
   })
   Data <- list(p = p, lgtdata = lgtdata, Z = Z)
-  Prior <- list(ncomp = 1L,
+  Prior <- list(ncomp = 1L, hart_model = "direct",
                 bart    = list(num_trees = 5L),
                 vartree = list(num_trees = 20L, sparse = TRUE, burn = 5L))
-  Mcmc  <- list(R = 60L, keep = 1L, nprint = 0L)
+  Mcmc  <- list(R = 200L, keep = 1L, nprint = 0L)
 
   capture.output({
     fit <- rhierMnlRwMixture(Data = Data, Prior = Prior, Mcmc = Mcmc,
                              r_verbose = FALSE)
   })
-  vp_post <- apply(fit$var_varprob[, 1, 30:60], 1, mean)
-  # If DART is active, the *most* selected column should poll meaningfully
-  # above uniform (1/nz = 0.2) and the *least* selected should be squeezed
-  # below uniform.  Both directions must be present for a true non-uniform
-  # posterior over Z columns -- a sufficient signature of DART activation.
+  vp_post <- apply(fit$var_varprob[, 1, 101:200], 1, mean)
+  # Largest column above uniform, smallest below.
   expect_true(max(vp_post) > 1.5 * (1 / nz),
               info = sprintf("max vp=%.3f, uniform=%.3f", max(vp_post), 1 / nz))
   expect_true(min(vp_post) < (1 / nz),
               info = sprintf("min vp=%.3f, uniform=%.3f", min(vp_post), 1 / nz))
 })
 
-test_that("Phase 2 (vartree + phitree) runs end-to-end and returns jagged phi_models", {
+test_that("vartree + phitree returns jagged phi_models", {
   sim <- make_small_sim()
-  Prior <- list(ncomp = 1L,
+  Prior <- list(ncomp = 1L, hart_model = "direct",
                 bart    = list(num_trees = 5L),
                 vartree = list(num_trees = 5L),
                 phitree = list(num_trees = 5L))
@@ -221,7 +208,7 @@ test_that("Phase 2 (vartree + phitree) runs end-to-end and returns jagged phi_mo
 
 test_that("predict.rhierMnlRwMixtureHeterCov dispatches for all five types", {
   sim <- make_small_sim()
-  Prior <- list(ncomp = 1L,
+  Prior <- list(ncomp = 1L, hart_model = "direct",
                 bart    = list(num_trees = 5L),
                 vartree = list(num_trees = 5L),
                 phitree = list(num_trees = 5L))
@@ -259,14 +246,15 @@ test_that("predict.rhierMnlRwMixtureHeterCov dispatches for all five types", {
   }
 
   # posterior choice_probs: list of npred-by-... arrays for the original units
-  pp <- predict(fit, newdata = newdata, mode = "posterior", type = "choice_probs", burn = 5L,
-                r_verbose = FALSE)
+  pp <- predict(fit, newdata = newdata, mode = "posterior",
+                type = "choice_probs", burn = 5L, r_verbose = FALSE)
   expect_length(pp, nrow(sim$Z))
   expect_equal(dim(pp[[1]])[2:3], c(sim$p, 15L))
 
   # prior choice_probs: averaged over nsim draws of eta = mu + Sigma(Z*)^{1/2} z
-  prp <- predict(fit, newdata = newdata, mode = "prior", type = "choice_probs", burn = 5L,
-                 nsim = 3L, r_verbose = FALSE)
+  prp <- predict(fit, newdata = newdata, mode = "prior",
+                 type = "choice_probs", burn = 5L, nsim = 3L,
+                 r_verbose = FALSE)
   expect_length(prp, npred)
   expect_equal(dim(prp[[1]])[2:3], c(sim$p, 15L))
   # probabilities sum to 1 across alternatives (within numerical tolerance)
@@ -289,21 +277,51 @@ test_that("predict.rhierMnlRwMixtureHeterCov dispatches for all five types", {
   }
 })
 
-test_that("auto-calibrated lambda is used when Prior$vartree$lambda is NULL", {
+test_that("DeltaZ is f(Z) from the mean trees alone and matches the cache", {
   sim <- make_small_sim()
-  Prior <- list(ncomp = 1L,
+  Prior <- list(ncomp = 1L, hart_model = "direct",
                 bart    = list(num_trees = 5L),
-                vartree = list(num_trees = 5L))   # no lambda -> auto
-  Mcmc  <- list(R = 6L, keep = 1L, nprint = 0L)
+                vartree = list(num_trees = 5L))
+  Mcmc  <- list(R = 10L, keep = 1L, nprint = 0L)
+  capture.output({
+    fit <- rhierMnlRwMixture(Data = sim$Data, Prior = Prior, Mcmc = Mcmc,
+                             r_verbose = FALSE)
+    fit_b <- rhierMnlRwMixture(Data = sim$Data, Mcmc = Mcmc, r_verbose = FALSE,
+                               Prior = modifyList(Prior, list(
+                                 vartree = list(num_trees = 3L))))
+  })
+  newdata <- list(Z = sim$Z)
+  from_cache <- predict(fit, newdata = newdata, type = "DeltaZ", burn = 0L,
+                        r_verbose = FALSE)
+  from_trees <- bayesm.HART:::.pw_vec_trees(sim$Z, fit$bart_models$treedraws,
+                                            dim(fit$betadraw)[2])
+  expect_equal(from_cache, from_trees, tolerance = 1e-7, ignore_attr = TRUE)
+  # Swapping in other covariance trees leaves DeltaZ unchanged.
+  mixed <- fit
+  mixed$var_models <- fit_b$var_models
+  mixed$phi_models <- fit_b$phi_models
+  pred_mixed <- bayesm.HART:::.calculate_delta_z(
+    mixed, newdata, burn = 0, r_verbose = FALSE, force_tree_eval = TRUE)
+  expect_equal(pred_mixed, from_trees, tolerance = 1e-7, ignore_attr = TRUE)
+  # SigmaZ: cache and tree evaluation agree.
+  sig_cache <- predict(fit, newdata = newdata, type = "SigmaZ", burn = 0L,
+                       r_verbose = FALSE)
+  sig_trees <- bayesm.HART:::.calculate_sigma_z(
+    fit, newdata, burn = 0, r_verbose = FALSE, force_tree_eval = TRUE)
+  expect_equal(sig_cache, sig_trees, tolerance = 1e-7, ignore_attr = TRUE)
+})
 
-  expect_message(
-    {
-      capture.output({
-        fit <- rhierMnlRwMixture(Data = sim$Data, Prior = Prior, Mcmc = Mcmc,
-                                 r_verbose = TRUE)
-      })
-    },
-    regexp = NA   # only verify execution; message inspection requires output capture
-  )
-  expect_s3_class(fit, "rhierMnlRwMixtureHeterCov")
+test_that("verbose output lists the covariance-tree priors", {
+  sim <- make_small_sim()
+  Prior <- list(ncomp = 1L, hart_model = "direct",
+                bart    = list(num_trees = 5L),
+                vartree = list(num_trees = 5L, v0 = 0.5))
+  Mcmc  <- list(R = 4L, keep = 1L, nprint = 0L)
+  out <- capture.output({
+    fit <- rhierMnlRwMixture(Data = sim$Data, Prior = Prior, Mcmc = Mcmc,
+                             r_verbose = TRUE)
+  })
+  expect_true(any(grepl("Covariance trees \\(full Cholesky\\)", out)))
+  expect_true(any(grepl("vartree: num_trees = 5, tau = 1 .*v0 = 0.5 0.5", out)))
+  expect_equal(fit$hart$priors$vartree$v0, c(0.5, 0.5))
 })

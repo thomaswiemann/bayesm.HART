@@ -2,7 +2,7 @@
 % Please edit documentation in R/simple_sim_hier_mnl.R
 \name{simple_sim_hier_mnl}
 \alias{simple_sim_hier_mnl}
-\title{Simulate Hierarchical MNL Data with Predefined Settings & Var Control}
+\title{Simulate Hierarchical MNL Data with Target Variances}
 \usage{
 simple_sim_hier_mnl(
   nlgt,
@@ -24,7 +24,7 @@ simple_sim_hier_mnl(
 \item{het_observed}{Character. Functional form of observed heterogeneity
 (betabar_i = f(Z_i)). Options: "none", "linear", "step", "friedman".}
 
-\item{target_var_betabar}{Numeric. Target variance for the \strong{first coefficient}
+\item{target_var_betabar}{Numeric. Target variance for the first coefficient
 of the observed component betabar_i = f(Z_i). Must be non-negative.
 The first coefficient will be centered to have mean zero. The remaining
 coefficients (2 to ncoef) are fixed constants \code{c(-1, 1, -1, 1)}.
@@ -39,10 +39,9 @@ unobserved component eps_i. Must be non-negative. Controls \code{sigma_inv_diag}
 Output list from sim_hier_mnl.
 }
 \description{
-A wrapper around sim_hier_mnl (R/sim_hier_mnl.R) providing simpler control
-over common DGPs using a custom betabar function. Fixes p=3, nXa=1, nXd=1,
-const=TRUE, ncomp=1. Allows specifying target variances for betabar_i (with
-mean zero for the first coef) and eps_i.
+Calls \code{sim_hier_mnl()} with p = 3, nXa = 1, nXd = 1, intercepts and one
+mixture component, and with target variances for betabar_i (first
+coefficient, mean zero) and eps_i.
 }
 \examples{
 \dontrun{
@@ -56,7 +55,7 @@ sim_lin <- simple_sim_hier_mnl(nlgt = 100, nT = 10, nz = 5,
 # Check dimensions and structure
 print(names(sim_lin))
 print(sim_lin$true_values$dimensions)
-print(str(sim_lin$lgtdata[[1]])) # Structure for one individual
+print(str(sim_lin$lgtdata[[1]]))
 if (!is.null(sim_lin$Z)) print(dim(sim_lin$Z))
 
 # Plot observed vs unobserved components for first coefficient
@@ -83,7 +82,7 @@ if (!is.null(sim_fried$Z) && ncol(sim_fried$Z) > 0) {
 # --- Simulate data with no observed heterogeneity ---
 sim_none <- simple_sim_hier_mnl(nlgt = 100, nT = 10, nz = 5,
                                   het_observed = "none",
-                                  target_var_betabar = 0, # Should be ignored
+                                  target_var_betabar = 0, # ignored
                                   target_var_eps = 1.0,
                                   seed = 789)
 

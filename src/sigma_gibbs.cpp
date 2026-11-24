@@ -1,142 +1,154 @@
-// Cholesky-Gibbs block update for (mu, Sigma) in the HART model.
-//
-// Math: discussions/2026-05-14-cholesky-gibbs-sigma.md
-// Plan: discussions/2026-05-14-cholesky-gibbs-implementation-plan.md
+// Conjugate (mu, L) blocks of the normalized HART model.  See sigma_gibbs.h.
 
 #include "sigma_gibbs.h"
-
-// [[Rcpp::depends(RcppArmadillo)]]
 
 using namespace arma;
 
 namespace {
 
-// Slice sample on u = log(L_jj).  Density (up to constant):
-//   pi(u) propto exp((a+1) u - 0.5 b exp(2u) - c exp(u))
-// Strictly log-concave for a > 0, so stepping-out + shrinkage is robust.
+// Statistics of the covariance block: V = Psi + sum x x^T, M = sum f* x^T.
+void cholesky_stats(mat const& theta, mat const& fstar, vec const& mu,
+                    mat const& Psi, mat& V, mat& M) {
+    const uword D = Psi.n_rows;
+    V = Psi;
+    M.zeros(D, D);
+    for (uword i = 0; i < theta.n_rows; ++i) {
+        vec x = theta.row(i).t() - mu;
+        V += x * x.t();
+        M += fstar.row(i).t() * x.t();
+    }
+}
+
+// Statistics of the mean block: P = Amu + n L^T L,
+// b = Amu mubar + L^T sum_i (L theta_i - f*_i).
+void mu_stats(mat const& L, mat const& theta, mat const& fstar,
+              vec const& mubar, mat const& Amu, mat& P, vec& b) {
+    const uword n = theta.n_rows, D = L.n_rows;
+    P = Amu + (double)n * (L.t() * L);
+    vec s(D, fill::zeros);
+    for (uword i = 0; i < n; ++i) s += L * theta.row(i).t() - fstar.row(i).t();
+    b = Amu * mubar + L.t() * s;
+}
+
+// Gaussian kernel of L_jk (k < j) given the other entries of row j.
+void offdiag_kernel(mat const& V, mat const& M, mat const& L,
+                    uword j, uword k, double& mean, double& prec) {
+    double s = M(j, k);
+    for (uword c = 0; c <= j; ++c) if (c != k) s -= V(k, c) * L(j, c);
+    prec = V(k, k);
+    mean = s / prec;
+}
+
+// Tilted kernel of L_jj: L^a exp(-b L^2 / 2 - c L) on L > 0 (j 0-based).
+void diag_kernel(mat const& V, mat const& M, mat const& L, uword j,
+                 double nu, uword n, uword D, double& a, double& b, double& c) {
+    a = nu + (double)n - (double)D + (double)j;
+    b = V(j, j);
+    c = -M(j, j);
+    for (uword cc = 0; cc < j; ++cc) c += V(j, cc) * L(j, cc);
+}
+
+// Slice sampler on u = log L_jj for
+//   pi(u) propto exp{(a + 1) u - b e^{2u} / 2 - c e^u},
+// unimodal for a > -1 (b t^2 + c t - (a + 1) = 0 has one positive root
+// t = e^u); stepping out with a randomized budget, then shrinkage.
 double slice_log_diag(double u0, double a, double b, double c,
                       double w, int max_steps, rn& gen) {
-    auto logp = [&](double u) {
-        double eu  = std::exp(u);
-        double e2u = eu * eu;
+    auto logp = [&](double u) -> double {
+        double eu = std::exp(u), e2u = eu * eu;
+        if (!std::isfinite(e2u)) return -INFINITY;   // beyond any support
         return (a + 1.0) * u - 0.5 * b * e2u - c * eu;
     };
-
-    double f0 = logp(u0);
-    double log_y = f0 - gen.exp();
-
-    double L_pt = u0 - w * gen.uniform();
-    double R_pt = L_pt + w;
+    double log_y = logp(u0) - gen.exp();
+    double lo = u0 - w * gen.uniform(), hi = lo + w;
     int J = (int)std::floor(max_steps * gen.uniform());
     int K = (max_steps - 1) - J;
-
-    while (J > 0 && logp(L_pt) > log_y) {
-        L_pt -= w;
-        --J;
+    while (J > 0 && logp(lo) > log_y) { lo -= w; --J; }
+    while (K > 0 && logp(hi) > log_y) { hi += w; --K; }
+    for (int it = 0; it < 100000; ++it) {
+        double u = lo + (hi - lo) * gen.uniform();
+        if (logp(u) > log_y) return u;
+        if (u < u0) lo = u; else hi = u;
     }
-    while (K > 0 && logp(R_pt) > log_y) {
-        R_pt += w;
-        --K;
-    }
-
-    for (int it = 0; it < 200; ++it) {
-        double u_new = L_pt + (R_pt - L_pt) * gen.uniform();
-        if (logp(u_new) > log_y) return u_new;
-        if (u_new < u0) L_pt = u_new; else R_pt = u_new;
-    }
-    return u0;
+    Rcpp::stop("slice_log_diag: shrinkage did not terminate (a=%g, b=%g, c=%g).",
+               a, b, c);
 }
 
+}  // namespace
+
+void draw_mu_normalized(vec& mu, mat const& L, mat const& theta,
+                        mat const& fstar, vec const& mubar, mat const& Amu,
+                        rn& gen) {
+    mat P; vec b;
+    mu_stats(L, theta, fstar, mubar, Amu, P, b);
+    mat U = chol(P);                                        // U^T U = P
+    vec m = solve(trimatu(U), solve(trimatl(U.t()), b));
+    vec z(L.n_rows);
+    for (uword d = 0; d < z.n_elem; ++d) z(d) = gen.normal();
+    mu = m + solve(trimatu(U), z);                          // cov U^{-1} U^{-T}
 }
 
-void sigma_mu_block_gibbs(
-    mat& L,
-    vec& mu,
-    mat const& theta,
-    mat const& delta,
-    mat const& Psi,
-    double nu,
-    vec const& mubar0,
-    double Amu_scalar,
-    rn& gen) {
-
-    const uword D = L.n_rows;
-    const uword n = theta.n_rows;
-
-    // Sufficient statistics.  Handle n = 0 explicitly: with no data the
-    // posterior reduces to the prior (IW(nu, Psi) on Sigma, N(mubar0,
-    // Sigma/Amu) on mu); S, M, S_delta, theta_bar all collapse to zero.
-    mat S(D, D, fill::zeros);
-    mat M(D, D, fill::zeros);
-    vec S_delta(D, fill::zeros);
-    vec theta_bar(D, fill::zeros);
-    if (n > 0) {
-        vec x_i(D, fill::zeros);
-        vec d_i(D, fill::zeros);
-        for (uword i = 0; i < n; ++i) {
-            x_i = theta.row(i).t() - mu;
-            d_i = delta.row(i).t();
-            S += x_i * x_i.t();
-            M += d_i * x_i.t();
-            S_delta += d_i;
-            theta_bar += theta.row(i).t();
-        }
-        theta_bar /= static_cast<double>(n);
-    }
-    mat V = Psi + S;
-
-    // Cholesky sweep
+void draw_cholesky_sweep(mat& L, mat const& theta, mat const& fstar,
+                         vec const& mu, mat const& Psi, double nu, rn& gen) {
+    const uword D = L.n_rows, n = theta.n_rows;
+    mat V, M;
+    cholesky_stats(theta, fstar, mu, Psi, V, M);
     for (uword j = 0; j < D; ++j) {
-        // Off-diagonal entries
         for (uword k = 0; k < j; ++k) {
-            double b = V(k, k);
-            double c_lin = -M(j, k);
-            for (uword c = 0; c <= j; ++c) {
-                if (c == k) continue;
-                c_lin += V(k, c) * L(j, c);
-            }
-            double sigma2 = 1.0 / b;
-            double mu_jk  = -c_lin * sigma2;
-            L(j, k) = mu_jk + std::sqrt(sigma2) * gen.normal();
+            double mean, prec;
+            offdiag_kernel(V, M, L, j, k, mean, prec);
+            L(j, k) = mean + gen.normal() / std::sqrt(prec);
         }
-
-        // Diagonal: slice on log scale
-        double a = nu + (double)n - (double)D + (double)(j + 1) - 1.0;
-        double b = V(j, j);
-        double c_lin = -M(j, j);
-        for (uword c = 0; c < j; ++c) {
-            c_lin += V(j, c) * L(j, c);
-        }
-        double u0 = std::log(L(j, j));
-        double u_new = slice_log_diag(u0, a, b, c_lin, 1.0, 50, gen);
-        L(j, j) = std::exp(u_new);
+        double a, b, c;
+        diag_kernel(V, M, L, j, nu, n, D, a, b, c);
+        L(j, j) = std::exp(slice_log_diag(std::log(L(j, j)), a, b, c,
+                                          1.0, 50, gen));
     }
-
-    // mu draw using the new L
-    vec shift   = solve(trimatl(L), S_delta);
-    double w    = 1.0 / ((double)n + Amu_scalar);
-    vec mu_hat  = w * ((double)n * theta_bar + Amu_scalar * mubar0 - shift);
-
-    vec z(D);
-    for (uword i = 0; i < D; ++i) z(i) = gen.normal();
-    vec mu_noise = solve(trimatl(L), z);
-    mu = mu_hat + std::sqrt(w) * mu_noise;
 }
 
-// R-facing test wrapper (used by tests/testthat/test-sigma-gibbs-cholesky.R)
+// ---------------------------------------------------------------------------
+// Test harness
+// ---------------------------------------------------------------------------
+
+// Kernel parameters at the supplied state: for every (j, k < j) the Gaussian
+// mean and precision of L_jk holding the rest of row j fixed; for every j the
+// (a, b, c) of L_jj; and (P, b) of the mu block.
 // [[Rcpp::export]]
-Rcpp::List sigma_mu_block_gibbs_R(
-    arma::mat L,
-    arma::vec mu,
-    arma::mat const& theta,
-    arma::mat const& delta,
-    arma::mat const& Psi,
-    double nu,
-    arma::vec const& mubar0,
-    double Amu_scalar) {
-    arn gen;
-    sigma_mu_block_gibbs(L, mu, theta, delta, Psi, nu, mubar0, Amu_scalar, gen);
+Rcpp::List normalized_kernel_R(arma::mat const& L, arma::mat const& theta,
+                               arma::mat const& fstar, arma::vec const& mu,
+                               arma::mat const& Psi, double nu,
+                               arma::vec const& mubar, arma::mat const& Amu) {
+    const uword D = L.n_rows, n = theta.n_rows;
+    mat V, M, P; vec b;
+    cholesky_stats(theta, fstar, mu, Psi, V, M);
+    mu_stats(L, theta, fstar, mubar, Amu, P, b);
+    mat off_mean(D, D, fill::zeros), off_prec(D, D, fill::zeros);
+    vec da(D), db(D), dc(D);
+    for (uword j = 0; j < D; ++j) {
+        for (uword k = 0; k < j; ++k)
+            offdiag_kernel(V, M, L, j, k, off_mean(j, k), off_prec(j, k));
+        diag_kernel(V, M, L, j, nu, n, D, da(j), db(j), dc(j));
+    }
     return Rcpp::List::create(
-        Rcpp::Named("L") = L,
-        Rcpp::Named("mu") = mu);
+        Rcpp::Named("offdiag_mean") = off_mean,
+        Rcpp::Named("offdiag_prec") = off_prec,
+        Rcpp::Named("diag_a") = da, Rcpp::Named("diag_b") = db,
+        Rcpp::Named("diag_c") = dc,
+        Rcpp::Named("mu_prec") = P, Rcpp::Named("mu_b") = b);
+}
+
+// `nsweep` iterations of (mu, L); either block can be pinned.
+// [[Rcpp::export]]
+Rcpp::List normalized_gibbs_R(arma::mat L, arma::vec mu,
+                              arma::mat const& theta, arma::mat const& fstar,
+                              arma::mat const& Psi, double nu,
+                              arma::vec const& mubar, arma::mat const& Amu,
+                              int nsweep = 1, bool update_mu = true,
+                              bool update_L = true) {
+    arn gen;
+    for (int s = 0; s < nsweep; ++s) {
+        if (update_mu) draw_mu_normalized(mu, L, theta, fstar, mubar, Amu, gen);
+        if (update_L)  draw_cholesky_sweep(L, theta, fstar, mu, Psi, nu, gen);
+    }
+    return Rcpp::List::create(Rcpp::Named("L") = L, Rcpp::Named("mu") = mu);
 }

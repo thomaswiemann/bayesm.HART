@@ -15,13 +15,17 @@
 #' @param target_var_eps Numeric. Target variance for each coefficient in the
 #'   unobserved component eps_i. Default 0.25.
 #' @param alpha Numeric. Overdispersion parameter for negative binomial. Default 5.
+#' @param Sigma_func Function of one row of `Z` returning the `ncoef x ncoef`
+#'   covariance of `eps_i`. Overrides `target_var_eps` with covariate-dependent
+#'   heterogeneity; requires `Z`. Default `NULL` (constant covariance).
 #' @param seed Integer. Optional random seed.
 #'
 #' @return A list containing:
 #'   \item{regdata}{List of length nreg. Each element has y, X.}
 #'   \item{hessdata}{List of length nreg. Each element has hess (approx Hessian).}
 #'   \item{Z}{nreg x nz matrix of covariates (NULL if nz=0).}
-#'   \item{true_values}{List with beta_true, betabar_true, alpha, etc.}
+#'   \item{true_values}{List with beta_true, betabar_true, alpha, Sigma_eps,
+#'     and Sigma_true (nreg x ncoef x ncoef, with Sigma_func).}
 #'
 #' @importFrom stats rnorm rnbinom var
 #' @export
@@ -31,6 +35,7 @@ sim_hier_negbin <- function(nreg = 100, nobs = 50, nvar = 2, nz = 3,
                              target_var_betabar = 0.5,
                              target_var_eps = 0.25,
                              alpha = 5.0,
+                             Sigma_func = NULL,
                              seed = NULL) {
 
   het_observed <- match.arg(het_observed)
@@ -38,14 +43,14 @@ sim_hier_negbin <- function(nreg = 100, nobs = 50, nvar = 2, nz = 3,
 
   ncoef <- nvar + as.integer(const)
 
-  # --- Generate Z ---
+  # Z
   Z <- NULL
   if (nz > 0 && het_observed != "none") {
     Z <- matrix(rnorm(nreg * nz), nrow = nreg, ncol = nz)
     Z <- scale(Z, center = TRUE, scale = FALSE)
   }
 
-  # --- Generate betabar_i ---
+  # betabar_i
   betabar_true <- matrix(0, nrow = nreg, ncol = ncoef)
 
   if (!is.null(Z) && het_observed != "none") {
@@ -70,7 +75,7 @@ sim_hier_negbin <- function(nreg = 100, nobs = 50, nvar = 2, nz = 3,
     }
     betabar_true[, 1] <- raw_k1
 
-    # Fixed small values for remaining coefficients (negbin needs small betas for stable lambda)
+    # Small fixed values keep lambda stable.
     if (ncoef > 1) {
       fixed_remaining <- c(0.5, -0.3, 0.2, -0.1)
       n_remaining <- min(ncoef - 1, length(fixed_remaining))
@@ -79,19 +84,27 @@ sim_hier_negbin <- function(nreg = 100, nobs = 50, nvar = 2, nz = 3,
       }
     }
   } else {
-    # Default small constant betabar for stability
+    # Small constant betabar.
     if (ncoef >= 1) betabar_true[, 1] <- 0.5
     if (ncoef >= 2) betabar_true[, 2] <- -0.3
   }
 
-  # --- Generate eps_i ---
+  # eps_i
   Sigma_eps <- diag(target_var_eps, ncoef)
-  eps_true <- matrix(rnorm(nreg * ncoef), nrow = nreg, ncol = ncoef)
-  eps_true <- eps_true %*% chol(Sigma_eps)
+  Sigma_true <- NULL
+  if (is.null(Sigma_func)) {
+    eps_true <- matrix(rnorm(nreg * ncoef), nrow = nreg, ncol = ncoef)
+    eps_true <- eps_true %*% chol(Sigma_eps)
+  } else {
+    if (is.null(Z))
+      stop("Sigma_func requires Z (nz > 0, het_observed != 'none').")
+    Sigma_true <- .sigma_true_array(Sigma_func, Z, ncoef)
+    eps_true <- .draw_heteroskedastic_eps(Sigma_true)
+  }
 
   beta_true <- betabar_true + eps_true
 
-  # --- Generate regdata ---
+  # regdata
   regdata <- vector("list", nreg)
   hessdata <- vector("list", nreg)
 
@@ -100,7 +113,7 @@ sim_hier_negbin <- function(nreg = 100, nobs = 50, nvar = 2, nz = 3,
     if (const) Xi <- cbind(1, Xi)
 
     lambda_i <- exp(Xi %*% beta_true[i, ])
-    # Clamp lambda to avoid numerical issues
+    # Clamp lambda.
     lambda_i <- pmin(lambda_i, 1e6)
     prob_i <- alpha / (alpha + lambda_i)
 
@@ -125,6 +138,7 @@ sim_hier_negbin <- function(nreg = 100, nobs = 50, nvar = 2, nz = 3,
   if (het_observed == "linear" && exists("Delta_true")) {
     true_values$Delta <- Delta_true
   }
+  if (!is.null(Sigma_true)) true_values$Sigma_true <- Sigma_true
 
   return(list(regdata = regdata, hessdata = hessdata, Z = Z, true_values = true_values))
 }

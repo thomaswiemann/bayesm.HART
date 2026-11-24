@@ -1,6 +1,5 @@
 #include "bayesm.HART.h"
-#include "global_covariance_backend.h"
-#include "hetercov_backend.h"
+#include "hart_backend.h"
 #include "negbin_theta_updater.h"
 #include "unified_sampler_driver.h"
 #include <memory>
@@ -34,28 +33,22 @@ List rhierNegbinRw_rcpp_loop(List const& regdata, List const& hessdata, mat cons
                              bool drawdelta, mat olddelta, vec const& a_mix,
                              vec oldprob, vec ind,
                              double alpha, bool fixalpha,
-                             bool useBART, List const& bart_params,
-                             bool useHeterCov,
+                             std::string const& hart_model, std::string const& hart_cov,
+                             List const& bart_params,
                              List const& var_params,
-                             List const& phi_params){
+                             List const& phi_params,
+                             Rcpp::Nullable<Rcpp::List> state = R_NilValue){
 
 // Wayne Taylor 12/01/2014
-// Modified by Thomas Wiemann 2025 -- HART/BART support, mixture-of-normals,
-//   plus heter-cov branch (modified-Cholesky tree ensembles for Sigma(Z_i)).
-//
-// Three execution modes (mutually exclusive):
-//   * Heter-cov: hetercov_block ensembles for d_j(Z_i) [+ phi_jk(Z_i)].
-//   * Mix-BART : sum-of-trees Delta(Z) on top of mixture-of-normals u_i.
-//   * Linear   : original bayesm linear-Delta + rmixGibbs path.
+// Modified by Thomas Wiemann 2025 -- HART support.
+// Covariance backend by hart_model (make_backend in hart_backend.h).
 
-  // Heter-cov path validation.
-  if (useHeterCov && !useBART)   stop("useHeterCov requires useBART = TRUE");
-  if (useHeterCov && !drawdelta) stop("useHeterCov requires drawdelta = TRUE");
+  if (hart_model != "none" && !drawdelta)
+    stop("hart_model = '%s' requires Z.", hart_model.c_str());
 
   int nreg = regdata.size();
   int nvar = V.n_cols;
 
-  // convert regdata and hessdata Lists to std::vector of struct
   std::vector<moments> regdata_vector;
   moments regdatai_struct;
   List regdatai, hessi;
@@ -70,46 +63,50 @@ List rhierNegbinRw_rcpp_loop(List const& regdata, List const& hessdata, mat cons
     regdata_vector.push_back(regdatai_struct);
   }
 
-  // allocate driver-owned storage
   cube betadraw = zeros<cube>(nreg, nvar, R/keep);
   vec loglike = zeros<vec>(R/keep);
 
-  // ====================================================================
-  // Create backend + updater adapters, then run the unified MCMC loop.
-  // ====================================================================
-  std::unique_ptr<CovarianceBackend> backend;
-  if (useHeterCov) {
-    backend = std::make_unique<HeterCovBackend>(
-        oldbetas, Z, mubar, Amu, R, keep,
-        bart_params, var_params, phi_params);
-  } else {
-    backend = std::make_unique<GlobalCovarianceBackend>(
-        oldbetas, Z, mubar, Amu, nu, V, a_mix,
-        deltabar, Ad, drawdelta, useBART,
-        olddelta, oldprob, ind, R, keep, bart_params);
+  int offset = 0;
+  List saved;
+  if (state.isNotNull()) {
+    saved = List(state);
+    oldbetas = as<mat>(saved["betas"]);
+    offset = as<int>(saved["completed_sweeps"]);
+    alpha = as<double>(saved["alpha"]);
   }
+  if (oldbetas.n_rows != (uword)nreg || oldbetas.n_cols != (uword)nvar
+      || offset < 0)
+    stop("Invalid sampler state dimensions or completed sweeps.");
+
+  std::unique_ptr<CovarianceBackend> backend = make_backend(
+      hart_model, hart_cov, oldbetas, Z, mubar, Amu, nu, V, a_mix,
+      deltabar, Ad, drawdelta, olddelta, oldprob, ind, R, keep,
+      bart_params, var_params, phi_params);
+  if (state.isNotNull()) backend->restore(as<List>(saved["backend"]));
 
   NegbinThetaUpdaterAdapter updater(oldbetas, regdata_vector,
                                      sbeta, alpha, alphacroot,
                                      a, b, fixalpha, R, keep);
 
   run_unified_sampler(R, keep, nprint, nreg,
-                      *backend, updater, oldbetas, betadraw, loglike);
+                      *backend, updater, oldbetas, betadraw, loglike, offset);
 
-  // ====================================================================
-  // Output assembly
-  // ====================================================================
+  List terminal = List::create(Named("completed_sweeps") = offset + R,
+                              Named("betas") = oldbetas,
+                              Named("alpha") = updater.alpha(),
+                              Named("backend") = backend->checkpoint());
+
   BackendPackPayload bp = backend->pack();
   UpdaterPackPayload up = updater.pack();
   AcceptanceMetrics am = updater.acceptance_metrics();
 
   List out = bp.fields;
+  out["state"] = terminal;
   out["betadraw"]     = betadraw;
   out["loglike"]      = loglike;
   out["acceptrbeta"]  = am.acceptrbeta;
   out["acceptralpha"] = am.acceptralpha;
 
-  // Merge updater fields (alphadraw)
   CharacterVector upnames = up.fields.names();
   for (int i = 0; i < up.fields.size(); i++) {
     out[as<std::string>(upnames[i])] = up.fields[i];

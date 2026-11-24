@@ -2,12 +2,8 @@
 # General Helper Functions
 # ==============================================================================
 
-# Helper function to calculate MNL probabilities for one unit/draw
-# @param X_i [(T_i*p) x nvar] matrix
-# @param beta_is [nvar x 1] vector
-# @param p scalar, number of alternatives
-# @return [T_i x p] matrix of probabilities
-# @keywords internal
+# MNL choice probabilities for one unit and draw: X_i is (T_i * p) x nvar,
+# the result T_i x p.
 calculate_mnl_probs_from_beta <- function(X_i, beta_is, p) {
     if (!is.matrix(X_i)) stop("Internal error: X_i must be a matrix")
     if (!is.vector(beta_is)) stop("Internal error: beta_is must be a vector")
@@ -23,7 +19,6 @@ calculate_mnl_probs_from_beta <- function(X_i, beta_is, p) {
     
     max_utils_is <- apply(utils_mat_is, 1, max) # Vector length T_i
     
-    # Explicitly replicate the row maximums into a T_i x p matrix
     max_utils_rep_mat <- matrix(max_utils_is, nrow = T_i, ncol = p, byrow = FALSE)
     
     exp_utils_is <- exp(utils_mat_is - max_utils_rep_mat)
@@ -34,40 +29,11 @@ calculate_mnl_probs_from_beta <- function(X_i, beta_is, p) {
     return(probs_mat_is)
 }#CALCULATE_MNL_PROBS_FROM_BETA
 
-# Null Coalescing Operator (internal)
-#
-# Provides a default value if the left-hand side expression evaluates to NULL.
-# Behaves like `rlang::%||%`.  Not exported and not documented via roxygen --
-# `\name` cannot legally contain `%`, `|`, or `@`, so an Rd file would fail
-# `R CMD check` (see WARN "checking Rd files").
-#
-# Usage: a %||% b  ->  a if !is.null(a) else b
+# Null-coalescing operator: a if !is.null(a) else b.  No roxygen block because
+# `%` is not a legal Rd name.
 `%||%` <- function(a, b) {
   if (is.null(a)) b else a
 }#%||%
-
-# Parse BART prior parameters, supplying defaults
-# @param bart_list Prior$bart list
-# @param nz number of covariates (used for default rho)
-# @return fully populated list of parameters
-# @keywords internal
-.parse_bart_params <- function(bart_list, nz) {
-  list(
-    num_trees = bart_list$num_trees %||% 200,
-    power     = bart_list$power %||% 2.0,
-    base      = bart_list$base %||% 0.95,
-    tau       = bart_list$tau %||% (1.0 / sqrt(bart_list$num_trees %||% 200)),
-    numcut    = bart_list$numcut %||% 100,
-    sparse    = bart_list$sparse %||% FALSE,
-    theta     = bart_list$theta %||% 0.0,
-    omega     = bart_list$omega %||% 1.0,
-    a         = bart_list$a %||% 0.5,
-    b         = bart_list$b %||% 1.0,
-    rho       = bart_list$rho %||% nz,
-    aug       = bart_list$aug %||% FALSE,
-    burn      = bart_list$burn %||% 100
-  )
-}#.parse_bart_params
 
 # Build exact unique-row mapping for Z matrices.
 # Returns:
@@ -78,8 +44,7 @@ calculate_mnl_probs_from_beta <- function(X_i, beta_is, p) {
   if (!is.matrix(Z)) stop("Internal error: Z must be a matrix.")
   if (nrow(Z) < 1L) stop("Internal error: Z must have at least one row.")
 
-  # 17 significant digits is sufficient to preserve exact double identity for
-  # values generated/retained within the same R session object.
+  # 17 significant digits reproduce a double exactly.
   row_key <- apply(Z, 1, function(r) paste(sprintf("%.17g", r), collapse = "\r"))
   keep_unique <- !duplicated(row_key)
 
@@ -98,11 +63,8 @@ calculate_mnl_probs_from_beta <- function(X_i, beta_is, p) {
   )
 }
 
-# Shared cache assembly: moves DeltaZ/SigmaZ draws from the raw C++ output
-# into the hart_cache attribute, reshapes SigmaZ flat → 4D, and attaches
-# z_map metadata.  Called identically by all three R wrappers.
-#
-# NOTE: modifies `draws` in-place (NULLs out raw flat fields) and returns it.
+# Move the DeltaZ/SigmaZ draws from the C++ output into the hart_cache
+# attribute (SigmaZ reshaped to 4D) together with the z_map metadata.
 .assemble_hart_cache <- function(draws, z_map) {
   cache <- attr(draws, "hart_cache", exact = TRUE)
   if (is.null(cache)) cache <- list()
@@ -130,4 +92,65 @@ calculate_mnl_probs_from_beta <- function(X_i, beta_is, p) {
 
   if (length(cache) > 0L) attr(draws, "hart_cache") <- cache
   draws
-}
+}#.ASSEMBLE_HART_CACHE
+
+# Shared output finishing for the three samplers: bayesm classes and `mcpar`
+# attributes, the HART metadata field, and the unique-Z cache attribute.
+# Likelihood-specific attributes (taudraw, alphadraw) are set by the wrapper
+# before calling this.
+#
+# `cfg` is the .hart_config() list (with vartree/phitree parsed), `z_map` the
+# .build_unique_z_map() result or NULL, `base_class` the bayesm class name.
+.finish_hart_fit <- function(draws, cfg, z_map, R, keep, base_class) {
+  attributes(draws$betadraw)$class <- "bayesm.hcoef"
+  if (cfg$model == "direct" && identical(cfg$cov, "heteroskedastic")) {
+    # "bayesm.HART.HeterCov" is the marker superclass shared by all
+    # heteroscedastic-Sigma(Z) fits; predict_helpers.R dispatches on it.
+    attributes(draws$mu_draw)$class <- c("bayesm.mat", "mcmc")
+    attributes(draws$mu_draw)$mcpar <- c(1, R, keep)
+    class(draws) <- c(paste0(base_class, "HeterCov"),
+                      "bayesm.HART.HeterCov", base_class)
+  } else {
+    if (!is.null(draws$Deltadraw)) {
+      attributes(draws$Deltadraw)$class <- c("bayesm.mat", "mcmc")
+      attributes(draws$Deltadraw)$mcpar <- c(1, R, keep)
+    }
+    attributes(draws$nmix)$class <- "bayesm.nmix"
+    class(draws) <- base_class
+  }
+  # HART metadata; bayesm-path fits carry none.
+  if (cfg$model != "none") {
+    draws$hart <- list(model      = cfg$model,
+                       cov        = cfg$cov,
+                       schema     = 1L,
+                       nvar       = cfg$nvar,
+                       nz         = cfg$nz,
+                       coef_names = cfg$coef_names,
+                       priors     = cfg[c("bart", "vartree", "phitree",
+                                          "Amu", "store_trees")])
+  }
+  .assemble_hart_cache(draws, z_map)
+}#.FINISH_HART_FIT
+
+# Covariate-dependent covariance of the unobserved heterogeneity for the
+# simulators: Sigma_func(Z_i) at every unit as an n x D x D array.
+.sigma_true_array <- function(Sigma_func, Z, ncoef) {
+  n <- nrow(Z)
+  out <- array(0, dim = c(n, ncoef, ncoef))
+  for (i in seq_len(n)) {
+    S <- unname(as.matrix(Sigma_func(Z[i, ])))
+    if (!all(dim(S) == ncoef) || !isSymmetric(S, tol = 1e-8))
+      stop("Sigma_func must return a symmetric ncoef x ncoef matrix.")
+    out[i, , ] <- S
+  }
+  out
+}#.SIGMA_TRUE_ARRAY
+
+# eps_i ~ N(0, Sigma_i) for the slices of an n x D x D array.
+.draw_heteroskedastic_eps <- function(Sigma_true) {
+  n <- dim(Sigma_true)[1]
+  D <- dim(Sigma_true)[2]
+  eps <- matrix(0, n, D)
+  for (i in seq_len(n)) eps[i, ] <- drop(rnorm(D) %*% chol(Sigma_true[i, , ]))
+  eps
+}#.DRAW_HETEROSKEDASTIC_EPS

@@ -15,12 +15,17 @@
 #' @param target_var_eps Numeric. Target variance for each coefficient in the
 #'   unobserved component eps_i. Default 0.5.
 #' @param sigma_sq Numeric. Error variance for y_i = X_i * beta_i + e_i. Default 1.0.
+#' @param Sigma_func Function of one row of `Z` returning the `ncoef x ncoef`
+#'   covariance of `eps_i`. Overrides `target_var_eps` with covariate-dependent
+#'   heterogeneity; requires `Z`. Default `NULL` (constant covariance).
 #' @param seed Integer. Optional random seed.
 #'
 #' @return A list containing:
 #'   \item{regdata}{List of length nreg. Each element is a list with y, X, XpX, Xpy.}
 #'   \item{Z}{nreg x nz matrix of covariates (NULL if nz=0).}
-#'   \item{true_values}{List with beta_true, betabar_true, eps_true, sigma_sq, Delta (if linear).}
+#'   \item{true_values}{List with beta_true, betabar_true, eps_true, sigma_sq,
+#'     Delta (if linear), and Sigma_true (nreg x ncoef x ncoef, with
+#'     Sigma_func).}
 #'
 #' @importFrom stats rnorm runif
 #' @export
@@ -30,27 +35,25 @@ sim_hier_linear <- function(nreg = 100, nobs = 10, nvar = 2, nz = 3,
                              target_var_betabar = 1.0,
                              target_var_eps = 0.5,
                              sigma_sq = 1.0,
+                             Sigma_func = NULL,
                              seed = NULL) {
 
   het_observed <- match.arg(het_observed)
   if (!is.null(seed)) set.seed(seed)
 
-  # Total number of coefficients
   ncoef <- nvar + as.integer(const)
 
-  # --- Generate Z ---
+  # Z
   Z <- NULL
   if (nz > 0 && het_observed != "none") {
     Z <- matrix(rnorm(nreg * nz), nrow = nreg, ncol = nz)
-    # De-mean Z
     Z <- scale(Z, center = TRUE, scale = FALSE)
   }
 
-  # --- Generate betabar_i = f(Z_i) ---
+  # betabar_i = f(Z_i)
   betabar_true <- matrix(0, nrow = nreg, ncol = ncoef)
 
   if (!is.null(Z) && het_observed != "none") {
-    # Generate raw first-coefficient values
     raw_k1 <- numeric(nreg)
 
     if (het_observed == "linear") {
@@ -77,7 +80,7 @@ sim_hier_linear <- function(nreg = 100, nobs = 10, nvar = 2, nz = 3,
       }
     }
 
-    # Scale first coefficient to target variance and de-mean
+    # First coefficient scaled to the target variance and de-meaned.
     raw_var <- var(raw_k1)
     if (raw_var > 1e-10 && target_var_betabar > 0) {
       scale_factor <- sqrt(target_var_betabar / raw_var)
@@ -87,7 +90,7 @@ sim_hier_linear <- function(nreg = 100, nobs = 10, nvar = 2, nz = 3,
     }
 
     betabar_true[, 1] <- raw_k1
-    # Fixed values for remaining coefficients
+    # Remaining coefficients fixed.
     if (ncoef > 1) {
       fixed_remaining <- c(-1, 1, -1, 1)
       n_remaining <- min(ncoef - 1, length(fixed_remaining))
@@ -97,15 +100,23 @@ sim_hier_linear <- function(nreg = 100, nobs = 10, nvar = 2, nz = 3,
     }
   }
 
-  # --- Generate eps_i (unobserved heterogeneity) ---
+  # eps_i
   Sigma_eps <- diag(target_var_eps, ncoef)
-  eps_true <- matrix(rnorm(nreg * ncoef), nrow = nreg, ncol = ncoef)
-  eps_true <- eps_true %*% chol(Sigma_eps)
+  Sigma_true <- NULL
+  if (is.null(Sigma_func)) {
+    eps_true <- matrix(rnorm(nreg * ncoef), nrow = nreg, ncol = ncoef)
+    eps_true <- eps_true %*% chol(Sigma_eps)
+  } else {
+    if (is.null(Z))
+      stop("Sigma_func requires Z (nz > 0, het_observed != 'none').")
+    Sigma_true <- .sigma_true_array(Sigma_func, Z, ncoef)
+    eps_true <- .draw_heteroskedastic_eps(Sigma_true)
+  }
 
-  # --- beta_i = betabar_i + eps_i ---
+  # beta_i = betabar_i + eps_i
   beta_true <- betabar_true + eps_true
 
-  # --- Generate regdata ---
+  # regdata
   regdata <- vector("list", nreg)
   for (i in 1:nreg) {
     Xi <- matrix(rnorm(nobs * nvar), nrow = nobs, ncol = nvar)
@@ -119,7 +130,7 @@ sim_hier_linear <- function(nreg = 100, nobs = 10, nvar = 2, nz = 3,
     )
   }
 
-  # --- Build true_values ---
+  # true_values
   true_values <- list(
     beta_true = beta_true,
     betabar_true = betabar_true,
@@ -131,6 +142,7 @@ sim_hier_linear <- function(nreg = 100, nobs = 10, nvar = 2, nz = 3,
   if (het_observed == "linear" && exists("Delta_true")) {
     true_values$Delta <- Delta_true
   }
+  if (!is.null(Sigma_true)) true_values$Sigma_true <- Sigma_true
 
   result <- list(
     regdata = regdata,

@@ -292,7 +292,9 @@ void bprop(tree& x, xinfo& xi, pinfo& pi, tree::npv& goodbots, double& PBx, tree
       if(nxp==0) { //no parent, nx is the top and only node
          Pnogy=1.0;
       } else {
-         if(nxp->ntype() == 'n') { //if parent is a nog, number of nogs same at x and y
+         // isnog() rather than ntype()=='n': ntype() returns 't' for a root
+         // that is also a nog, which gives Pnogy = 1/(nnogs+1) instead of 1/nnogs.
+         if(nxp->isnog()) { //if parent is a nog, number of nogs same at x and y
             Pnogy = 1.0/nnogs;
          } else { //if parent is not a nog, y has one more nog.
            Pnogy = 1.0/(nnogs+1.0);

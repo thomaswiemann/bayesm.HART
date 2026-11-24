@@ -1,16 +1,15 @@
-#' Simulate Hierarchical MNL Data with Predefined Settings & Var Control
+#' Simulate Hierarchical MNL Data with Target Variances
 #'
-#' A wrapper around sim_hier_mnl (R/sim_hier_mnl.R) providing simpler control
-#' over common DGPs using a custom betabar function. Fixes p=3, nXa=1, nXd=1,
-#' const=TRUE, ncomp=1. Allows specifying target variances for betabar_i (with
-#' mean zero for the first coef) and eps_i.
+#' Calls `sim_hier_mnl()` with p = 3, nXa = 1, nXd = 1, intercepts and one
+#' mixture component, and with target variances for betabar_i (first
+#' coefficient, mean zero) and eps_i.
 #'
 #' @param nlgt Number of individuals.
 #' @param nT Number of observations per individual.
 #' @param nz Number of Z variables.
 #' @param het_observed Character. Functional form of observed heterogeneity
 #'   (betabar_i = f(Z_i)). Options: "none", "linear", "step", "friedman".
-#' @param target_var_betabar Numeric. Target variance for the **first coefficient**
+#' @param target_var_betabar Numeric. Target variance for the first coefficient
 #'   of the observed component betabar_i = f(Z_i). Must be non-negative.
 #'   The first coefficient will be centered to have mean zero. The remaining
 #'   coefficients (2 to ncoef) are fixed constants `c(-1, 1, -1, 1)`.
@@ -34,7 +33,7 @@
 #' # Check dimensions and structure
 #' print(names(sim_lin))
 #' print(sim_lin$true_values$dimensions)
-#' print(str(sim_lin$lgtdata[[1]])) # Structure for one individual
+#' print(str(sim_lin$lgtdata[[1]]))
 #' if (!is.null(sim_lin$Z)) print(dim(sim_lin$Z))
 #'
 #' # Plot observed vs unobserved components for first coefficient
@@ -61,7 +60,7 @@
 #' # --- Simulate data with no observed heterogeneity ---
 #' sim_none <- simple_sim_hier_mnl(nlgt = 100, nT = 10, nz = 5,
 #'                                   het_observed = "none",
-#'                                   target_var_betabar = 0, # Should be ignored
+#'                                   target_var_betabar = 0, # ignored
 #'                                   target_var_eps = 1.0,
 #'                                   seed = 789)
 #'
@@ -75,7 +74,6 @@ simple_sim_hier_mnl <- function(nlgt, nT, nz,
                                 target_var_eps = 0.5, 
                                 seed = NULL) {
 
-  # --- Input Validation ---
   het_observed <- match.arg(het_observed)
   if (!is.numeric(target_var_betabar) || target_var_betabar < 0 || length(target_var_betabar) != 1) {
     stop("target_var_betabar must be a single non-negative number.")
@@ -87,16 +85,16 @@ simple_sim_hier_mnl <- function(nlgt, nT, nz,
       stop("Friedman function requires nz >= 5.")
   }
 
-  # --- Fixed Parameters ---
+  # Design fixed at p = 3, nXa = 1, nXd = 1 with intercepts: five coefficients.
   p <- 3
   nXa <- 1
   nXd <- 1
   const <- TRUE
   ncomp <- 1
-  ncoef <- const * (p - 1) + (p - 1) * nXd + nXa # Should be 5
+  ncoef <- const * (p - 1) + (p - 1) * nXd + nXa
   if(ncoef != 5) warning("Calculated ncoef is not 5, fixed values for coefs 2-5 might be wrong.")
 
-  # --- Pre-calculated Baseline Values (from data-raw script) ---
+  # Mean and variance of the unscaled first coefficient under each generator.
   baseline_means <- list(
     linear = 0,
     step = 0.0006,
@@ -107,58 +105,37 @@ simple_sim_hier_mnl <- function(nlgt, nT, nz,
     step = 1.00001,
     friedman = 13.942078
   )
-  # -----------------------------------------------------------
 
-  # --- Determine sigma_inv_diag for eps_i ---
   if (target_var_eps <= 0) {
-    # Effectively no error variance, use very high precision
+    # target_var_eps = 0: near-degenerate eps.
     final_sigma_inv_diag <- 1e10 
   } else {
     final_sigma_inv_diag <- 1 / target_var_eps
   }
 
-  # --- Handle betabar generation ---
   if (het_observed == "none" || nz == 0) {
-    # No observed heterogeneity or no Z vars to drive it.
-    # Use a custom function that always returns zero.
+    # No observed heterogeneity: betabar = 0.
     final_beta_func_type <- "custom"
     zero_generator <- function(Zi) { rep(0, ncoef) }
     final_beta_func_args <- list(func = zero_generator) 
 
   } else {
-    # Use custom function for scaling and centering
     final_beta_func_type <- "custom"
 
-    # Retrieve baseline values
     bl_mean <- baseline_means[[het_observed]]
     bl_var <- baseline_vars[[het_observed]]
 
-    # Calculate scaling and centering factors for the first coefficient
-    if (bl_var <= 1e-10) { # Handle cases where baseline variance is essentially zero
+    # First coefficient rescaled to target_var_betabar and de-meaned.
+    if (bl_var <= 1e-10) {
       scale_factor <- 0
     } else {
-      scale_factor <- sqrt(max(0, target_var_betabar) / bl_var) # Ensure sqrt >= 0
+      scale_factor <- sqrt(max(0, target_var_betabar) / bl_var)
     }
     mean_shift <- bl_mean * scale_factor
     
-    # Define the custom generator function (needs access to parent env)
-    # Includes duplicated logic/helpers for initial value generation
-    
-    # Duplicate Friedman helper locally to avoid exporting sim_hier_mnl internal
-    ._simple_beta_Z_friedman <- function(Zi, 
-                                         coefs = c(10, 20, 10, 5), 
-                                         shift = 0, scale = 8) {
-      term1 <- coefs[1] * sin(pi * Zi[1] * Zi[2])
-      term2 <- coefs[2] * (Zi[3] - 0.5)^2 
-      term3 <- coefs[3] * Zi[4]
-      term4 <- coefs[4] * Zi[5]
-      return((term1 + term2 + term3 + term4 + shift) / scale) 
-    }#._SIMPLE_BETA_Z_FRIEDMAN
-    
     custom_betabar_generator <- function(Zi) {
-      betabar_i_final <- numeric(ncoef) # Initialize vector (ncoef=5)
+      betabar_i_final <- numeric(ncoef)
       
-      # Generate initial scalar value for the FIRST coefficient
       betabar_i1_init <- 0
       if (het_observed == "linear") {
         Delta_vec <- numeric(nz)
@@ -167,19 +144,17 @@ simple_sim_hier_mnl <- function(nlgt, nT, nz,
           fixed_coefs <- c(3, -3, 2, -2, 1)
           Delta_vec[1:nz_used] <- fixed_coefs[1:nz_used]
         }
-        betabar_i1_init <- sum(Zi * Delta_vec) # Vector product
+        betabar_i1_init <- sum(Zi * Delta_vec)
       } else if (het_observed == "step") {
         beta1_val <- -1; beta2_val <- 1; Z_index <- 1; cutoff <- 0
         betabar_i1_init <- ifelse(Zi[Z_index] > cutoff, beta1_val, beta2_val)
       } else if (het_observed == "friedman") {
-        # Use locally defined helper
-        betabar_i1_init <- ._simple_beta_Z_friedman(Zi)
+        betabar_i1_init <- .beta_Z_friedman(Zi)
       } 
       
-      # Scale and de-mean the FIRST coefficient
       betabar_i_final[1] <- (betabar_i1_init * scale_factor) - mean_shift
       
-      # Set fixed values for remaining coefficients
+      # Remaining coefficients fixed at (-1, 1, -1, 1).
       if (ncoef > 1) {
           betabar_i_final[2:ncoef] <- c(-1, 1, -1, 1)
       }
@@ -191,28 +166,23 @@ simple_sim_hier_mnl <- function(nlgt, nT, nz,
 
   }#END if het_observed != "none"
 
-  # --- Calculate and report implied R-squared for first coefficient ---
+  # R2 of the first coefficient: Var(betabar) / Var(beta).
   total_var_k1 <- target_var_betabar + target_var_eps
   implied_R2_k1 <- if (total_var_k1 > 1e-10) {
       target_var_betabar / total_var_k1
   } else {
-      NA # R-squared is undefined if total variance is zero
+      NA
   }
   message(paste(" -> Implied R2 for coef 1 (Var(betabar)/Var(beta)):", 
                 round(implied_R2_k1, 3)))
 
-  # --- Call sim_hier_mnl --- 
-  # Assumes sim_hier_mnl is available in the environment
   sim_data <- sim_hier_mnl(
       nlgt = nlgt, nT = nT, p = p, nz = nz, nXa = nXa, nXd = nXd,
       const = const,
-      # Z generation defaults are used from sim_hier_mnl
       beta_func_type = final_beta_func_type, 
       beta_func_args = final_beta_func_args,
       ncomp = ncomp,
-      # mixture_comps = NULL (default used)
       sigma_inv_diag = final_sigma_inv_diag,
-      # X generation defaults are used from sim_hier_mnl
       seed = seed
   )
 

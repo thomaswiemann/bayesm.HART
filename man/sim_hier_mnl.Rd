@@ -19,6 +19,7 @@ sim_hier_mnl(
   ncomp = 1,
   mixture_comps = NULL,
   sigma_inv_diag = 1,
+  Sigma_func = NULL,
   Xa_dist_func = function(n, p, na) matrix(stats::runif(n * p * na, -1, 1), ncol = p *
     na),
   Xd_dist_func = function(n, nd) matrix(stats::rnorm(n * nd), ncol = nd),
@@ -79,6 +80,11 @@ based on \code{sigma_inv_diag}.}
 (precision) of mixture components if \code{mixture_comps} is \code{NULL}. Assumes identity
 covariance scaled by this.}
 
+\item{Sigma_func}{Function of one row of \code{Z} returning the \verb{ncoef x ncoef}
+covariance of \code{eps_i}. Replaces the component covariance with
+covariate-dependent heterogeneity; requires \code{nz > 0} and \code{ncomp = 1}.
+Default \code{NULL}.}
+
 \item{Xa_dist_func}{Function. Function to generate alternative-specific variables \code{Xa}.
 Takes \code{n} (nT), \code{p}, \code{na} (nXa) and returns a matrix (usually \verb{n x (p*na)} or similar structure expected by \code{createX}).
 Default: \code{function(n, p, na) matrix(runif(n*p*na, -1, 1), ncol=p*na)}.}
@@ -99,6 +105,7 @@ A list suitable for direct use as the \code{Data} argument in
 Additionally, the list contains \code{true_values}:
 \item \code{true_values$beta_true}: \verb{nlgt x ncoef} matrix of true \code{beta_i}.
 \item \code{true_values$betabar_true}: \verb{nlgt x ncoef} matrix of true \code{betabar_i = f(Z_i)}.
+\item \code{true_values$Sigma_true}: \verb{nlgt x ncoef x ncoef} array of \code{Sigma_func(Z_i)} (only with \code{Sigma_func}).
 \item \code{true_values$true_params}: List containing parameters used for generation (\code{beta_func_type}, \code{beta_func_args}, \code{mixture_comps}, \code{pvec}).
 \item \code{true_values$dimensions}: List containing key dimensions used (\code{p}, \code{nlgt}, \code{nT}, \code{nz}, \code{ncoef}, etc.).
 }
@@ -113,13 +120,13 @@ Z-beta relationship and mixture models for residual heterogeneity.
 # Simple linear example
 sim_data_linear <- sim_hier_mnl(nlgt = 50, nT = 5, p = 3, nz = 2, nXa = 1, nXd = 0,
                                beta_func_type = "linear", seed = 123)
-plot(sim_data_linear$Z[,1], sim_data_linear$true_values$betabar_true[,1]) # Visualize linear
+plot(sim_data_linear$Z[,1], sim_data_linear$true_values$betabar_true[,1])
 
 # Step function example
 sim_data_step <- sim_hier_mnl(nlgt = 50, nT = 5, p = 3, nz = 2, nXa = 1, nXd = 0,
                               beta_func_type = "step",
                               beta_func_args = list(Z_index = 1),
                               seed = 456)
-plot(sim_data_step$Z[,1], sim_data_step$true_values$betabar_true[,1]) # Visualize step
+plot(sim_data_step$Z[,1], sim_data_step$true_values$betabar_true[,1])
 
 }

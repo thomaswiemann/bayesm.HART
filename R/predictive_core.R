@@ -3,9 +3,8 @@
 # ==============================================================================
 # Internal utilities shared by model-specific predict methods.
 
-# Normalize and validate predictive mode for unified predictive API work.
+# Validates the mode; "structural" is an alias of "coefficients".
 .resolve_predict_mode <- function(mode = "coefficients") {
-  # Backward-compatible alias: "structural" -> "coefficients".
   if (identical(mode, "structural")) mode <- "coefficients"
   valid_modes <- c("coefficients", "prior", "posterior")
   if (!(mode %in% valid_modes)) {

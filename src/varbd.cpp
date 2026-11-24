@@ -1,7 +1,7 @@
 /*
  *  Birth/death Metropolis-Hastings step for variance trees.
- *  Structure mirrors heterbd; differences are confined to the leaf
- *  likelihood (varlh) and leaf-draw (vardrawnodemu) calls.
+ *  Mirrors bd; the leaf likelihood is varlh and the leaf draw
+ *  vardrawnodemu.
  */
 #include "varbd.h"
 
@@ -26,7 +26,7 @@ bool varbd(tree& x, xinfo& xi, dinfo& di, pinfo& pi,
       vargetsuff(x, nx, v, c, xi, di, nl, Sl, nr, Sr);
 
       double alpha = 0.0, lalpha = 0.0;
-      if ((nl >= 5) && (nr >= 5)) {
+      if ((nl >= pi.nmin) && (nr >= pi.nmin)) {  // see bd.cpp
          double n_l = static_cast<double>(nl);
          double n_r = static_cast<double>(nr);
          double lhl = varlh(Sl,        n_l,           nu, lambda);

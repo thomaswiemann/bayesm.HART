@@ -14,18 +14,17 @@ void varbart::pr()
 }
 
 //--------------------------------------------------
-// Set prior hyperparameters and reset all trees to stumps with leaf lambda^{1/m}
-// so that the initial product equals lambda.  If data is already wired in
-// (xi, allfit, p, n, x), refresh allfit accordingly.
 void varbart::setvarprior(double nu_, double lambda_)
+{
+   setvarprior(nu_, lambda_, std::pow(lambda_, 1.0 / static_cast<double>(m)));
+}
+void varbart::setvarprior(double nu_, double lambda_, double init)
 {
    nu = nu_;
    lambda = lambda_;
-
-   double leaf_init = std::pow(lambda, 1.0 / static_cast<double>(m));
    for (size_t j = 0; j < m; j++) {
       t[j].tonull();
-      t[j].settheta(leaf_init);
+      t[j].settheta(init);
    }
    if (allfit && (xi.size() == p) && x) {
       predict_prod(p, n, x, allfit);

@@ -1,6 +1,5 @@
 #include "bayesm.HART.h"
-#include "global_covariance_backend.h"
-#include "hetercov_backend.h"
+#include "hart_backend.h"
 #include "mnl_theta_updater.h"
 #include "unified_sampler_driver.h"
 #include <memory>
@@ -97,32 +96,23 @@ List rhierMnlRwMixture_rcpp_loop(List const& lgtdata, mat const& Z,
     double nu, mat const& V, double s,
     int R, int keep, int nprint, bool drawdelta,
     mat olddelta, vec const& a, vec oldprob, mat oldbetas, vec ind, vec const& SignRes,
-    bool useBART, List const& bart_params,
-    bool useHeterCov,
-    List const& var_params,
-    List const& phi_params) {
+    std::string const& hart_model, std::string const& hart_cov,
+    List const& bart_params,
+    List const& var_params, List const& phi_params,
+    Rcpp::Nullable<Rcpp::List> state = R_NilValue) {
 
     // Wayne Taylor 10/01/2014
     // modified by Thomas Wiemann 2025
     //
-    // Three execution modes (mutually exclusive):
-    //   * Heter-cov: Sigma(Z_i) via modified-Cholesky tree ensembles.
-    //                Implementation lives in src/hetercov_block.cpp.
-    //   * Mix-BART : sum-of-trees Delta(Z) on top of mixture-of-normals u_i.
-    //                Implementation lives in src/mixbart_block.cpp; shared
-    //                with rhierLinearMixture and rhierNegbinRw.
-    //   * Linear   : original bayesm linear-Delta + rmixGibbs path.
+    // Covariance backend by hart_model (make_backend in hart_backend.h).
 
     int nlgt = lgtdata.size();
     int nvar = V.n_cols;
-
-    // Validation for the heter-cov path.
-    if (useHeterCov && !useBART)    stop("useHeterCov requires useBART = TRUE");
-    if (useHeterCov && !drawdelta)  stop("useHeterCov requires drawdelta = TRUE");
+    if (hart_model != "none" && !drawdelta)
+        stop("hart_model = '%s' requires Z.", hart_model.c_str());
 
     List lgtdatai;
 
-    // convert List to std::vector of struct
     std::vector<moments> lgtdata_vector;
     moments lgtdatai_struct;
     for (int lgt = 0; lgt < nlgt; lgt++) {
@@ -134,33 +124,36 @@ List rhierMnlRwMixture_rcpp_loop(List const& lgtdata, mat const& Z,
         lgtdata_vector.push_back(lgtdatai_struct);
     }
 
-    // allocate driver-owned storage
     cube betadraw(nlgt, nvar, R / keep);
     vec loglike(R / keep);
 
-    // ====================================================================
-    // Create backend + updater adapters, then run the unified MCMC loop.
-    // ====================================================================
-    std::unique_ptr<CovarianceBackend> backend;
-    if (useHeterCov) {
-        backend = std::make_unique<HeterCovBackend>(
-            oldbetas, Z, mubar, Amu, R, keep,
-            bart_params, var_params, phi_params);
-    } else {
-        backend = std::make_unique<GlobalCovarianceBackend>(
-            oldbetas, Z, mubar, Amu, nu, V, a,
-            deltabar, Ad, drawdelta, useBART,
-            olddelta, oldprob, ind, R, keep, bart_params);
+    int offset = 0;
+    List saved;
+    if (state.isNotNull()) {
+        saved = List(state);
+        oldbetas = as<mat>(saved["betas"]);
+        offset = as<int>(saved["completed_sweeps"]);
     }
+    if (oldbetas.n_rows != (uword)nlgt || oldbetas.n_cols != (uword)nvar
+        || offset < 0)
+        stop("Invalid sampler state dimensions or completed sweeps.");
+
+    std::unique_ptr<CovarianceBackend> backend = make_backend(
+        hart_model, hart_cov, oldbetas, Z, mubar, Amu, nu, V, a,
+        deltabar, Ad, drawdelta, olddelta, oldprob, ind, R, keep,
+        bart_params, var_params, phi_params);
+    if (state.isNotNull()) backend->restore(as<List>(saved["backend"]));
 
     MnlThetaUpdaterAdapter updater(oldbetas, lgtdata_vector, SignRes, s, R);
 
     run_unified_sampler(R, keep, nprint, nlgt,
-                        *backend, updater, oldbetas, betadraw, loglike);
+                        *backend, updater, oldbetas, betadraw, loglike, offset);
 
-    // ====================================================================
-    // Post-loop: SignRes transform on betadraw
-    // ====================================================================
+    List terminal = List::create(Named("completed_sweeps") = offset + R,
+                                 Named("betas") = oldbetas,
+                                 Named("backend") = backend->checkpoint());
+
+    // Public draws: SignRes * exp(betastar) on restricted coordinates.
     bool conStatus = any(SignRes);
     if (conStatus) {
         int SignResSize = SignRes.size();
@@ -173,13 +166,11 @@ List rhierMnlRwMixture_rcpp_loop(List const& lgtdata, mat const& Z,
         }
     }
 
-    // ====================================================================
-    // Output assembly: backend.pack() + updater metrics + betadraw/loglike
-    // ====================================================================
     AcceptanceMetrics am = updater.acceptance_metrics();
     BackendPackPayload bp = backend->pack();
 
     List out = bp.fields;
+    out["state"] = terminal;
     out["betadraw"]    = betadraw;
     out["loglike"]     = loglike;
     out["SignRes"]     = SignRes;

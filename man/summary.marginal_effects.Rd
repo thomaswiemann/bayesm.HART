@@ -8,22 +8,20 @@
 }
 \arguments{
 \item{object}{An object of class \code{"marginal_effects"} created by
-\code{marginal_effects.rhierMnlRwMixture}.}
+\code{marginal_effects()}.}
 
 \item{probs}{Numeric vector of quantile probabilities (between 0 and 1)
 to compute.}
 
-\item{...}{Additional arguments (currently ignored).}
+\item{...}{Ignored.}
 }
 \value{
 A list object of class \code{"summary.marginal_effects"} containing:
-\item{summary_df}{A data frame with columns \code{coefficient_index},
-columns for each non-NA column in the input \code{z_values} (e.g.,
-\code{z_col_1}, \code{z_col_2}, ... or using original variable names if available),
-\code{mean}, and columns for each requested quantile (e.g., \code{q2.5}, \code{q50},
-\code{q97.5}). Each row represents a specific coefficient at a specific grid
-point defined by a row in \code{z_values}.
-}
+\item{summary_df}{A data frame with one row per coefficient and grid
+point: \code{coefficient_index}, one column \verb{z_val_<j>} for each grid
+column \code{j} of \code{z_values}, \code{mean}, and one column per quantile named
+\code{q} followed by the percentage without the decimal point (\code{q25} for
+0.025, \code{q50}, \code{q975}).}
 \item{z_values}{The original \code{z_values} matrix provided to \code{marginal_effects}.}
 \item{probs}{The numeric vector of quantile probabilities used.}
 \item{call}{The matched call to the \code{summary} function.}
@@ -32,14 +30,6 @@ point defined by a row in \code{z_values}.
 Computes posterior means and quantiles from the draws stored in a
 \code{marginal_effects} object.
 }
-\examples{
-# --- Assumes `mfx_result` exists from marginal_effects.rhierMnlRwMixture example ---
-if (exists("mfx_result")) {
-  mfx_summary <- summary(mfx_result, probs = c(0.05, 0.5, 0.95))
-  print(mfx_summary$summary_df)
-  # --- Plotting example follows in plot.summary.marginal_effects ---
-
-} else {
-  message("Run the example for 'marginal_effects.rhierMnlRwMixture' first.")
-}
+\seealso{
+\code{\link[=plot.summary.marginal_effects]{plot.summary.marginal_effects()}} for a worked example.
 }

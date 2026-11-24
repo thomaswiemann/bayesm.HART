@@ -76,8 +76,10 @@ test_that("posterior_probs helper preserves simplex rows", {
     nlgtdata = list(list(X = x1), list(X = x2))
   )
 
-  pp <- bayesm.HART:::.predict_posterior_probs(
-    object, newdata, kept_draws_indices = seq_len(ndraws), r_verbose = FALSE
+  pp <- bayesm.HART:::.hart_predict_posterior(
+    object, newdata$nlgtdata, seq_len(ndraws),
+    bayesm.HART:::.hart_quantity(object, "mnl", p = p),
+    "posterior probabilities", "newdata$nlgtdata", r_verbose = FALSE
   )
 
   expect_length(pp, nlgt)
@@ -93,7 +95,7 @@ test_that("MNL predictive dispatcher matches predict() prior/posterior modes", {
     nlgt = 20, nT = 4, p = 3, nz = 2, nXa = 1, nXd = 0, const = TRUE,
     beta_func_type = "linear"
   )
-  prior <- list(ncomp = 1L, bart = list(num_trees = 5L))
+  prior <- list(ncomp = 1L, hart_model = "normalized", bart = list(num_trees = 5L))
   mcmc <- list(R = 12L, keep = 1L, nprint = 0L)
   capture.output({
     fit <- rhierMnlRwMixture(Data = sim, Prior = prior, Mcmc = mcmc, r_verbose = FALSE)
@@ -130,7 +132,7 @@ test_that("MNL unified mode/type contract works via predict()", {
     nlgt = 16, nT = 3, p = 3, nz = 2, nXa = 1, nXd = 0, const = TRUE,
     beta_func_type = "linear"
   )
-  prior <- list(ncomp = 1L, bart = list(num_trees = 5L))
+  prior <- list(ncomp = 1L, hart_model = "normalized", bart = list(num_trees = 5L))
   mcmc <- list(R = 12L, keep = 1L, nprint = 0L)
   capture.output({
     fit <- rhierMnlRwMixture(Data = sim, Prior = prior, Mcmc = mcmc, r_verbose = FALSE)

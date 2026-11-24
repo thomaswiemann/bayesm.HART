@@ -15,25 +15,43 @@
 #'     - `X`: `(n_i * p) x nvar` matrix of alternative-specific attributes.
 #'   - `Z` (optional): `nlgt x nz` matrix of observed characteristics for each unit.
 #'     Should NOT contain an intercept and should be centered.
+#'   - `unit_id` (optional): Unit IDs, unique and non-missing, in unit
+#'     order. Default: names of the unit list if complete and unique,
+#'     otherwise "1", "2", ...
+#'   With `previous`, omit `Data` or use NULL for unchanged data. Otherwise
+#'   `Data` is a batch and `unit_id` is required: observations append to matching
+#'   IDs, new IDs append after old units, and units absent from the batch remain.
+#'   X columns must match the saved design. If the fit has Z, supply one batch
+#'   Z row per ID with the saved columns; old-unit rows must equal stored rows.
+#'   Z is not recentered or rescaled, and cannot be added to a fit without Z.
+#'   `p` is inherited when omitted and must match if supplied. Alternative
+#'   blocks remain consecutive within each choice observation.
 #' @param Prior A list containing prior parameters:
 #'   - `ncomp` (required): Number of components. Must be 1.
 #'   - `deltabar` (optional): `nz * nvar x 1` prior mean for `vec(Delta)` (default: 0). Ignored if HART is used.
 #'   - `Ad` (optional): Prior precision matrix for `vec(Delta)` (default: `0.01 * I`). Ignored if HART is used.
 #'   - `mubar` (optional): `nvar x 1` prior mean vector for the normal prior (default: 0 if unrestricted, 2 if restricted).
-#'   - `Amu` (optional): Prior precision for the normal prior (default: 0.01 if unrestricted, 0.1 if restricted).
-#'   - `nu` (optional): Degrees of freedom for IW prior on component `Sigma` (default: `nvar+3` if unrestricted, `nvar+15` if restricted).
-#'   - `V` (optional): Location matrix for IW prior on component `Sigma` (default: `nu * I` or scaled based on restriction).
+#'   - `Amu` (optional): Prior precision for the normal prior on \eqn{\mu} (default: 0.01 if unrestricted, 0.1 if restricted). Scalar on the bayesm paths. Under a HART model the prior is the independent \eqn{N(\bar\mu, Amu^{-1})}, and `Amu` may be a scalar (expanded to `Amu * I`) or an `nvar x nvar` SPD matrix.
+#'   - `nu` (optional): Degrees of freedom for IW prior on component `Sigma` (default: `nvar+3` if unrestricted, `nvar+15` if restricted). Not used under `hart_model = "direct"` with `hart_cov = "heteroskedastic"`.
+#'   - `V` (optional): Location matrix for IW prior on component `Sigma` (default: `nu * I` or scaled based on restriction). Not used under `hart_model = "direct"` with `hart_cov = "heteroskedastic"`.
 #'   - `SignRes` (optional): `nvar x 1` vector of sign restrictions. Must contain values of 0, -1, or 1. The value 0 means no restriction, -1 ensures the coefficient is negative, and 1 ensures the coefficient is positive. For example, `SignRes = c(0,1,-1)` means the first coefficient is unconstrained, the second will be positive, and the third will be negative. Default: `rep(0, nvar)`.
-#'   - `bart` (optional): List of parameters for the HART prior. If specified, this models the representative consumer \eqn{\Delta(Z)} as a scaled sum-of-trees factor model. See Details.
-#'   - `vartree` (optional, *experimental extension beyond Wiemann 2025*): List of parameters enabling heteroscedastic covariance \eqn{\Sigma(Z_i)} via product-of-trees variance models on the Modified Cholesky diagonal \eqn{d_j(\cdot)}. Requires `bart` to also be specified and `ncomp = 1`. Compatible with `SignRes` (see "Heteroscedastic Covariance" in Details). When `nvar > 1`, the package automatically promotes to the full-Cholesky structure described under `phitree` (diagonal-only \eqn{\Sigma(Z_i)} would force every conditional cross-correlation to zero, which is essentially never a believable posterior).
-#'   - `phitree` (optional, *experimental extension beyond Wiemann 2025*): List of parameters enabling sum-of-trees regression models on the Modified Cholesky off-diagonals \eqn{\phi_{jk}(\cdot)}. Requires `vartree`. Adds the full-Cholesky structure on top of the diagonal `vartree` model. Auto-enabled when `vartree` is supplied and `nvar > 1`.
+#'   - `hart_model` (optional): Preference-model selector, one of `"none"` (default; the bayesm constant or linear \eqn{\Delta(Z)} paths), `"normalized"` (HART prior on the representative consumer, \eqn{\theta_i = \mu + S\{f^*(Z_i) + \varepsilon_i\}}), or `"direct"` (HART mean and covariance trees, \eqn{\theta_i = \mu + f(Z_i) + S_i \varepsilon_i}). Both HART models require `Z`. The tree lists below are optional under a HART model and are an error under `"none"`.
+#'   - `bart` (optional): List of hyperparameters for the HART mean trees (`hart_model = "normalized"` or `"direct"`). See Details.
+#'   - `hart_cov` (optional, `hart_model = "direct"` only): Covariance model, `"heteroskedastic"` (default; covariate-dependent \eqn{\Sigma(Z_i)} from the variance and off-diagonal ensembles) or `"constant"` (one \eqn{\Sigma \sim IW(\nu, V)} shared by all units, drawn by its conjugate update). Under `"constant"`, `vartree` and `phitree` are an error and the fit carries bayesm's `nmix` instead of the heteroscedastic outputs.
+#'   - `vartree` (optional, `hart_model = "direct"` only): List of hyperparameters for the product-of-trees variance models on the Modified Cholesky diagonal \eqn{d_j(\cdot)}. Compatible with `SignRes`. See "Direct HART" in Details.
+#'   - `phitree` (optional, `hart_model = "direct"` and `nvar > 1` only): List of hyperparameters for the sum-of-trees models on the Modified Cholesky off-diagonals \eqn{\phi_{jk}(\cdot)}. The off-diagonal ensembles always exist when `nvar > 1`; this list only sets their hyperparameters.
+#'   With `previous`, prior settings are inherited; see Continuing a Fit.
 #' @param Mcmc A list containing MCMC parameters:
 #'   - `R`: Number of MCMC iterations (required).
 #'   - `keep` (optional): Thinning parameter (default: 1).
 #'   - `nprint` (optional): Print progress every `nprint` draws (default: 100, 0 for none).
 #'   - `s` (optional): RW Metropolis scaling parameter (default: `2.93 / sqrt(nvar)`).
 #'   - `w` (optional): Fractional likelihood weighting parameter (default: 0.1).
+#'   With `previous`, only `R`, `keep` and `nprint` are accepted; `R` counts
+#'   additional sweeps and the other controls are inherited.
 #' @param r_verbose Logical. Print startup messages? Default TRUE.
+#'
+#' @param previous A fitted object with `restart`, or NULL for a fresh fit.
 #'
 #' @details
 #' ## Model Specification
@@ -52,7 +70,7 @@
 #'
 #' ## Prior Specifications
 #' - **Linear model**: \eqn{\delta = vec(\Delta) \sim N(deltabar, A_d^{-1})}
-#' - **Component means**: \eqn{\mu_1 \sim N(mubar, \Sigma_1 \otimes Amu^{-1})} (covariance scaled by \eqn{\Sigma_1})
+#' - **Component means**: \eqn{\mu_1 \sim N(mubar, \Sigma_1 \otimes Amu^{-1})} (covariance scaled by \eqn{\Sigma_1}) on the bayesm paths. Under a HART model, \eqn{\mu \sim N(mubar, Amu^{-1})} independently of \eqn{\Sigma}.
 #' - **Component covariance**: \eqn{\Sigma_1 \sim IW(\nu, V)}
 #' - **HART model**: A sum-of-trees prior is placed on each factor of the scaled sum-of-trees model (see HART details below).
 #'
@@ -64,8 +82,9 @@
 #' **HART Parameters** (defaults used if not specified in `Prior$bart`):
 #'   - `num_trees`: Number of trees H in each sum-of-trees model (default: 200).
 #'   - `power`, `base`: Parameters for the tree structure prior. The probability of a node at depth `q` splitting is \eqn{\alpha(1+q)^{-\beta}}, where `base`=\eqn{\alpha} and `power`=\eqn{\beta}. Defaults are `base=0.95`, `power=2`, which strongly favors shallow trees.
-#'   - `tau`: Parameter controlling the prior variance of terminal leaf coefficients. The default is \eqn{\tau = 1/\sqrt{H}} where \eqn{\lambda_{dhg} \sim N(0, \tau^2)} for terminal leaf coefficients.
+#'   - `tau` (`hart_model = "normalized"`): Prior scale of each sum-of-trees factor on the standardized coordinates. Terminal leaf coefficients are \eqn{\lambda_{dhg} \sim N(0, \tau^2 / H)}, so \eqn{\tau} is the prior standard deviation of \eqn{f^*_d(Z)}. Default \eqn{\tau = 1}. Under `hart_model = "direct"` the scales are learned; see `a_tau`, `tau0` below.
 #'   - `numcut`: Number of grid points for proposing splitting rules for continuous variables (default: 100).
+#'   - `nmin`: Minimum number of units in each child of a split (default: 5).
 #'   - `sparse`: If `TRUE`, use the Dirichlet HART prior to induce sparsity in variable selection (default: `FALSE`).
 #'
 #' **Dirichlet HART** (`sparse = TRUE`): The Dirichlet HART model augments the HART prior to induce sparsity in variable selection, following Linero (2018). Instead of uniform probability for selecting splitting variables, the selection probabilities \eqn{\tau = (\tau^{(1)}, \ldots, \tau^{(K)})} are given a sparse Dirichlet prior: \eqn{(\tau^{(1)}, \ldots, \tau^{(K)}) \sim Dirichlet(\theta/K, \ldots, \theta/K)}, where K is the number of characteristics. The concentration parameter \eqn{\theta} is given a hierarchical prior: \eqn{\theta/(\theta+\rho) \sim Beta(a,b)}.
@@ -74,26 +93,25 @@
 #'   - `theta`: When used, sets Dirichlet concentration parameter without additional hyper-prior (default: 0.0).
 #'   - `burn`: Number of internal burn-in iterations for the Dirichlet HART sampler before variable selection is allowed (default: 100).
 #'
-#' ## Heteroscedastic Covariance \eqn{\Sigma(Z_i)} (experimental extension)
+#' ## Direct HART (`hart_model = "direct"`)
 #'
-#' Wiemann (2025) treats \eqn{\Sigma} as global with an inverse-Wishart prior, used as a fixed factor-model loading \eqn{\Sigma^{1/2}}. When `Prior$vartree` is supplied, the package replaces this with unit-specific
-#' \deqn{\Sigma(Z_i)^{-1} = L(Z_i)^\top D(Z_i)^{-1} L(Z_i)}
-#' where \eqn{L(Z_i)} is unit lower-triangular with \eqn{L_{jk} = -\phi_{jk}(Z_i)} for \eqn{k < j} and \eqn{D(Z_i) = \mathrm{diag}(d_1(Z_i), \ldots, d_D(Z_i))}, \eqn{d_j > 0}. Each \eqn{d_j(\cdot)} is modeled as a product of trees with \eqn{\chi^{-2}} leaves (Pratola et al., 2020); each \eqn{\phi_{jk}(\cdot)} (when `Prior$phitree` is supplied) is modeled as a sum of trees with \eqn{N(0, \tau^2)} leaves. Only the single-component path (`ncomp = 1`) is supported in this mode.
+#' The direct model places the trees in coefficient units and lets the covariance vary with \eqn{Z}:
+#' \deqn{\theta_i = \mu + f(Z_i) + S_i \varepsilon_i, \qquad \Sigma(Z_i) = S_i S_i^\top = L(Z_i)^{-1} D(Z_i) L(Z_i)^{-\top},}
+#' where \eqn{f(Z)} is a sum of `num_trees` trees with vector leaves \eqn{m_{hg} \sim N(0, \mathrm{diag}(\tau_1^2, \ldots, \tau_D^2) / H)} on one shared partition, \eqn{L(Z_i)} is unit lower-triangular with \eqn{L_{jk} = -\phi_{jk}(Z_i)} for \eqn{k < j}, and \eqn{D(Z_i) = \mathrm{diag}(d_1(Z_i), \ldots, d_D(Z_i))}. Each \eqn{d_j(\cdot)} is a product of trees with inverse-gamma leaves (Pratola et al., 2020); each \eqn{\phi_{jk}(\cdot)} is a sum of trees with normal leaves. The prior is not invariant to the ordering of the columns of `X`, which is recorded in `hart$coef_names`. `Prior$nu` and `Prior$V` are not used.
+#'
+#' **`Prior$bart` under the direct model**: `num_trees` (200), `power` (2), `base` (0.95), `numcut` (100), `nmin` (5), the DART fields, and the scale hyperprior \eqn{\tau_d^2 \sim IG(a_\tau, (a_\tau - 1)\tau_{0d}^2)} through `a_tau` (3) and `tau0` (1; length 1 or `nvar`), so that \eqn{E[\tau_d^2] = \tau_{0d}^2}. `tau` is not used.
 #'
 #' **`Prior$vartree` parameters** (defaults shown):
-#'   - `num_trees` (40): Number of trees per dimension \eqn{m'}.
-#'   - `nu` (10), `lambda` (auto-calibrated from \eqn{\mathrm{var}(\theta_i)}): Baseline parameters of the \eqn{\chi^{-2}} prior. Pratola per-tree calibration is applied internally.
-#'   - `power` (2), `base` (0.95), `numcut` (100): Tree-structure prior parameters.
+#'   - `num_trees` (40), `power` (2), `base` (0.95), `numcut` (100), `nmin` (5): Tree-structure prior parameters.
+#'   - `tau` (1), `v0` (1 unrestricted, 0.1 sign-restricted; length 1 or `nvar`): Ensemble scale and level. Leaves are \eqn{s \sim IG(a_v, b_{vj})} with \eqn{H_v \psi'(a_v) = \tau^2} and \eqn{b_{vj} = (a_v - 1) v_{0j}^{1/H_v}}, so that \eqn{\log d_j(Z)} has prior standard deviation \eqn{\tau} and \eqn{E[d_j(Z)] = v_{0j}} for any `num_trees` (\eqn{\psi'} is the trigamma function).
 #'   - DART hyperparameters (`sparse`, `a`, `b`, `rho`, `theta`, `omega`, `aug`, `burn`): same meaning as `Prior$bart`.
 #'
 #' **`Prior$phitree` parameters** (defaults shown):
-#'   - `num_trees` (40): Number of trees per \eqn{(j,k)} pair \eqn{m''}.
-#'   - `tau` (\eqn{1/\sqrt{m''}}): Prior standard deviation of leaf \eqn{\lambda_{jkh}}.
-#'   - `power` (2), `base` (0.95), `numcut` (100): Tree-structure prior parameters.
-#'   - `nmin` (2), `ess_min` (5): Leaf-admissibility floors. The default `ess_min = 5` requires the effective sample size \eqn{\sum_{i \in \ell} (\theta_i^{(k)} - \mu^{(k)})^2 / d_j(Z_i)} of each candidate leaf to exceed 5; `nmin = 2` is the corresponding raw-count floor.
+#'   - `num_trees` (40), `power` (2), `base` (0.95), `numcut` (100), `nmin` (5): Tree-structure prior parameters.
+#'   - `tau` (1): Ensemble scale; leaves are \eqn{N(0, \tau^2 / H_\phi)}.
 #'   - DART hyperparameters: same meaning as `Prior$bart`.
 #'
-#' When this extension is active, the returned object additionally inherits class `"rhierMnlRwMixtureHeterCov"` and contains slots `var_models`, `phi_models` (jagged, lower-triangular; `NULL` if `nvar == 1`), and `mu_draw` (single-component posterior mean draws). `predict()` dispatches on this class to evaluate \eqn{\Sigma(Z^*)} at new \eqn{Z^*}.
+#' The returned object additionally inherits class `"rhierMnlRwMixtureHeterCov"` and contains `mu_draw`, `mean_scale_draw`, `var_models`, and `phi_models` (jagged; `NULL` if `nvar == 1`). `predict()` dispatches on this class to evaluate \eqn{\Sigma(Z^*)} at new \eqn{Z^*}.
 #'
 #' ## Sign Restrictions
 #' If `SignRes[k]` is non-zero, the k-th coefficient \eqn{\beta_{ik}} is modeled as
@@ -103,18 +121,31 @@
 #' 
 #' **Note:** Care should be taken when selecting priors on any sign restricted coefficients.
 #'
+#' ## Continuing a Fit
+#' The result contains only the new run's draws. Old draws are not pooled
+#' with them. Priors, tree cutpoints and sign restrictions are inherited
+#' from the first fit. New units outside the original Z range are resolved
+#' on the original grid. Settling sweeps may be needed after adding data.
+#' Passing the same batch twice counts its observations twice. Fits retain
+#' their data and are therefore larger. Fits made before restart support
+#' cannot be continued. `Prior` is not accepted with `previous`.
+#'
 #' @return A list containing:
 #'   - `Deltadraw`: If `Z` provided and `bart=NULL`, `(R/keep) x (nz * nvar)` matrix of `vec(Delta)` draws.
 #'   - `betadraw`: `nlgt x nvar x (R/keep)` array of unit-level `beta_i` draws.
-#'   - `nmix`: Legacy list containing prior draws (omitted when `vartree` is supplied).
+#'   - `nmix`: bayesm list of `(mu, rooti)` draws (omitted under `hart_model = "direct"` with `hart_cov = "heteroskedastic"`).
 #'   - `loglike`: `(R/keep) x 1` vector of log-likelihood values at kept draws.
 #'   - `SignRes`: `nvar x 1` vector of sign restrictions used.
 #'   - `acceptrbeta`: Metropolis acceptance rate (percent) for the unit-level
 #'     MNL random-walk updates of `beta_i`.
-#'   - `bart_models`: If HART used, list of length `nvar` containing tree structures and related parameters for the mean trees \eqn{\delta_j(\cdot)}.
-#'   - `var_models` (only with `vartree`): list of length `nvar` of variance-tree ensembles for \eqn{d_j(\cdot)} (product of trees with \eqn{\chi^{-2}} leaves).
-#'   - `phi_models` (only with `vartree` + `phitree`): jagged list of length `nvar`. `phi_models[[1]]` is `NULL`; for `j > 1`, `phi_models[[j]]` is a list of length `j-1` containing the sum-of-trees ensemble for \eqn{\phi_{jk}(\cdot)}.
-#'   - `mu_draw` (only with `vartree`): `(R/keep) x nvar` matrix of \eqn{\mu} draws (single-component path).
+#'   - `bart_models`: Under `hart_model = "normalized"`, a list of length `nvar` of scalar tree ensembles for \eqn{f^*_d(\cdot)}. Under `hart_model = "direct"`, one vector-leaf ensemble (`treedraws` with `leaf_dim = nvar`) for \eqn{f(\cdot)}.
+#'   - `varcount`, `varprob`: Split counts and selection probabilities per characteristic; `nz x nvar x (R/keep)` under `"normalized"`, `nz x (R/keep)` under `"direct"`.
+#'   - `var_models` (`hart_model = "direct"`): list of length `nvar` of variance-tree ensembles for \eqn{d_j(\cdot)}, with `var_varcount`, `var_varprob`.
+#'   - `phi_models` (`hart_model = "direct"`, `nvar > 1`): jagged list of length `nvar`. `phi_models[[1]]` is `NULL`; for `j > 1`, `phi_models[[j]]` is a list of length `j-1` containing the sum-of-trees ensemble for \eqn{\phi_{jk}(\cdot)}.
+#'   - `mu_draw` (`hart_model = "direct"`): `(R/keep) x nvar` matrix of \eqn{\mu} draws.
+#'   - `mean_scale_draw` (`hart_model = "direct"`): `(R/keep) x nvar` matrix of \eqn{\tau_d^2} draws.
+#'   - `restart`: Retained data, resolved configuration, proposal preparation
+#'     and terminal sampler state for continuation through `previous`.
 #'
 #' @references
 #' Chipman, Hugh A., Edward I. George, and Robert E. McCulloch (2010). "BART: Bayesian Additive Regression Trees." Annals of Applied Statistics 4.1.
@@ -133,8 +164,23 @@
 #'
 #' @author Peter Rossi (original bayesm code), Thomas Wiemann (HART modifications).
 #'
+#' @examples
+#' \donttest{
+#' sim <- sim_hier_mnl(nlgt = 12, nT = 5, p = 3, nz = 2, nXa = 2,
+#'                     nXd = 0, const = FALSE, seed = 11)
+#' fit <- rhierMnlRwMixture(Data = sim, Prior = list(ncomp = 1),
+#'                          Mcmc = list(R = 200, keep = 1, nprint = 0))
+#' continued <- rhierMnlRwMixture(previous = fit, Mcmc = list(R = 200))
+#' batch_units <- lapply(sim$lgtdata[1:2], function(u)
+#'   list(y = sample.int(sim$p, 1), X = u$X[seq_len(sim$p), , drop = FALSE]))
+#' batch <- list(lgtdata = batch_units, unit_id = c("1", "new"),
+#'               Z = sim$Z[1:2, , drop = FALSE])
+#' extended <- rhierMnlRwMixture(Data = batch, previous = continued,
+#'                                 Mcmc = list(R = 200))
+#' }
+#'
 #' @export
-rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
+rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE, previous = NULL){
   #
   # revision history:
   #   12/04 changed by rossi to fix bug in drawdelta when there is zero/one unit in a prior component
@@ -156,11 +202,27 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
   #   6/20 by Peter Rossi: fixed check on size of betapooled to correct indexing
   #   6/25 by Thomas Wiemann: added HART prior + roxygen2 docs
   #
+  saved=NULL
+  state=NULL
+  batch=FALSE
+  if(!is.null(previous)) {
+    saved=.hart_previous(previous, "mnl")
+    batch=!missing(Data) && !is.null(Data)
+    if(!missing(Prior)) {
+      pandterm("Prior is inherited with previous")
+    }
+    if(missing(Mcmc)) pandterm("Requires R in Mcmc for continuation")
+    Mcmc=.hart_continue_controls(Mcmc, saved)
+    if(batch) Data=.hart_merge_data(saved, Data) else Data=saved$data
+    state=saved$state
+  }
+  
   if(missing(Data)) {pandterm("Requires Data argument -- list of p,lgtdata, and (possibly) Z")}
   if(is.null(Data$p)) {pandterm("Requires Data element p (# choice alternatives)") }
   p=Data$p
   if(is.null(Data$lgtdata)) {pandterm("Requires Data element lgtdata (list of data for each unit)")}
   lgtdata=Data$lgtdata
+  restart_data=.hart_restart_data(Data, "lgtdata")
   nlgt=length(lgtdata)
   drawdelta=TRUE
   if(is.null(Data$Z)) { cat("Z not specified",fill=TRUE); fsh() ; drawdelta=FALSE}
@@ -169,9 +231,11 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
       else {Z=Data$Z}}}
   if(drawdelta) {
     nz=ncol(Z)
+    if(is.null(saved)) {
     colmeans=apply(Z,2,mean)
     if(sum(colmeans) > .00001) 
     {pandterm(paste("Z does not appear to be de-meaned: colmeans= ",colmeans))}
+    }
   }
   #
   # check lgtdata for validity
@@ -212,12 +276,19 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
   #
   # check on prior
   #
+  if(is.null(saved)) {
   if(missing(Prior)) {pandterm("Requires Prior list argument (at least ncomp)")} 
   if(is.null(Prior$ncomp)) {pandterm("Requires Prior element ncomp")} else {ncomp=Prior$ncomp}
   if(ncomp != 1) {pandterm("Only ncomp = 1 is currently supported")}
   if(is.null(Prior$SignRes)) {SignRes=rep(0,nvar)} else {SignRes=Prior$SignRes}                     
   if(length(SignRes) != nvar) {pandterm("The length SignRes must be equal to the dimension of X")}
   if(sum(!(SignRes %in% c(-1,0,1))>0)) {pandterm("All elements of SignRes must be equal to -1, 0, or 1")}
+  # HART preference model (R/hart_priors.R): "none" keeps the bayesm paths.
+  # Sign-restricted coordinates get the smaller default heterogeneity scale.
+  cfg <- .hart_config(Prior, nvar = nvar, nz = if (drawdelta) nz else 0L,
+                      drawdelta = drawdelta,
+                      coef_names = colnames(lgtdata[[1]]$X),
+                      v0_default = ifelse(SignRes != 0, 0.1, 1))
   if(is.null(Prior$mubar) & sum(abs(SignRes))==0) {
     mubar=matrix(rep(0,nvar),nrow=1)
   } else { 
@@ -226,13 +297,21 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
     } else { 
       mubar=matrix(Prior$mubar,nrow=1) } }
   if(ncol(mubar) != nvar) {pandterm(paste("mubar must have ncomp cols, ncol(mubar)= ",ncol(mubar)))}
-  if(is.null(Prior$Amu) & sum(abs(SignRes))==0) {
-    Amu=matrix(BayesmConstant.A,ncol=1)
+  if (cfg$model == "none") {
+    if(is.null(Prior$Amu) & sum(abs(SignRes))==0) {
+      Amu=matrix(BayesmConstant.A,ncol=1)
+    } else {
+      if(is.null(Prior$Amu) & sum(abs(SignRes)) >0) {
+        Amu=matrix(BayesmConstant.A*10,ncol=1)
+      } else {Amu=matrix(Prior$Amu,ncol=1) } }
+    if(ncol(Amu) != 1 | nrow(Amu) != 1) {pandterm("Am must be a 1 x 1 array")}
   } else {
-    if(is.null(Prior$Amu) & sum(abs(SignRes)) >0) {
-      Amu=matrix(BayesmConstant.A*10,ncol=1)
-    } else {Amu=matrix(Prior$Amu,ncol=1) } }
-  if(ncol(Amu) != 1 | nrow(Amu) != 1) {pandterm("Am must be a 1 x 1 array")}
+    # HART: independent prior mu ~ N(mubar, Amu^{-1}); scalar or nvar x nvar.
+    Amu <- .hart_Amu(Prior$Amu, nvar,
+                     default = if (sum(abs(SignRes)) == 0) BayesmConstant.A
+                               else BayesmConstant.A * 10)
+  }
+  cfg$Amu <- Amu
   if(is.null(Prior$nu) & sum(abs(SignRes))==0) {
     nu=nvar+BayesmConstant.nuInc
   } else {
@@ -249,31 +328,22 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
     } else {
       V=Prior$V } }
   if(sum(dim(V)==c(nvar,nvar)) !=2) pandterm("Invalid V in prior")
-  useBART <- ifelse(!is.null(Prior$bart) & drawdelta, TRUE, FALSE)
-  store_trees <- if (is.null(Prior$store_trees)) TRUE else isTRUE(Prior$store_trees)
-  bart_params = Ad = deltabar = NULL # Set to NULL if unused
-  if (useBART) {
-    # Bart parameter defaults
-    bart_params <- .parse_bart_params(Prior$bart, nz)
-    bart_params$store_trees <- store_trees
-  } else {
+  # ---------------------------------------------------------------------------
+  # HART preference model.  Prior$hart_model selects "none" (bayesm paths),
+  # "normalized", or "direct"; see R/hart_priors.R.
+  # ---------------------------------------------------------------------------
+  useBART     <- cfg$model != "none"
+  useHeterCov <- cfg$model == "direct" && identical(cfg$cov, "heteroskedastic")
+  bart_params <- cfg$bart
+  var_params  <- cfg$vartree %||% list()
+  phi_params  <- cfg$phitree %||% list()
+  Ad = deltabar = NULL
+  if (!useBART) {
     if(is.null(Prior$Ad) & drawdelta) {Ad=BayesmConstant.A*diag(nvar*nz)} else {Ad=Prior$Ad}
     if(drawdelta) {if(ncol(Ad) != nvar*nz | nrow(Ad) != nvar*nz) {pandterm("Ad must be nvar*nz x nvar*nz")}}
     if(is.null(Prior$deltabar)& drawdelta) {deltabar=rep(0,nz*nvar)} else {deltabar=Prior$deltabar}
     if(drawdelta) {if(length(deltabar) != nz*nvar) {pandterm("deltabar must be of length nvar*nz")}}
   }
-  # ---------------------------------------------------------------------------
-  # Heteroscedastic covariance Sigma(Z_i) via modified-Cholesky tree ensembles.
-  # Additive extension beyond Wiemann (2025); auto-enabled by Prior$vartree.
-  # See R/heter_cov_priors.R for shared parsing/validation/printing.
-  # ---------------------------------------------------------------------------
-  hcv_flags   <- .parse_heter_cov_flags(Prior, nvar)
-  useHeterCov <- hcv_flags$useHeterCov
-  useFullCov  <- hcv_flags$useFullCov
-  auto_full   <- hcv_flags$auto_full
-  var_params  <- list()    # placeholder forwarded to C++ when useHeterCov=FALSE
-  phi_params  <- list()    # placeholder forwarded to C++ when useFullCov=FALSE
-  .validate_heter_cov(useHeterCov, useBART, ncomp, drawdelta, SignRes)
   if(is.null(Prior$a)) { a=rep(BayesmConstant.a,ncomp)} else {a=Prior$a}
   if(length(a) != ncomp) {pandterm("Requires dim(a)= ncomp (no of components)")}
   bada=FALSE
@@ -281,9 +351,28 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
   if(bada) pandterm("invalid values in a vector")
   
   if(is.null(Prior$nu)&sum(abs(SignRes))>0) {nu = nvar+15}                                        
-  if(is.null(Prior$Amu)&sum(abs(SignRes))>0) {Amu = matrix(.1)}                                   
+  if(cfg$model == "none" & is.null(Prior$Amu) & sum(abs(SignRes))>0) {Amu = matrix(.1)}                                   
   if(is.null(Prior$V)&sum(abs(SignRes))>0) {V = nu*(diag(nvar)-diag(abs(SignRes)>0)*.8)} 
   
+  } else {
+    cfg=.hart_previous_config(saved)
+    ncomp=cfg$ncomp
+    mubar=cfg$prior$mubar
+    Amu=cfg$prior$Amu
+    nu=cfg$prior$nu
+    V=cfg$prior$V
+    Ad=cfg$prior$Ad
+    deltabar=cfg$prior$deltabar
+    a=cfg$prior$a
+    SignRes=cfg$prior$SignRes
+    useBART=cfg$model != "none"
+    useHeterCov=cfg$model == "direct" &&
+                identical(cfg$cov, "heteroskedastic")
+    bart_params=cfg$bart
+    var_params=cfg$vartree %||% list()
+    phi_params=cfg$phitree %||% list()
+  }
+
   #
   # check on Mcmc
   #
@@ -320,22 +409,8 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
     print(a)
     if(drawdelta) {
       if (useBART) {
-        cat("\nHART prior parameters:\n")
-        cat(sprintf("num_trees = %d\n", bart_params$num_trees))
-        cat(sprintf("power = %g\n", bart_params$power))
-        cat(sprintf("base = %g\n", bart_params$base))
-        cat(sprintf("tau = %g\n", bart_params$tau))
-        cat(sprintf("numcut = %d\n", bart_params$numcut))
-        cat(sprintf("sparse = %d\n", bart_params$sparse))
-        if (bart_params$sparse) {
-          cat(sprintf("theta = %g\n", bart_params$theta))
-          cat(sprintf("omega = %g\n", bart_params$omega))
-          cat(sprintf("a = %g\n", bart_params$a))
-          cat(sprintf("b = %g\n", bart_params$b))
-          cat(sprintf("rho = %g\n", bart_params$rho))
-          cat(sprintf("aug = %g\n", bart_params$aug))
-          cat(sprintf("burn = %d\n", bart_params$burn))
-        }
+        .print_hart_prior(cfg)
+        if (useHeterCov) .print_hart_covariance(cfg)
       } else {
         cat("\nLinear regression prior parameters:\n")
         cat("deltabar",fill=TRUE)
@@ -353,7 +428,7 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
     cat("MCMC Parms: ",fill=TRUE)
     cat(paste("s=",round(s,3)," w= ",w," R= ",R," keep= ",keep," nprint= ",nprint),fill=TRUE)
     cat("",fill=TRUE)
-  } # End r_verbose block for initial setup printing
+  } # end r_verbose
   
   oldbetas = matrix(double(nlgt * nvar), ncol = nvar)
   
@@ -419,6 +494,7 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
   #
   #       fraction loglike = (1-w)*loglike_i + w*Lbar
   #
+  if(is.null(saved) || batch) {
   betainit=c(rep(0,nvar))
   noRes=c(rep(0,nvar))
   # run unconstrainted opt first
@@ -430,8 +506,7 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
   #
   #  compute pooled optimum
   #
-  # Use explicit BFGS here (including nvar == 1) to avoid default Nelder-Mead
-  # scalar warnings and keep optimizer behavior consistent with other setup steps.
+  # BFGS also for nvar = 1; the default Nelder-Mead warns on scalars.
   out=optim(betainit,llmnl_con,method="BFGS",control=list( fnscale=-1,trace=0,reltol=1e-6), 
             X=Xpooled,y=ypooled,SignRes=SignRes)
   
@@ -447,7 +522,6 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
     cat("check any constrained values with absolute value > 10 above",fill=TRUE)
     cat("      - implies abs(beta) > exp(10) or abs(beta) < exp(-10)",fill=TRUE)
   }
-  
   
   H=mnlHess_con(betapooled,ypooled,Xpooled,SignRes)                                         
   rootH=chol(H)
@@ -465,6 +539,11 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
     oldbetas[i,]=lgtdata[[i]]$betafmle
     if(i%%50 ==0 && r_verbose) cat("  completed unit #",i,fill=TRUE)
     fsh()
+  }
+  } else {
+    for(i in 1:nlgt)
+      lgtdata[[i]]$hess=saved$preparation$hess[[i]]
+    oldbetas=state$betas
   }
   #
   #  initialize values
@@ -498,21 +577,6 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
     Ad = matrix(0)
     bart_params = list(0)
   }
-  # ---------------------------------------------------------------------------
-  # Heter-cov hyperparameter setup.  oldbetas (per-unit MLE betas) are now
-  # available, so lambda for the variance-tree chi^{-2} prior can be
-  # data-calibrated if the user did not supply one.  All parsing lives in
-  # R/heter_cov_priors.R for reuse by Negbin and Linear.
-  # ---------------------------------------------------------------------------
-  if (useHeterCov) {
-    var_params <- .parse_var_params(Prior$vartree, oldbetas, nz)
-    if (useFullCov) phi_params <- .parse_phi_params(Prior$phitree, nz, nu, nvar)
-    if (r_verbose)
-      .print_heter_cov_summary(useFullCov, var_params, phi_params,
-                               lambda_user_supplied = !is.null(Prior$vartree$lambda),
-                               auto_full = auto_full)
-  }
-
   # Unique-row map for exact cache storage in C++ prediction payload.
   if (drawdelta && useBART) {
     z_map <- .build_unique_z_map(Z)
@@ -526,54 +590,34 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
   # Wayne Taylor
   # 09/22/2014
   ###################################################################
+  if(batch) state=.hart_extend_state(saved, oldbetas)
+
   draws =  rhierMnlRwMixture_rcpp_loop(lgtdata, Z,
                                        deltabar, Ad, mubar, Amu,
                                        nu, V, s,
                                        R, keep, nprint, drawdelta,
                                        as.matrix(olddelta), a, oldprob, oldbetas, ind, SignRes,
-                                       useBART, bart_params,
-                                       useHeterCov, var_params, phi_params)
+                                       cfg$model, cfg$cov %||% "heteroskedastic",
+                                       bart_params,
+                                       var_params, phi_params, state)
   ####################################################################
 
-  if (useHeterCov) {
-    attributes(draws$betadraw)$class <- c("bayesm.hcoef")
-    attributes(draws$mu_draw)$class  <- c("bayesm.mat", "mcmc")
-    attributes(draws$mu_draw)$mcpar  <- c(1, R, keep)
-    # "bayesm.HART.HeterCov" is the marker superclass shared by all
-    # heteroscedastic-Sigma(Z) hierarchical models (MNL, Negbin, Linear); it
-    # lets predict_helpers.R dispatch generically without hardcoding any
-    # model-specific class name.
-    class(draws) <- c("rhierMnlRwMixtureHeterCov",
-                      "bayesm.HART.HeterCov",
-                      "rhierMnlRwMixture")
-  } else {
-    if(!useBART & drawdelta){
-      attributes(draws$Deltadraw)$class=c("bayesm.mat","mcmc")
-      attributes(draws$Deltadraw)$mcpar=c(1,R,keep)}
-    attributes(draws$betadraw)$class=c("bayesm.hcoef")
-    attributes(draws$nmix)$class="bayesm.nmix"
-    class(draws) <- "rhierMnlRwMixture"
-  }
+  draws <- .finish_hart_fit(draws, cfg, z_map, R, keep,
+                            base_class = "rhierMnlRwMixture")
 
-  draws <- .assemble_hart_cache(draws, z_map)
+  draws$restart=.hart_restart("mnl", restart_data, cfg, ncomp, drawdelta,
+      list(mubar=mubar, Amu=Amu, nu=nu, V=V, Ad=Ad, deltabar=deltabar,
+           a=a, SignRes=SignRes),
+      list(keep=keep, nprint=nprint, s=s, w=w),
+      list(hess=lapply(lgtdata, function(l) l$hess)))
+
+  draws$restart$state=draws$state
+  draws$state=NULL
 
   return(draws)
 }
 
 # Methods ======================================================================
-
-# --- Shared Helper Functions (in R/predict_helpers.R) ---
-# .validate_predict_inputs()  - Input validation for predict methods
-# .calculate_delta_z()        - Compute Delta(Z) via Deltadraw or pwbart
-# .add_mu_component()         - Add prior component mean mu
-
-# --- MNL-Specific predictive engines ---
-# Implementations are in R/predictive_mnl_engine.R:
-#   .predict_posterior_probs()
-#   .predict_prior_probs()
-
-
-# --- Refactored predict.rhierMnlRwMixture Method ---
 
 #' Predict Method for rhierMnlRwMixture Objects
 #' @param object A fitted rhierMnlRwMixture object.
@@ -595,9 +639,10 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
 #'   - `"DeltaZ+mu"`: Expected part-worths plus the mean of the unobserved heterogeneity component, \eqn{\Delta(Z) + \mu_1}. The package supports only `ncomp = 1`.
 #'   - `"choice_probs"`: Predictive choice probabilities (use with
 #'     `mode = "posterior"` or `mode = "prior"`).
-#'   - `"SigmaZ"`: Draws of the heteroscedastic covariance matrix \eqn{\Sigma(Z)}.
-#'     Available only for models fit with `Prior$vartree` (class marker
-#'     `"bayesm.HART.HeterCov"`).
+#'   - `"SigmaZ"`: Draws of the covariance matrix \eqn{\Sigma(Z)}. Under
+#'     `hart_model = "direct"` with `hart_cov = "heteroskedastic"` these vary
+#'     with `Z`; otherwise the single \eqn{\Sigma} draw is repeated on every
+#'     row of `newdata$Z`.
 #' @param mode Prediction mode:
 #'   - `"coefficients"`: coefficient-level outputs (`DeltaZ`, `DeltaZ+mu`, `SigmaZ`).
 #'   - `"posterior"`: posterior predictive output (`type = "choice_probs"`).
@@ -605,9 +650,11 @@ rhierMnlRwMixture=function(Data,Prior,Mcmc, r_verbose = TRUE){
 #' @param burn Integer, number of initial MCMC draws to discard.
 #' @param nsim Integer, number of draws from the heterogeneity distribution
 #'   per posterior draw for `mode = "prior"` and `type = "choice_probs"`.
+#' @param force_tree_eval Logical. Evaluate the stored trees at `newdata$Z`
+#'   even when the cached draws cover every row (default `FALSE`).
 #' @param r_verbose Logical, print progress updates?
 #' @param ... Additional arguments passed to underlying prediction functions
-#'   (e.g., `mc.cores`, `verbose` for BART `DeltaZ` predictions via `pwbart`).
+#'   (e.g., `mc.cores`, `verbose` for tree-based `DeltaZ` predictions).
 #' @return Depends on `type`:
 #'   - For `type %in% c("DeltaZ", "DeltaZ+mu")`: 3D array `[npred, nvar, ndraws_out]`
 #'     of predicted expected part-worths.
@@ -646,31 +693,9 @@ predict.rhierMnlRwMixture <- function(object, newdata = NULL,
                                            valid_types = structural_types)
   kept_draws_indices <- .kept_draw_indices(ndraws_total, burn)
 
-  # Heter-cov: evaluate every BART / varBART / phi-BART ensemble at newdata$Z
-  # exactly ONCE, then share the result with both .calculate_delta_z and
-  # .calculate_sigma_z.
+  # Under heteroskedastic covariance the ensembles are evaluated once at
+  # newdata$Z and shared by Delta(Z) and Sigma(Z).
   hetercov_comps <- NULL
-  if (inherits(object, "bayesm.HART.HeterCov") &&
-      type %in% c("DeltaZ", "DeltaZ+mu", "SigmaZ")) {
-    if (is.null(newdata$Z))
-      stop("Heter-cov predictions require newdata$Z.")
-    map_seen <- .match_cached_unique_rows(object, newdata$Z)
-    seen_all <- !is.null(map_seen) && map_seen$all_seen
-    has_delta_cache <- !is.null(.cache_get(object, "DeltaZ_unique_draws"))
-    has_sigma_cache <- !is.null(.cache_get(object, "SigmaZ_unique_draws"))
-
-    need_tree_eval <- .has_tree_payload(object) && (
-      force_tree_eval ||
-      (type %in% c("DeltaZ", "DeltaZ+mu") && !(has_delta_cache && seen_all)) ||
-      (type == "SigmaZ" && !(has_sigma_cache && seen_all))
-    )
-    if (need_tree_eval) {
-      nvar  <- dim(object$betadraw)[2]
-      npred <- nrow(newdata$Z)
-      hetercov_comps <- .hetercov_components(object, newdata$Z, npred, nvar,
-                                             ndraws_total, r_verbose)
-    }
-  }
   if (type == "SigmaZ") {
     return(.predict_structural_common(
       object, newdata, type, burn, r_verbose,

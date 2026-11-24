@@ -3,12 +3,19 @@
 
 # bayesm.HART
 
+<!-- badges: start -->
+
+[![R-CMD-check](https://github.com/thomaswiemann/bayesm.HART/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/thomaswiemann/bayesm.HART/actions/workflows/R-CMD-check.yaml)
+[![codecov](https://codecov.io/gh/thomaswiemann/bayesm.HART/branch/main/graph/badge.svg)](https://app.codecov.io/gh/thomaswiemann/bayesm.HART)
+[![CodeFactor](https://www.codefactor.io/repository/github/thomaswiemann/bayesm.HART/badge)](https://www.codefactor.io/repository/github/thomaswiemann/bayesm.HART)
+<!-- badges: end -->
+
 `bayesm.HART` implements MCMC routines for hierarchical models with
 Hierarchical Additive Regression Trees (HART) priors, as developed in
 Wiemann (2025).
 
 In the hierarchical logit specification, HART models the representative
-consumer as a flexible function of observed characteristics. This
+consumer as a nonparametric function of observed characteristics. This
 generalizes conventional hierarchical specifications that use a linear
 projection on a small set of characteristics. The same framework
 supports prediction for new consumers and posterior updating for
@@ -28,104 +35,72 @@ Install the latest development version from GitHub (requires
 [devtools](https://github.com/r-lib/devtools) package):
 
 ``` r
-if (!require("devtools")) {
-  install.packages("devtools")
-}
 devtools::install_github("thomaswiemann/bayesm.HART", dependencies = TRUE)
 ```
 
 ## Example
 
 The following example applies the HART logit model to the Allenby and
-Ginter (1995) bank conjoint dataset. The first code block loads the
-data, formats the list structure required by `rhierMnlRwMixture`, and
-sets MCMC hyperparameters. This setup syntax is the same in `bayesm` and
-`bayesm.HART`.
+Ginter (1995) bank conjoint dataset. The data and MCMC setup are the
+same as in `bayesm`.
 
 ``` r
-# Load bayesm.HART for the sampler; load bayesm for the bank data
 library(bayesm.HART)
-library(bayesm)
+library(bayesm)  # bank data
 
-# Load and prepare data from the 'bank' dataset (same as bayesm)
 data(bank)
 choiceAtt <- bank$choiceAtt
 hh <- levels(factor(choiceAtt$id))
 nhh <- length(hh)
 lgtdata <- vector("list", length = nhh)
 for (i in 1:nhh) {
-    y = 2 - choiceAtt[choiceAtt[,1]==hh[i], 2]
-    nobs = length(y)
-    X_temp = as.matrix(choiceAtt[choiceAtt[,1]==hh[i], c(3:16)])
-    X = matrix(0, nrow = nrow(X_temp) * 2, ncol = ncol(X_temp))
-    X[seq(1, nrow(X), by = 2), ] = X_temp
-    lgtdata[[i]] = list(y=y, X=X)
+  y <- 2 - choiceAtt[choiceAtt[, 1] == hh[i], 2]
+  X_temp <- as.matrix(choiceAtt[choiceAtt[, 1] == hh[i], c(3:16)])
+  X <- matrix(0, nrow = nrow(X_temp) * 2, ncol = ncol(X_temp))
+  X[seq(1, nrow(X), by = 2), ] <- X_temp
+  lgtdata[[i]] <- list(y = y, X = X)
 }
-Z <- as.matrix(bank$demo[, -1]) # omit id
-Z <- t(t(Z) - colMeans(Z)) # de-mean covariates as required by bayesm
+Z <- as.matrix(bank$demo[, -1])
+Z <- t(t(Z) - colMeans(Z))  # bayesm requires de-meaned Z
 
-# Final data object (same as bayesm)
 Data <- list(lgtdata = lgtdata, Z = Z, p = 2)
-
-# MCMC hyperparameters (same as bayesm)
-Mcmc <- list(R = 2000, keep = 2, nprint = 500)
 ```
 
 To fit the HART logit model, call `rhierMnlRwMixture`. Relative to a
-linear hierarchical specification, the main change is adding the `bart`
-entry in `Prior`. For illustration, the code below uses 50 trees per
-factor and leaves other hyperparameters at defaults. See
+linear hierarchical specification, the main change is
+`hart_model = "normalized"` in `Prior`; the optional `bart` entry sets
+the tree hyperparameters. For illustration, the code below uses 50 trees
+per factor and leaves other hyperparameters at defaults.
+`hart_model = "direct"` adds covariate-dependent covariance trees. See
 `?rhierMnlRwMixture` for details.
 
 ``` r
-# Fit the HART logit model
-if (!model_cache_ok) {
-  out <- bayesm.HART::rhierMnlRwMixture(
-      Data = Data, Mcmc = Mcmc, 
-      Prior = list(
-        ncomp = 1, 
-        bart = list(num_trees = 50) # new HART prior parameters
-        ),
-      r_verbose = F # suppress R print output (optional)
-  )
-  saveRDS(list(out = out, generated_at = Sys.time()), model_cache_file)
-}
+set.seed(2025)
+out <- bayesm.HART::rhierMnlRwMixture(
+  Data = Data,
+  Prior = list(ncomp = 1, hart_model = "normalized",
+               bart = list(num_trees = 50)),
+  Mcmc = list(R = 8000, keep = 8)
+)
 ```
 
-With posterior draws from the fitted model, we can summarize any
-estimand. A central object is the *representative respondent*, i.e.,
-expected part-worths conditional on respondent characteristics. The
-following code computes posterior means and standard deviations for
-three credit card attributes.
+A central object is the *representative respondent*, i.e., expected
+part-worths conditional on respondent characteristics. The following
+code computes posterior means and standard deviations for three credit
+card attributes.
 
 ``` r
-DeltaZ_hat <- predict(out, newdata = list(Z = Z), type = "DeltaZ+mu", 
-                      burn = 250, r_verbose = FALSE)
+# Draws of the expected part-worths, discarding the first 250 kept draws
+DeltaZ_hat <- predict(out, newdata = list(Z = Z), type = "DeltaZ+mu", burn = 250)
+```
 
-posterior_mean <- apply(DeltaZ_hat, 2, mean)
-posterior_sd <- apply(DeltaZ_hat, 2, sd)
-
-# Indices for the desired coefficients:
-# 2: Interest Low Fixed
-# 8: Annual Fee Low
-# 10: Bank Out-of-State
-selected_indices <- c(2, 8, 10)
-
-# Create a matrix with means and sds as rows
-results_matrix <- rbind(
-  `Posterior Mean` = posterior_mean[selected_indices],
-  `Posterior SD`   = posterior_sd[selected_indices]
-)
-
-# Convert to a data frame and set column names
-results_df <- as.data.frame(results_matrix)
-colnames(results_df) <- c("Interest Low Fixed", "Annual Fee Low", "Bank Out-of-State")
-
-# Print the data frame to the console
-print(results_df, digits = 3)
+``` r
+attributes <- c("Interest Low Fixed" = 2, "Annual Fee Low" = 8, "Bank Out-of-State" = 10)
+rbind(`Posterior Mean` = sapply(attributes, function(a) mean(DeltaZ_hat[, a, ])),
+      `Posterior SD`   = sapply(attributes, function(a) sd(DeltaZ_hat[, a, ])))
 #>                Interest Low Fixed Annual Fee Low Bank Out-of-State
-#> Posterior Mean              5.047          4.152            -3.378
-#> Posterior SD                0.902          0.901             0.989
+#> Posterior Mean          4.9665160      4.1016080         -3.855447
+#> Posterior SD            0.9880264      0.9814334          1.073997
 ```
 
 ## Learn More about `bayesm.HART`
@@ -140,12 +115,13 @@ See the `bayesm.HART` vignettes:
   Hierarchical negative binomial model
 - [`vignette("bayesm-HART-heteroskedastic-hart-bank")`](https://thomaswiemann.com/bayesm.HART/articles/bayesm-HART-heteroskedastic-hart-bank.html):
   Bank conjoint – heteroskedastic HART
+- [`vignette("marginal-effects")`](https://thomaswiemann.com/bayesm.HART/articles/marginal-effects.html):
+  Marginal effects of covariates
 
 ## Acknowledgements
 
-`bayesm.HART` originated as a fork of the `bayesm` and `BART` packages.
-Its current implementation heavily leverages the codebase and
-foundational work from both packages. I gratefully acknowledge the
+`bayesm.HART` originated as a fork of the `bayesm` and `BART` packages
+and builds on the code of both. I gratefully acknowledge the
 contributions of their respective authors:
 
 - [**`bayesm`**](https://cran.r-project.org/web/packages/bayesm/index.html):
