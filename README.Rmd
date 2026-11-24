@@ -132,7 +132,6 @@ See the `bayesm.HART` vignettes:
 - [`vignette("bayesm-HART-negbin")`](https://thomaswiemann.com/bayesm.HART/articles/bayesm-HART-negbin.html): Hierarchical negative binomial model
 - [`vignette("bayesm-HART-heteroskedastic-hart-bank")`](https://thomaswiemann.com/bayesm.HART/articles/bayesm-HART-heteroskedastic-hart-bank.html): Bank conjoint -- heteroskedastic HART
 - [`vignette("marginal-effects")`](https://thomaswiemann.com/bayesm.HART/articles/marginal-effects.html): Marginal effects of covariates
-- [`vignette("simulation-convergence")`](https://thomaswiemann.com/bayesm.HART/articles/simulation-convergence.html): Simulation -- convergence of posterior means in n and T
 
 ## Acknowledgements
 

@@ -128,8 +128,6 @@ See the `bayesm.HART` vignettes:
   Bank conjoint – heteroskedastic HART
 - [`vignette("marginal-effects")`](https://thomaswiemann.com/bayesm.HART/articles/marginal-effects.html):
   Marginal effects of covariates
-- [`vignette("simulation-convergence")`](https://thomaswiemann.com/bayesm.HART/articles/simulation-convergence.html):
-  Simulation – convergence of posterior means in n and T
 
 ## Acknowledgements
 

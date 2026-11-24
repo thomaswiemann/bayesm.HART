@@ -7,9 +7,8 @@
 # An argument is a case-insensitive regular expression matched against the
 # paths below; every match is built.
 #
-# Each document is knitted in its own R process.  The convergence study forks
-# one worker per core, and a shared session would hand each fork a copy of
-# every earlier document's fitted draws.
+# Each document is knitted in its own R process, so none carries another's
+# fitted draws.
 
 all_vignettes <- c(
   "vignettes/bayesm-HART.Rmd.txt",
@@ -17,7 +16,6 @@ all_vignettes <- c(
   "vignettes/bayesm-HART-negbin.Rmd.txt",
   "vignettes/bayesm-HART-heteroskedastic-hart-bank.Rmd.txt",
   "vignettes/marginal-effects.Rmd.txt",
-  "vignettes/simulation-convergence.Rmd.txt",
   "README.Rmd"
 )
 
