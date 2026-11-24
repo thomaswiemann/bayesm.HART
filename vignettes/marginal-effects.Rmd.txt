@@ -11,17 +11,11 @@ vignette: >
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
+  message = FALSE,
+  warning = FALSE,
   fig.path = "figures/mfx-",
-  cache.path = "cache/mfx-",
-  eval = TRUE
+  cache.path = "cache/mfx-"
 )
-
-# Seed every chunk from its label, so results do not depend on what ran
-# before it.
-knitr::knit_hooks$set(chunk_seed = function(before, options, envir) {
-  if (before) set.seed(20261112L + sum(utf8ToInt(options$label)))
-})
-knitr::opts_chunk$set(chunk_seed = TRUE)
 ```
 
 This vignette shows how to compute and plot marginal effects of covariates
@@ -58,8 +52,9 @@ We estimate two models:
 The chains are short to keep the vignette fast.
 
 ```{r fit-models, cache = TRUE, results = "hide"}
-Mcmc <- list(R = 2000, keep = 10, nprint = 0)
-burn <- 100  # kept draws
+set.seed(2025)
+Mcmc <- list(R = 8000, keep = 40)
+burn <- 100  # kept draws to discard
 
 out_linear <- bayesm::rhierMnlRwMixture(Data, Prior = list(ncomp = 1), Mcmc)
 class(out_linear) <- "rhierMnlRwMixture"  # bayesm.HART methods for the bayesm fit
@@ -68,7 +63,7 @@ out_hart <- bayesm.HART::rhierMnlRwMixture(
   Data,
   Prior = list(ncomp = 1, hart_model = "normalized",
                bart = list(num_trees = 50, tau = 2, numcut = 50)),
-  Mcmc, r_verbose = FALSE
+  Mcmc
 )
 ```
 
@@ -79,44 +74,39 @@ covariates held at their means. `marginal_effects()` returns the posterior
 draws of the expected coefficients at each grid point; the true curve is the
 Friedman function at the same points.
 
-```{r display-mfx-plots, fig.width=7, fig.height=5}
+```{r display-mfx-plots, results = "hide", fig.width=7, fig.height=5}
 friedman <- function(z) with(friedman_args,
   (coefs[1] * sin(pi * z[1] * z[2]) + coefs[2] * (z[3] - 0.5)^2 +
      coefs[3] * z[4] + coefs[4] * z[5] + shift) / scale)
 
 Z_mean <- t(colMeans(Data$Z))
-colors <- c(HART = "blue", Linear = "red", True = "black")
-linetypes <- c(HART = "solid", Linear = "solid", True = "dashed")
 
 for (j in c(2, 3, 4)) {
+  # Grid over Z[j], the other covariates at their means
   grid <- seq(min(Data$Z[, j]), max(Data$Z[, j]), length.out = 10)
-  z_values <- Z_mean[rep(1, length(grid)), , drop = FALSE]
+  z_values <- Z_mean[rep(1, length(grid)), ]
   z_values[, j] <- grid
-  axis <- paste0("z_val_", j)
 
-  mfx <- lapply(list(HART = out_hart, Linear = out_linear), function(fit)
-    summary(marginal_effects(fit, z_values = z_values, Z = Z_mean,
-                             burn = burn, r_verbose = FALSE)))
-
-  truth <- data.frame(grid, apply(z_values, 1, friedman), "True")
-  names(truth) <- c(axis, "true_mean", "model")
+  mfx_hart <- summary(marginal_effects(out_hart, z_values = z_values,
+                                       Z = Z_mean, burn = burn))
+  mfx_linear <- summary(marginal_effects(out_linear, z_values = z_values,
+                                         Z = Z_mean, burn = burn))
+  truth <- data.frame(z = grid, effect = apply(z_values, 1, friedman))
 
   print(
-    plot(mfx$HART, Linear = mfx$Linear, x_name = "HART", plot_axis_var = axis,
-         coef_index = 1, color_values = colors, linetype_values = linetypes,
-         fill_values = colors[c("HART", "Linear")],
+    plot(mfx_hart, Linear = mfx_linear, x_name = "HART",
+         plot_axis_var = paste0("z_val_", j),
          xlab = paste0("Z[", j, "]"), ylab = "Average effect on coefficient 1",
          title = paste0("Marginal effect of Z[", j, "] on coefficient 1")) +
-      geom_line(data = truth,
-                aes(x = .data[[axis]], y = true_mean, color = model,
-                    linetype = model), linewidth = 1) +
+      geom_line(data = truth, aes(x = z, y = effect), linetype = "dashed",
+                inherit.aes = FALSE) +
       theme_classic(base_size = 14) +
-      theme(legend.position = "bottom", legend.box = "vertical")
+      theme(legend.position = "bottom")
   )
 }
 ```
 
 The plots show the estimated average effects of $Z_2$, $Z_3$ and $Z_4$ on
-the first coefficient across each covariate's range. The HART curve (blue)
-tracks the nonlinear true curve (dashed black) more closely than the linear
-specification (red). Shaded regions are 95% posterior credible intervals.
+the first coefficient across each covariate's range. The HART curve
+tracks the nonlinear true curve (black, dashed) more closely than the linear
+specification. Shaded regions are 95% posterior credible intervals.

@@ -64,7 +64,7 @@
     cd_idx <- seq.int(min(burn + 1, length(compdraw)), length(compdraw))
     Sigma_diag <- t(vapply(cd_idx, function(ii) {
       rooti <- compdraw[[ii]][[1]]$rooti
-      diag(solve(crossprod(rooti)))
+      diag(crossprod(solve(rooti)))  # Sigma = A^T A, A = rooti^{-1}
     }, numeric(nvar)))
   }
 

@@ -1,12 +1,13 @@
 # bayesm.HART 0.1.0
 
-* `Prior$hart_model` selects the heterogeneity model: `"none"` (bayesm), `"normalized"`, or `"direct"`. Tree lists in `Prior` require it.
-* Direct HART: vector-leaf mean trees with learned scales and covariate-dependent covariance (`Prior$vartree`, `Prior$phitree`); `Prior$hart_cov = "constant"` gives one shared covariance.
-* `previous` continues a fit, optionally appending observations and units.
-* `predict(type = "SigmaZ")` for every model.
-* `marginal_effects()` takes `r_verbose`, as the samplers do.
-* `tau` is the ensemble scale in every tree list; `nmin` sets the minimum units per leaf.
-* `Sigma_func` in the simulators for covariate-dependent heterogeneity.
-* Fixes the birth-proposal reverse probability inherited from BART.
-* Fixes the covariance update of the normalized model.
-* Fits saved by earlier versions are not supported by `predict()`.
+* `Prior$hart_model`: `"none"` (bayesm), `"normalized"`, or `"direct"`. Required with tree lists.
+* Direct HART: vector-leaf mean trees and covariance trees (`vartree`, `phitree`); `hart_cov = "constant"` for one shared covariance.
+* `previous`: continue a fit, optionally with new observations and units.
+* `predict(type = "SigmaZ")` for all models.
+* `r_verbose` in `marginal_effects()`.
+* Tree lists: `tau` (ensemble scale), `nmin` (minimum units per leaf).
+* `Sigma_func` in the simulators.
+* Fixed: birth-proposal reverse probability inherited from BART.
+* Fixed: covariance update of the normalized model.
+* Fixed: `summary()` R-squared under a constant covariance used the wrong residual variance.
+* Breaking: `predict()` does not support fits from earlier versions.

@@ -28,9 +28,6 @@ Install the latest development version from GitHub (requires
 [devtools](https://github.com/r-lib/devtools) package):
 
 ``` r
-if (!require("devtools")) {
-  install.packages("devtools")
-}
 devtools::install_github("thomaswiemann/bayesm.HART", dependencies = TRUE)
 ```
 
@@ -50,18 +47,16 @@ hh <- levels(factor(choiceAtt$id))
 nhh <- length(hh)
 lgtdata <- vector("list", length = nhh)
 for (i in 1:nhh) {
-    y = 2 - choiceAtt[choiceAtt[,1]==hh[i], 2]
-    X_temp = as.matrix(choiceAtt[choiceAtt[,1]==hh[i], c(3:16)])
-    X = matrix(0, nrow = nrow(X_temp) * 2, ncol = ncol(X_temp))
-    X[seq(1, nrow(X), by = 2), ] = X_temp
-    lgtdata[[i]] = list(y=y, X=X)
+  y <- 2 - choiceAtt[choiceAtt[, 1] == hh[i], 2]
+  X_temp <- as.matrix(choiceAtt[choiceAtt[, 1] == hh[i], c(3:16)])
+  X <- matrix(0, nrow = nrow(X_temp) * 2, ncol = ncol(X_temp))
+  X[seq(1, nrow(X), by = 2), ] <- X_temp
+  lgtdata[[i]] <- list(y = y, X = X)
 }
 Z <- as.matrix(bank$demo[, -1])
 Z <- t(t(Z) - colMeans(Z))  # bayesm requires de-meaned Z
 
 Data <- list(lgtdata = lgtdata, Z = Z, p = 2)
-
-Mcmc <- list(R = 2000, keep = 2, nprint = 500)
 ```
 
 To fit the HART logit model, call `rhierMnlRwMixture`. Relative to a
@@ -73,18 +68,13 @@ per factor and leaves other hyperparameters at defaults.
 `?rhierMnlRwMixture` for details.
 
 ``` r
+set.seed(2025)
 out <- bayesm.HART::rhierMnlRwMixture(
-  Data = Data, Mcmc = Mcmc,
+  Data = Data,
   Prior = list(ncomp = 1, hart_model = "normalized",
                bart = list(num_trees = 50)),
-  r_verbose = FALSE
+  Mcmc = list(R = 8000, keep = 8)
 )
-#>  MCMC Iteration (est time to end - min) 
-#>  500 (0.8)
-#>  1000 (0.5)
-#>  1500 (0.2)
-#>  2000 (0.0)
-#>  Total Time Elapsed: 1.02
 ```
 
 A central object is the *representative respondent*, i.e., expected
@@ -93,25 +83,17 @@ code computes posterior means and standard deviations for three credit
 card attributes.
 
 ``` r
-DeltaZ_hat <- predict(out, newdata = list(Z = Z), type = "DeltaZ+mu", 
-                      burn = 250, r_verbose = FALSE)
+# Draws of the expected part-worths, discarding the first 250 kept draws
+DeltaZ_hat <- predict(out, newdata = list(Z = Z), type = "DeltaZ+mu", burn = 250)
+```
 
-posterior_mean <- apply(DeltaZ_hat, 2, mean)
-posterior_sd <- apply(DeltaZ_hat, 2, sd)
-
-selected_indices <- c(2, 8, 10)
-results_matrix <- rbind(
-  `Posterior Mean` = posterior_mean[selected_indices],
-  `Posterior SD`   = posterior_sd[selected_indices]
-)
-
-results_df <- as.data.frame(results_matrix)
-colnames(results_df) <- c("Interest Low Fixed", "Annual Fee Low", "Bank Out-of-State")
-
-print(results_df, digits = 3)
+``` r
+attributes <- c("Interest Low Fixed" = 2, "Annual Fee Low" = 8, "Bank Out-of-State" = 10)
+rbind(`Posterior Mean` = sapply(attributes, function(a) mean(DeltaZ_hat[, a, ])),
+      `Posterior SD`   = sapply(attributes, function(a) sd(DeltaZ_hat[, a, ])))
 #>                Interest Low Fixed Annual Fee Low Bank Out-of-State
-#> Posterior Mean              4.784           3.96            -3.099
-#> Posterior SD                0.945           1.06             0.952
+#> Posterior Mean          4.9665160      4.1016080         -3.855447
+#> Posterior SD            0.9880264      0.9814334          1.073997
 ```
 
 ## Learn More about `bayesm.HART`
