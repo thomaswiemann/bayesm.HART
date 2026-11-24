@@ -15,6 +15,12 @@ knitr::opts_chunk$set(
 
 # bayesm.HART
 
+<!-- badges: start -->
+
+[![R-CMD-check](https://github.com/thomaswiemann/bayesm.HART/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/thomaswiemann/bayesm.HART/actions/workflows/R-CMD-check.yaml)
+[![codecov](https://codecov.io/gh/thomaswiemann/bayesm.HART/branch/main/graph/badge.svg)](https://app.codecov.io/gh/thomaswiemann/bayesm.HART)
+[![CodeFactor](https://www.codefactor.io/repository/github/thomaswiemann/bayesm.HART/badge)](https://www.codefactor.io/repository/github/thomaswiemann/bayesm.HART)
+<!-- badges: end -->
 
 `bayesm.HART` implements MCMC routines for hierarchical models with
 Hierarchical Additive Regression Trees (HART) priors, as developed in
